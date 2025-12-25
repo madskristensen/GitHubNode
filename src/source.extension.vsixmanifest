@@ -4,6 +4,7 @@
         <Identity Id="GitHubNode.24524560-9858-4489-a36e-945dea8eea44" Version="1.0.900" Language="en-US" Publisher="Mads Kristensen" />
         <DisplayName>GitHub Node</DisplayName>
         <Description xml:space="preserve">Adds a GitHub node to Solution Explorer that displays the contents of your repository's `.github` folder. Quickly access and manage GitHub-specific files like workflows, Copilot instructions, agents, and more</Description>
+        <License>Resources\LICENSE.txt</License>
         <Icon>Resources\Icon.png</Icon>
         <PreviewImage>Resources\Icon.png</PreviewImage>
     </Metadata>
