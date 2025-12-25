@@ -13,6 +13,18 @@
     ]
   },
   "assetFiles": [
+    {
+      "pathOnDisk": "art/github-node.png",
+      "targetPath": "art/github-node.png"
+    },
+    {
+      "pathOnDisk": "art/solution-explorer.png",
+      "targetPath": "art/solution-explorer.png"
+    },
+    {
+      "pathOnDisk": "art/context-menu.png",
+      "targetPath": "art/context-menu.png"
+    }
   ],
   "overview": "README.md",
   "publisher": "MadsKristensen",

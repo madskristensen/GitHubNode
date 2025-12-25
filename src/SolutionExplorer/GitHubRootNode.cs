@@ -33,6 +33,8 @@ namespace GitHubNode.SolutionExplorer
         public GitHubRootNode(object sourceItem, string gitHubFolderPath)
             : base(sourceItem)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
             _gitHubFolderPath = gitHubFolderPath;
             _children = [];
             _childrenManager = new NodeChildrenManager(

@@ -53,6 +53,8 @@ namespace GitHubNode.SolutionExplorer
         public GitHubFolderNode(string folderPath, object parent)
             : base(parent)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
             FolderPath = folderPath;
             _folderName = Path.GetFileName(folderPath);
             _children = [];

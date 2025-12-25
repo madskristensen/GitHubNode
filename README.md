@@ -17,7 +17,7 @@ Adds a **GitHub** node to Solution Explorer that displays the contents of your r
 
 ## Features
 
-### 📁 GitHub Node in Solution Explorer
+### GitHub Node in Solution Explorer
 
 The extension adds a dedicated **GitHub** node directly under your solution, providing easy access to the `.github` folder contents:
 
@@ -28,28 +28,7 @@ The extension adds a dedicated **GitHub** node directly under your solution, pro
 
 ![Solution Explorer with GitHub Node](art/solution-explorer.png)
 
-### 🎨 Smart Icons for Known Files & Folders
-
-The extension recognizes common GitHub files and folders, displaying context-appropriate icons:
-
-| Folder | Icon |
-|--------|------|
-| Workflows | ▶️ Run |
-| Agents | 🔧 Application |
-| Skills | 🧩 Extension |
-| Prompts | 💬 Comment |
-| Instructions | 📄 Document |
-| ISSUE_TEMPLATE | 🐛 Bug |
-| PULL_REQUEST_TEMPLATE | 🔀 Pull Request |
-
-| File | Icon |
-|------|------|
-| copilot-instructions.md | 🤖 Robot |
-| dependabot.yml | 🔄 Sync |
-| CODEOWNERS | 👥 Users |
-| FUNDING.yml | ❤️ Heart |
-
-### ➕ Context Menu Commands
+### Context Menu Commands
 
 Right-click on the GitHub node or any subfolder to quickly create new files:
 
@@ -70,7 +49,7 @@ Right-click on the GitHub node or any subfolder to quickly create new files:
 #### Utilities
 - **Open in File Explorer** — Open the folder location in Windows File Explorer
 
-### 📝 File Templates
+### File Templates
 
 All created files come with helpful starter templates that follow best practices:
 

@@ -92,7 +92,7 @@
       <!-- Add Copilot Instructions -->
       <Button guid="GitHubNode" id="AddCopilotInstructions" priority="0x0100" type="Button">
         <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="StatusInformation" />
+        <Icon guid="ImageCatalogGuid" id="DocumentOutline" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Copilot Instructions</ButtonText>

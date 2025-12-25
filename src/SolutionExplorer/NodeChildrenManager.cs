@@ -46,9 +46,11 @@ namespace GitHubNode.SolutionExplorer
 
         /// <summary>
         /// Initializes the manager by refreshing children and setting up the file watcher.
+        /// Must be called on the UI thread.
         /// </summary>
         public void Initialize()
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             RefreshChildren();
             SetupFileWatcher();
         }
@@ -105,11 +107,14 @@ namespace GitHubNode.SolutionExplorer
 
         private void OnFileSystemChanged(object sender, FileSystemEventArgs e)
         {
-            ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+            // FireAndForget is appropriate here since this is a fire-and-forget file system event
+            #pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 RefreshChildren();
-            }).FireAndForget();
+            });
+            #pragma warning restore VSSDK007
         }
 
         public void Dispose()

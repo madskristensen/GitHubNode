@@ -27,7 +27,7 @@ namespace GitHubNode.SolutionExplorer
         private static readonly Dictionary<string, ImageMoniker> _knownFileIcons = new(StringComparer.OrdinalIgnoreCase)
         {
             // Copilot instructions
-            ["copilot-instructions.md"] = KnownMonikers.StatusInformation,
+            ["copilot-instructions.md"] = KnownMonikers.DocumentOutline,
 
             // GitHub Actions / Dependabot
             ["dependabot.yml"] = KnownMonikers.NuGet,
