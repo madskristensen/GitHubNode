@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <Extern href="stdidcmd.h"/>
+  <Extern href="vsshlids.h"/>
+  <Include href="KnownImageIds.vsct"/>
+  <Include href="VSGlobals.vsct"/>
+
+  <Commands package="GitHubNode">
+    
+    <!-- Context Menus -->
+    <Menus>
+      <!-- GitHub Root Node Context Menu -->
+      <Menu guid="GitHubNode" id="GitHubRootContextMenu" priority="0x0100" type="Context">
+        <Strings>
+          <ButtonText>GitHub Root Context Menu</ButtonText>
+        </Strings>
+      </Menu>
+      
+      <!-- GitHub Folder Node Context Menu -->
+      <Menu guid="GitHubNode" id="GitHubFolderContextMenu" priority="0x0100" type="Context">
+        <Strings>
+          <ButtonText>GitHub Folder Context Menu</ButtonText>
+        </Strings>
+      </Menu>
+      
+      <!-- GitHub File Node Context Menu -->
+      <Menu guid="GitHubNode" id="GitHubFileContextMenu" priority="0x0100" type="Context">
+        <Strings>
+          <ButtonText>GitHub File Context Menu</ButtonText>
+        </Strings>
+      </Menu>
+      
+      <!-- Add Copilot Submenu -->
+      <Menu guid="GitHubNode" id="AddCopilotSubMenu" priority="0x0100" type="Menu">
+        <Parent guid="GitHubNode" id="RootAddGroup"/>
+        <Icon guid="ImageCatalogGuid" id="StatusInformation" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Add Copilot File</ButtonText>
+        </Strings>
+      </Menu>
+      
+      <!-- Add GitHub Submenu -->
+      <Menu guid="GitHubNode" id="AddGitHubSubMenu" priority="0x0200" type="Menu">
+        <Parent guid="GitHubNode" id="RootAddGroup"/>
+        <Icon guid="ImageCatalogGuid" id="GitNoColor" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Add GitHub File</ButtonText>
+        </Strings>
+      </Menu>
+    </Menus>
+    
+    <Groups>
+      <!-- Root context menu groups -->
+      <Group guid="GitHubNode" id="RootAddGroup" priority="0x0100">
+        <Parent guid="GitHubNode" id="GitHubRootContextMenu"/>
+      </Group>
+      <Group guid="GitHubNode" id="RootActionsGroup" priority="0x0200">
+        <Parent guid="GitHubNode" id="GitHubRootContextMenu"/>
+      </Group>
+      
+      <!-- Folder context menu groups -->
+      <Group guid="GitHubNode" id="FolderAddGroup" priority="0x0100">
+        <Parent guid="GitHubNode" id="GitHubFolderContextMenu"/>
+      </Group>
+      <Group guid="GitHubNode" id="FolderActionsGroup" priority="0x0200">
+        <Parent guid="GitHubNode" id="GitHubFolderContextMenu"/>
+      </Group>
+      
+      <!-- File context menu groups -->
+      <Group guid="GitHubNode" id="FileActionsGroup" priority="0x0100">
+        <Parent guid="GitHubNode" id="GitHubFileContextMenu"/>
+      </Group>
+      
+      <!-- Copilot submenu group -->
+      <Group guid="GitHubNode" id="CopilotSubMenuGroup" priority="0x0100">
+        <Parent guid="GitHubNode" id="AddCopilotSubMenu"/>
+      </Group>
+      
+      <!-- GitHub submenu group -->
+      <Group guid="GitHubNode" id="GitHubSubMenuGroup" priority="0x0100">
+        <Parent guid="GitHubNode" id="AddGitHubSubMenu"/>
+      </Group>
+    </Groups>
+
+    <Buttons>
+      <!-- Add Copilot Instructions -->
+      <Button guid="GitHubNode" id="AddCopilotInstructions" priority="0x0100" type="Button">
+        <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="StatusInformation" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Copilot Instructions</ButtonText>
+          <LocCanonicalName>.GitHubNode.AddCopilotInstructions</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Add Agent -->
+      <Button guid="GitHubNode" id="AddAgent" priority="0x0200" type="Button">
+        <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Application" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Custom Agent...</ButtonText>
+          <LocCanonicalName>.GitHubNode.AddAgent</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Add Prompt -->
+      <Button guid="GitHubNode" id="AddPrompt" priority="0x0300" type="Button">
+        <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Comment" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Prompt File...</ButtonText>
+          <LocCanonicalName>.GitHubNode.AddPrompt</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Add Skill -->
+      <Button guid="GitHubNode" id="AddSkill" priority="0x0400" type="Button">
+        <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="ExtensionApplication" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Agent Skill...</ButtonText>
+          <LocCanonicalName>.GitHubNode.AddSkill</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Add Workflow -->
+      <Button guid="GitHubNode" id="AddWorkflow" priority="0x0100" type="Button">
+        <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Run" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Actions Workflow...</ButtonText>
+          <LocCanonicalName>.GitHubNode.AddWorkflow</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Add Dependabot -->
+      <Button guid="GitHubNode" id="AddDependabot" priority="0x0200" type="Button">
+        <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="NuGet" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Dependabot Configuration</ButtonText>
+          <LocCanonicalName>.GitHubNode.AddDependabot</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Add Issue Template -->
+      <Button guid="GitHubNode" id="AddIssueTemplate" priority="0x0300" type="Button">
+        <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Bug" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Issue Template...</ButtonText>
+          <LocCanonicalName>.GitHubNode.AddIssueTemplate</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Add Pull Request Template -->
+      <Button guid="GitHubNode" id="AddPullRequestTemplate" priority="0x0400" type="Button">
+        <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="PullRequest" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Pull Request Template</ButtonText>
+          <LocCanonicalName>.GitHubNode.AddPullRequestTemplate</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Open in File Explorer (Root) -->
+      <Button guid="GitHubNode" id="OpenInFileExplorer" priority="0x0100" type="Button">
+        <Parent guid="GitHubNode" id="RootActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="OpenFolder" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Open in File Explorer</ButtonText>
+          <LocCanonicalName>.GitHubNode.OpenInFileExplorer</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Open in File Explorer (Folder) - duplicate for folder context -->
+      <Button guid="GitHubNode" id="OpenInFileExplorerFolder" priority="0x0100" type="Button">
+        <Parent guid="GitHubNode" id="FolderActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="OpenFolder" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Open in File Explorer</ButtonText>
+          <LocCanonicalName>.GitHubNode.OpenInFileExplorerFolder</LocCanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Open Containing Folder (File) -->
+      <Button guid="GitHubNode" id="OpenContainingFolder" priority="0x0100" type="Button">
+        <Parent guid="GitHubNode" id="FileActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="OpenFolder" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Open Containing Folder</ButtonText>
+          <LocCanonicalName>.GitHubNode.OpenContainingFolder</LocCanonicalName>
+        </Strings>
+      </Button>
+    </Buttons>
+  </Commands>
+
+  <Symbols>
+    <GuidSymbol name="GitHubNode" value="{058f0e26-d2fd-4c6e-8eed-7c6e49e81527}">
+      <!-- Context Menus -->
+      <IDSymbol name="GitHubRootContextMenu" value="0x0001" />
+      <IDSymbol name="GitHubFolderContextMenu" value="0x0002" />
+      <IDSymbol name="GitHubFileContextMenu" value="0x0003" />
+      
+      <!-- Submenus -->
+      <IDSymbol name="AddCopilotSubMenu" value="0x0010" />
+      <IDSymbol name="AddGitHubSubMenu" value="0x0011" />
+      
+      <!-- Groups -->
+      <IDSymbol name="RootAddGroup" value="0x0020" />
+      <IDSymbol name="RootActionsGroup" value="0x0021" />
+      <IDSymbol name="FolderAddGroup" value="0x0022" />
+      <IDSymbol name="FolderActionsGroup" value="0x0023" />
+      <IDSymbol name="FileActionsGroup" value="0x0024" />
+      <IDSymbol name="CopilotSubMenuGroup" value="0x0025" />
+      <IDSymbol name="GitHubSubMenuGroup" value="0x0026" />
+      
+      <!-- Commands -->
+      <IDSymbol name="AddCopilotInstructions" value="0x0100" />
+      <IDSymbol name="AddAgent" value="0x0101" />
+      <IDSymbol name="AddPrompt" value="0x0102" />
+      <IDSymbol name="AddSkill" value="0x0103" />
+      <IDSymbol name="AddWorkflow" value="0x0104" />
+      <IDSymbol name="AddDependabot" value="0x0105" />
+      <IDSymbol name="AddIssueTemplate" value="0x0106" />
+      <IDSymbol name="AddPullRequestTemplate" value="0x0107" />
+      <IDSymbol name="OpenInFileExplorer" value="0x0108" />
+      <IDSymbol name="OpenInFileExplorerFolder" value="0x0109" />
+      <IDSymbol name="OpenContainingFolder" value="0x010A" />
+    </GuidSymbol>
+  </Symbols>
+</CommandTable>

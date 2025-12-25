@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json.schemastore.org/vsix-publish",
+  "categories": [ "team development", "source control", "connected services" ],
+  "private": false,
+  "identity": {
+    "internalName": "GitHubNode",
+    "tags": [
+      "git",
+      "github",
+      "copilot",
+      "markdown",
+      "solution-explorer"
+    ]
+  },
+  "assetFiles": [
+  ],
+  "overview": "README.md",
+  "publisher": "MadsKristensen",
+  "repo": "https://github.com/madskristensen/GitHubNode"
+}
