@@ -28,34 +28,32 @@ namespace GitHubNode.SolutionExplorer
         {
             // Copilot instructions
             ["copilot-instructions.md"] = KnownMonikers.StatusInformation,
-            
+
             // GitHub Actions / Dependabot
             ["dependabot.yml"] = KnownMonikers.NuGet,
             ["dependabot.yaml"] = KnownMonikers.NuGet,
-            
+
             // Code owners and maintainers
             ["CODEOWNERS"] = KnownMonikers.Team,
             ["OWNERS"] = KnownMonikers.Team,
-            
+
             // Funding
             ["FUNDING.yml"] = KnownMonikers.Currency,
             ["FUNDING.yaml"] = KnownMonikers.Currency,
-            
+
             // Security
             ["SECURITY.md"] = KnownMonikers.Lock,
-            
+
             // Contributing guidelines
             ["CONTRIBUTING.md"] = KnownMonikers.DocumentGroup,
-            
+
             // Issue and PR templates
             ["ISSUE_TEMPLATE.md"] = KnownMonikers.Bug,
             ["PULL_REQUEST_TEMPLATE.md"] = KnownMonikers.PullRequest,
-            
+
             // Code of conduct
             ["CODE_OF_CONDUCT.md"] = KnownMonikers.Flag,
         };
-
-        private readonly string _filePath;
         private readonly string _fileName;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
@@ -70,23 +68,23 @@ namespace GitHubNode.SolutionExplorer
         public GitHubFileNode(string filePath, object parent)
             : base(parent)
         {
-            _filePath = filePath;
+            FilePath = filePath;
             _fileName = Path.GetFileName(filePath);
         }
 
         /// <summary>
         /// Gets the full path to this file.
         /// </summary>
-        public string FilePath => _filePath;
+        public string FilePath { get; }
 
         /// <summary>
         /// Checks if the file exists on disk.
         /// </summary>
-        public bool FileExists => File.Exists(_filePath);
+        public bool FileExists => File.Exists(FilePath);
 
         // ITreeDisplayItem
         public override string Text => _fileName;
-        public override string ToolTipText => _filePath;
+        public override string ToolTipText => FilePath;
         public override string StateToolTipText => FileExists ? string.Empty : "File not found";
         public override bool IsCut => !FileExists;
 
@@ -97,10 +95,7 @@ namespace GitHubNode.SolutionExplorer
             {
                 ThreadHelper.ThrowIfNotOnUIThread();
 
-                if (!FileExists)
-                    return KnownMonikers.DocumentWarning;
-
-                return GetFileIcon(_filePath);
+                return !FileExists ? KnownMonikers.DocumentWarning : GetFileIcon(FilePath);
             }
         }
 
@@ -121,11 +116,7 @@ namespace GitHubNode.SolutionExplorer
 
         public int CompareTo(object obj)
         {
-            if (obj is ITreeDisplayItem other)
-            {
-                return StringComparer.OrdinalIgnoreCase.Compare(Text, other.Text);
-            }
-            return 0;
+            return obj is ITreeDisplayItem other ? StringComparer.OrdinalIgnoreCase.Compare(Text, other.Text) : 0;
         }
 
         // IInvocationPattern
@@ -142,7 +133,7 @@ namespace GitHubNode.SolutionExplorer
             var fileName = Path.GetFileName(filePath);
 
             // Check for well-known file names first
-            if (_knownFileIcons.TryGetValue(fileName, out var knownIcon))
+            if (_knownFileIcons.TryGetValue(fileName, out ImageMoniker knownIcon))
             {
                 return knownIcon;
             }

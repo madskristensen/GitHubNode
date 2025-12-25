@@ -54,6 +54,7 @@
     <Compile Include="Commands\AddSkillCommand.cs" />
     <Compile Include="Commands\AddWorkflowCommand.cs" />
     <Compile Include="Commands\CommandHelpers.cs" />
+    <Compile Include="Commands\GitHubFileCommandBase.cs" />
     <Compile Include="Commands\InputDialog.cs" />
     <Compile Include="Commands\OpenInFileExplorerCommand.cs" />
     <Compile Include="FileTemplates.cs" />
@@ -67,6 +68,7 @@
     <Compile Include="SolutionExplorer\GitHubRootNode.cs" />
     <Compile Include="SolutionExplorer\GitHubSolutionCollectionSource.cs" />
     <Compile Include="SolutionExplorer\GitHubSourceProvider.cs" />
+    <Compile Include="SolutionExplorer\NodeChildrenManager.cs" />
     <Compile Include="SolutionExplorer\Relationships.cs" />
     <Compile Include="source.extension.cs">
       <AutoGen>True</AutoGen>

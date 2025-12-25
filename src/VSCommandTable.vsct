@@ -14,6 +14,7 @@
       <Menu guid="GitHubNode" id="GitHubRootContextMenu" priority="0x0100" type="Context">
         <Strings>
           <ButtonText>GitHub Root Context Menu</ButtonText>
+          <CanonicalName>.GitHubNode.RootMenu</CanonicalName>
         </Strings>
       </Menu>
       
@@ -21,6 +22,7 @@
       <Menu guid="GitHubNode" id="GitHubFolderContextMenu" priority="0x0100" type="Context">
         <Strings>
           <ButtonText>GitHub Folder Context Menu</ButtonText>
+          <CanonicalName>.GitHubNode.FolderMenu</CanonicalName>
         </Strings>
       </Menu>
       
@@ -28,26 +30,27 @@
       <Menu guid="GitHubNode" id="GitHubFileContextMenu" priority="0x0100" type="Context">
         <Strings>
           <ButtonText>GitHub File Context Menu</ButtonText>
+          <CanonicalName>.GitHubNode.FileMenu</CanonicalName>
         </Strings>
       </Menu>
       
       <!-- Add Copilot Submenu -->
       <Menu guid="GitHubNode" id="AddCopilotSubMenu" priority="0x0100" type="Menu">
         <Parent guid="GitHubNode" id="RootAddGroup"/>
-        <Icon guid="ImageCatalogGuid" id="StatusInformation" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Add Copilot File</ButtonText>
+          <CanonicalName>.GitHubNode.AddCopilotFile</CanonicalName>
         </Strings>
       </Menu>
       
       <!-- Add GitHub Submenu -->
       <Menu guid="GitHubNode" id="AddGitHubSubMenu" priority="0x0200" type="Menu">
         <Parent guid="GitHubNode" id="RootAddGroup"/>
-        <Icon guid="ImageCatalogGuid" id="GitNoColor" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Add GitHub File</ButtonText>
+          <CanonicalName>.GitHubNode.AddGitHubFile</CanonicalName>
         </Strings>
       </Menu>
     </Menus>
@@ -93,7 +96,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Copilot Instructions</ButtonText>
-          <LocCanonicalName>.GitHubNode.AddCopilotInstructions</LocCanonicalName>
+          <CanonicalName>.GitHubNode.AddCopilotInstructions</CanonicalName>
         </Strings>
       </Button>
       
@@ -104,7 +107,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Custom Agent...</ButtonText>
-          <LocCanonicalName>.GitHubNode.AddAgent</LocCanonicalName>
+          <CanonicalName>.GitHubNode.AddAgent</CanonicalName>
         </Strings>
       </Button>
       
@@ -115,7 +118,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Prompt File...</ButtonText>
-          <LocCanonicalName>.GitHubNode.AddPrompt</LocCanonicalName>
+          <CanonicalName>.GitHubNode.AddPrompt</CanonicalName>
         </Strings>
       </Button>
       
@@ -126,7 +129,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Agent Skill...</ButtonText>
-          <LocCanonicalName>.GitHubNode.AddSkill</LocCanonicalName>
+          <CanonicalName>.GitHubNode.AddSkill</CanonicalName>
         </Strings>
       </Button>
       
@@ -137,7 +140,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Actions Workflow...</ButtonText>
-          <LocCanonicalName>.GitHubNode.AddWorkflow</LocCanonicalName>
+          <CanonicalName>.GitHubNode.AddWorkflow</CanonicalName>
         </Strings>
       </Button>
       
@@ -148,7 +151,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Dependabot Configuration</ButtonText>
-          <LocCanonicalName>.GitHubNode.AddDependabot</LocCanonicalName>
+          <CanonicalName>.GitHubNode.AddDependabot</CanonicalName>
         </Strings>
       </Button>
       
@@ -159,7 +162,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Issue Template...</ButtonText>
-          <LocCanonicalName>.GitHubNode.AddIssueTemplate</LocCanonicalName>
+          <CanonicalName>.GitHubNode.AddIssueTemplate</CanonicalName>
         </Strings>
       </Button>
       
@@ -170,7 +173,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Pull Request Template</ButtonText>
-          <LocCanonicalName>.GitHubNode.AddPullRequestTemplate</LocCanonicalName>
+          <CanonicalName>.GitHubNode.AddPullRequestTemplate</CanonicalName>
         </Strings>
       </Button>
       
@@ -181,7 +184,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Open in File Explorer</ButtonText>
-          <LocCanonicalName>.GitHubNode.OpenInFileExplorer</LocCanonicalName>
+          <CanonicalName>.GitHubNode.OpenInFileExplorer</CanonicalName>
         </Strings>
       </Button>
       
@@ -192,7 +195,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Open in File Explorer</ButtonText>
-          <LocCanonicalName>.GitHubNode.OpenInFileExplorerFolder</LocCanonicalName>
+          <CanonicalName>.GitHubNode.OpenInFileExplorerFolder</CanonicalName>
         </Strings>
       </Button>
       
@@ -203,7 +206,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Open Containing Folder</ButtonText>
-          <LocCanonicalName>.GitHubNode.OpenContainingFolder</LocCanonicalName>
+          <CanonicalName>.GitHubNode.OpenContainingFolder</CanonicalName>
         </Strings>
       </Button>
     </Buttons>

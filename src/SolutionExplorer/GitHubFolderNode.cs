@@ -24,24 +24,23 @@ namespace GitHubNode.SolutionExplorer
         private static readonly Dictionary<string, ImageMoniker> _knownFolderIcons = new(StringComparer.OrdinalIgnoreCase)
         {
             // GitHub Actions workflows
-            ["Workflows"] = KnownMonikers.Run,
-            
+            ["Workflows"] = KnownMonikers.PublishWithGitHubActions,
+
             // Copilot customization folders (direct children of .github)
             ["Skills"] = KnownMonikers.ExtensionApplication,
             ["Prompts"] = KnownMonikers.Comment,
             ["Agents"] = KnownMonikers.Application,
             ["Instructions"] = KnownMonikers.DocumentOutline,
-            
+
             // Issue and PR templates
             ["ISSUE_TEMPLATE"] = KnownMonikers.Bug,
             ["PULL_REQUEST_TEMPLATE"] = KnownMonikers.PullRequest,
         };
 
         private readonly ObservableCollection<object> _children;
-        private readonly string _folderPath;
         private readonly string _folderName;
+        private readonly NodeChildrenManager _childrenManager;
         private bool _isExpanded;
-        private FileSystemWatcher _watcher;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -54,82 +53,35 @@ namespace GitHubNode.SolutionExplorer
         public GitHubFolderNode(string folderPath, object parent)
             : base(parent)
         {
-            _folderPath = folderPath;
+            FolderPath = folderPath;
             _folderName = Path.GetFileName(folderPath);
             _children = [];
+            _childrenManager = new NodeChildrenManager(
+                folderPath,
+                this,
+                _children,
+                () =>
+                {
+                    RaisePropertyChanged(nameof(HasItems));
+                    RaisePropertyChanged(nameof(Items));
+                },
+                includeSubdirectories: false);
 
-            RefreshChildren();
-            SetupFileWatcher();
+            _childrenManager.Initialize();
         }
 
         /// <summary>
         /// Gets the full path to this folder.
         /// </summary>
-        public string FolderPath => _folderPath;
-
-        private void SetupFileWatcher()
-        {
-            if (!Directory.Exists(_folderPath))
-                return;
-
-            _watcher = new FileSystemWatcher(_folderPath)
-            {
-                IncludeSubdirectories = false,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite
-            };
-
-            _watcher.Created += OnFileSystemChanged;
-            _watcher.Deleted += OnFileSystemChanged;
-            _watcher.Renamed += OnFileSystemChanged;
-            _watcher.EnableRaisingEvents = true;
-        }
-
-        private void OnFileSystemChanged(object sender, FileSystemEventArgs e)
-        {
-            ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
-            {
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                RefreshChildren();
-            }).FireAndForget();
-        }
-
-        private void RefreshChildren()
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-
-            // Dispose existing children
-            foreach (var child in _children)
-            {
-                (child as IDisposable)?.Dispose();
-            }
-            _children.Clear();
-
-            if (!Directory.Exists(_folderPath))
-                return;
-
-            // Add subdirectories first
-            foreach (var dir in Directory.GetDirectories(_folderPath))
-            {
-                _children.Add(new GitHubFolderNode(dir, this));
-            }
-
-            // Then add files
-            foreach (var file in Directory.GetFiles(_folderPath))
-            {
-                _children.Add(new GitHubFileNode(file, this));
-            }
-
-            RaisePropertyChanged(nameof(HasItems));
-            RaisePropertyChanged(nameof(Items));
-        }
+        public string FolderPath { get; }
 
         // IAttachedCollectionSource
-        public bool HasItems => _children.Count > 0;
+        public bool HasItems => _childrenManager.HasItems;
         public IEnumerable Items => _children;
 
         // ITreeDisplayItem
         public override string Text => _folderName;
-        public override string ToolTipText => _folderPath;
+        public override string ToolTipText => FolderPath;
 
         // ITreeDisplayItemWithImages
         public ImageMoniker IconMoniker => GetFolderIcon(_isExpanded);
@@ -140,12 +92,9 @@ namespace GitHubNode.SolutionExplorer
         private ImageMoniker GetFolderIcon(bool expanded)
         {
             // Check for well-known folder names
-            if (_knownFolderIcons.TryGetValue(_folderName, out var knownIcon))
-            {
-                return knownIcon;
-            }
-
-            return expanded ? KnownMonikers.FolderOpened : KnownMonikers.FolderClosed;
+            return _knownFolderIcons.TryGetValue(_folderName, out ImageMoniker knownIcon)
+                ? knownIcon
+                : expanded ? KnownMonikers.FolderOpened : KnownMonikers.FolderClosed;
         }
 
         // IPrioritizedComparable - Folders appear before files
@@ -181,18 +130,7 @@ namespace GitHubNode.SolutionExplorer
 
         protected override void OnDisposing()
         {
-            if (_watcher != null)
-            {
-                _watcher.EnableRaisingEvents = false;
-                _watcher.Dispose();
-                _watcher = null;
-            }
-
-            foreach (var child in _children)
-            {
-                (child as IDisposable)?.Dispose();
-            }
-            _children.Clear();
+            _childrenManager.Dispose();
         }
     }
 }

@@ -1,5 +1,4 @@
 using System.IO;
-using GitHubNode.SolutionExplorer;
 
 namespace GitHubNode.Commands
 {
@@ -7,77 +6,35 @@ namespace GitHubNode.Commands
     /// Command to add a reusable prompt file.
     /// </summary>
     [Command(PackageIds.AddPrompt)]
-    internal sealed class AddPromptCommand : BaseCommand<AddPromptCommand>
+    internal sealed class AddPromptCommand : GitHubFileCommandBase<AddPromptCommand>
     {
-        protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
+        protected override string DialogTitle => "New Prompt File";
+        protected override string DialogPrompt => "Enter the prompt file name (must end with .prompt.md):";
+        protected override string DialogDefaultValue => "my-prompt.prompt.md";
+        protected override string ErrorMessagePrefix => "Failed to create prompt file";
+
+        protected override async System.Threading.Tasks.Task<bool> ValidateInputAsync(string input)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-            var basePath = GitHubContextMenuController.CurrentFolderPath;
-            if (string.IsNullOrEmpty(basePath))
-            {
-                await VS.MessageBox.ShowWarningAsync("Cannot determine target folder.");
-                return;
-            }
-
-            var gitHubFolder = CommandHelpers.GetGitHubFolderPath(basePath);
-            if (string.IsNullOrEmpty(gitHubFolder))
-            {
-                await VS.MessageBox.ShowWarningAsync("Cannot find .github folder.");
-                return;
-            }
-
-            // Prompt for prompt name
-            var nameDialog = new InputDialog(
-                "New Prompt File",
-                "Enter the prompt file name (must end with .prompt.md):",
-                "my-prompt.prompt.md");
-
-            if (nameDialog.ShowModal() != true || string.IsNullOrWhiteSpace(nameDialog.InputText))
-            {
-                return;
-            }
-
-            var promptName = nameDialog.InputText;
-            
-            // Validate that the file name ends with .prompt.md
-            if (!promptName.EndsWith(".prompt.md", StringComparison.OrdinalIgnoreCase))
+            if (!input.EndsWith(".prompt.md", StringComparison.OrdinalIgnoreCase))
             {
                 await VS.MessageBox.ShowWarningAsync("Invalid File Name", "Prompt file names must end with .prompt.md");
-                return;
+                return false;
             }
+            return true;
+        }
 
-            // Create in Prompts folder directly under .github
-            var promptsFolder = Path.Combine(gitHubFolder, "Prompts");
-            Directory.CreateDirectory(promptsFolder);
+        protected override string GetFilePath(string targetFolder, string userInput)
+        {
+            var promptsFolder = Path.Combine(targetFolder, "Prompts");
+            var baseName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(userInput));
+            var fileName = CommandHelpers.SanitizeFileName(baseName) + ".prompt.md";
+            return Path.Combine(promptsFolder, fileName);
+        }
 
-            var fileName = CommandHelpers.SanitizeFileName(Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(promptName))) + ".prompt.md";
-            var filePath = Path.Combine(promptsFolder, fileName);
-
-            if (File.Exists(filePath))
-            {
-                var result = await VS.MessageBox.ShowConfirmAsync(
-                    "File Exists",
-                    $"{fileName} already exists. Do you want to open it?");
-
-                if (result)
-                {
-                    await VS.Documents.OpenAsync(filePath);
-                }
-                return;
-            }
-
-            try
-            {
-                var baseName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(fileName));
-                var content = string.Format(FileTemplates.PromptFile, baseName);
-                File.WriteAllText(filePath, content);
-                await VS.Documents.OpenAsync(filePath);
-            }
-            catch (Exception ex)
-            {
-                await VS.MessageBox.ShowErrorAsync("Error", $"Failed to create prompt file: {ex.Message}");
-            }
+        protected override string GetFileContent(string userInput)
+        {
+            var baseName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(userInput));
+            return string.Format(FileTemplates.PromptFile, baseName);
         }
     }
 }

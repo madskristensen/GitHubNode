@@ -5,7 +5,7 @@ using GitHubNode.SolutionExplorer;
 namespace GitHubNode.Commands
 {
     /// <summary>
-    /// Command to open the current folder in Windows File Explorer.
+    /// Command to open the .github folder in Windows File Explorer (from root node).
     /// </summary>
     [Command(PackageIds.OpenInFileExplorer)]
     internal sealed class OpenInFileExplorerCommand : BaseCommand<OpenInFileExplorerCommand>
@@ -14,35 +14,59 @@ namespace GitHubNode.Commands
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            var item = GitHubContextMenuController.CurrentItem;
-            string pathToOpen = null;
-
-            switch (item)
+            if (GitHubContextMenuController.CurrentItem is GitHubRootNode root)
             {
-                case GitHubRootNode root:
-                    pathToOpen = root.GitHubFolderPath;
-                    break;
-                case GitHubFolderNode folder:
-                    pathToOpen = folder.FolderPath;
-                    break;
-                case GitHubFileNode file:
-                    // Select the file in explorer
-                    if (File.Exists(file.FilePath))
-                    {
-                        Process.Start("explorer.exe", $"/select,\"{file.FilePath}\"");
-                        return;
-                    }
-                    pathToOpen = Path.GetDirectoryName(file.FilePath);
-                    break;
+                OpenFolderInExplorer(root.GitHubFolderPath);
             }
+        }
 
-            if (!string.IsNullOrEmpty(pathToOpen) && Directory.Exists(pathToOpen))
+        internal static void OpenFolderInExplorer(string path)
+        {
+            if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
             {
-                Process.Start("explorer.exe", $"\"{pathToOpen}\"");
+                Process.Start("explorer.exe", $"\"{path}\"");
             }
-            else
+        }
+
+        internal static void SelectFileInExplorer(string filePath)
+        {
+            if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
             {
-                await VS.MessageBox.ShowWarningAsync("Folder not found", "The folder could not be located.");
+                Process.Start("explorer.exe", $"/select,\"{filePath}\"");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Command to open a subfolder in Windows File Explorer.
+    /// </summary>
+    [Command(PackageIds.OpenInFileExplorerFolder)]
+    internal sealed class OpenInFileExplorerFolderCommand : BaseCommand<OpenInFileExplorerFolderCommand>
+    {
+        protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            if (GitHubContextMenuController.CurrentItem is GitHubFolderNode folder)
+            {
+                OpenInFileExplorerCommand.OpenFolderInExplorer(folder.FolderPath);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Command to open the containing folder and select a file in Windows File Explorer.
+    /// </summary>
+    [Command(PackageIds.OpenContainingFolder)]
+    internal sealed class OpenContainingFolderCommand : BaseCommand<OpenContainingFolderCommand>
+    {
+        protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            if (GitHubContextMenuController.CurrentItem is GitHubFileNode file)
+            {
+                OpenInFileExplorerCommand.SelectFileInExplorer(file.FilePath);
             }
         }
     }

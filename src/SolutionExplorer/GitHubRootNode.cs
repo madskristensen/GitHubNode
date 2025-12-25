@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Imaging.Interop;
@@ -21,7 +20,7 @@ namespace GitHubNode.SolutionExplorer
     {
         private readonly ObservableCollection<object> _children;
         private readonly string _gitHubFolderPath;
-        private FileSystemWatcher _watcher;
+        private readonly NodeChildrenManager _childrenManager;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -36,9 +35,18 @@ namespace GitHubNode.SolutionExplorer
         {
             _gitHubFolderPath = gitHubFolderPath;
             _children = [];
+            _childrenManager = new NodeChildrenManager(
+                gitHubFolderPath,
+                this,
+                _children,
+                () =>
+                {
+                    RaisePropertyChanged(nameof(HasItems));
+                    RaisePropertyChanged(nameof(Items));
+                },
+                includeSubdirectories: true);
 
-            RefreshChildren();
-            SetupFileWatcher();
+            _childrenManager.Initialize();
         }
 
         /// <summary>
@@ -46,64 +54,8 @@ namespace GitHubNode.SolutionExplorer
         /// </summary>
         public string GitHubFolderPath => _gitHubFolderPath;
 
-        private void SetupFileWatcher()
-        {
-            if (!Directory.Exists(_gitHubFolderPath))
-                return;
-
-            _watcher = new FileSystemWatcher(_gitHubFolderPath)
-            {
-                IncludeSubdirectories = true,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite
-            };
-
-            _watcher.Created += OnFileSystemChanged;
-            _watcher.Deleted += OnFileSystemChanged;
-            _watcher.Renamed += OnFileSystemChanged;
-            _watcher.EnableRaisingEvents = true;
-        }
-
-        private void OnFileSystemChanged(object sender, FileSystemEventArgs e)
-        {
-            ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
-            {
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                RefreshChildren();
-            }).FireAndForget();
-        }
-
-        private void RefreshChildren()
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-
-            // Dispose existing children
-            foreach (var child in _children)
-            {
-                (child as IDisposable)?.Dispose();
-            }
-            _children.Clear();
-
-            if (!Directory.Exists(_gitHubFolderPath))
-                return;
-
-            // Add subdirectories first
-            foreach (var dir in Directory.GetDirectories(_gitHubFolderPath))
-            {
-                _children.Add(new GitHubFolderNode(dir, this));
-            }
-
-            // Then add files
-            foreach (var file in Directory.GetFiles(_gitHubFolderPath))
-            {
-                _children.Add(new GitHubFileNode(file, this));
-            }
-
-            RaisePropertyChanged(nameof(HasItems));
-            RaisePropertyChanged(nameof(Items));
-        }
-
         // IAttachedCollectionSource
-        public bool HasItems => _children.Count > 0;
+        public bool HasItems => _childrenManager.HasItems;
         public IEnumerable Items => _children;
 
         // ITreeDisplayItem
@@ -134,18 +86,7 @@ namespace GitHubNode.SolutionExplorer
 
         protected override void OnDisposing()
         {
-            if (_watcher != null)
-            {
-                _watcher.EnableRaisingEvents = false;
-                _watcher.Dispose();
-                _watcher = null;
-            }
-
-            foreach (var child in _children)
-            {
-                (child as IDisposable)?.Dispose();
-            }
-            _children.Clear();
+            _childrenManager.Dispose();
         }
     }
 }
