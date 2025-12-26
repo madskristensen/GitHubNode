@@ -18,24 +18,6 @@ namespace GitHubNode.SolutionExplorer
         IPrioritizedComparable,
         IContextMenuPattern
     {
-        /// <summary>
-        /// Well-known folder names mapped to specific icons.
-        /// </summary>
-        private static readonly Dictionary<string, ImageMoniker> _knownFolderIcons = new(StringComparer.OrdinalIgnoreCase)
-        {
-            // GitHub Actions workflows
-            ["Workflows"] = KnownMonikers.PublishWithGitHubActions,
-
-            // Copilot customization folders (direct children of .github)
-            ["Skills"] = KnownMonikers.ExtensionApplication,
-            ["Prompts"] = KnownMonikers.Comment,
-            ["Agents"] = KnownMonikers.Application,
-            ["Instructions"] = KnownMonikers.DocumentOutline,
-
-            // Issue and PR templates
-            ["ISSUE_TEMPLATE"] = KnownMonikers.Bug,
-            ["PULL_REQUEST_TEMPLATE"] = KnownMonikers.PullRequest,
-        };
 
         private readonly ObservableCollection<object> _children;
         private readonly string _folderName;
@@ -86,18 +68,10 @@ namespace GitHubNode.SolutionExplorer
         public override string ToolTipText => FolderPath;
 
         // ITreeDisplayItemWithImages
-        public ImageMoniker IconMoniker => GetFolderIcon(_isExpanded);
-        public ImageMoniker ExpandedIconMoniker => GetFolderIcon(expanded: true);
+        public ImageMoniker IconMoniker => KnownMonikers.FolderClosed;
+        public ImageMoniker ExpandedIconMoniker => KnownMonikers.FolderOpened;
         public ImageMoniker OverlayIconMoniker => default;
         public ImageMoniker StateIconMoniker => default;
-
-        private ImageMoniker GetFolderIcon(bool expanded)
-        {
-            // Check for well-known folder names
-            return _knownFolderIcons.TryGetValue(_folderName, out ImageMoniker knownIcon)
-                ? knownIcon
-                : expanded ? KnownMonikers.FolderOpened : KnownMonikers.FolderClosed;
-        }
 
         // IPrioritizedComparable - Folders appear before files
         public int Priority => 0;

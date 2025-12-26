@@ -26,8 +26,6 @@ The extension adds a dedicated **GitHub** node directly under your solution, pro
 - Live updates when files are added, removed, or modified
 - Double-click any file to open it in the editor
 
-![Solution Explorer with GitHub Node](art/solution-explorer.png)
-
 ### Context Menu Commands
 
 Right-click on the GitHub node or any subfolder to quickly create new files:

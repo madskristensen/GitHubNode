@@ -20,40 +20,6 @@ namespace GitHubNode.SolutionExplorer
     {
         private static readonly ConcurrentDictionary<string, ImageMoniker> _fileIconCache = new();
         private static readonly IVsImageService2 _imageService = VS.GetRequiredService<SVsImageService, IVsImageService2>();
-
-        /// <summary>
-        /// Well-known file names mapped to specific icons.
-        /// </summary>
-        private static readonly Dictionary<string, ImageMoniker> _knownFileIcons = new(StringComparer.OrdinalIgnoreCase)
-        {
-            // Copilot instructions
-            ["copilot-instructions.md"] = KnownMonikers.DocumentOutline,
-
-            // GitHub Actions / Dependabot
-            ["dependabot.yml"] = KnownMonikers.NuGet,
-            ["dependabot.yaml"] = KnownMonikers.NuGet,
-
-            // Code owners and maintainers
-            ["CODEOWNERS"] = KnownMonikers.Team,
-            ["OWNERS"] = KnownMonikers.Team,
-
-            // Funding
-            ["FUNDING.yml"] = KnownMonikers.Currency,
-            ["FUNDING.yaml"] = KnownMonikers.Currency,
-
-            // Security
-            ["SECURITY.md"] = KnownMonikers.Lock,
-
-            // Contributing guidelines
-            ["CONTRIBUTING.md"] = KnownMonikers.DocumentGroup,
-
-            // Issue and PR templates
-            ["ISSUE_TEMPLATE.md"] = KnownMonikers.Bug,
-            ["PULL_REQUEST_TEMPLATE.md"] = KnownMonikers.PullRequest,
-
-            // Code of conduct
-            ["CODE_OF_CONDUCT.md"] = KnownMonikers.Flag,
-        };
         private readonly string _fileName;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
@@ -131,13 +97,6 @@ namespace GitHubNode.SolutionExplorer
             ThreadHelper.ThrowIfNotOnUIThread();
 
             var fileName = Path.GetFileName(filePath);
-
-            // Check for well-known file names first
-            if (_knownFileIcons.TryGetValue(fileName, out ImageMoniker knownIcon))
-            {
-                return knownIcon;
-            }
-
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
             var cacheKey = string.IsNullOrEmpty(extension) ? fileName.ToLowerInvariant() : extension;
 
