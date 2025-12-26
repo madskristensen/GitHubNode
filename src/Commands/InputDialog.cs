@@ -1,6 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Interop;
+using System.Windows.Media;
 using Microsoft.VisualStudio.PlatformUI;
+using Microsoft.VisualStudio.Shell;
 
 namespace GitHubNode.Commands
 {
@@ -27,11 +31,26 @@ namespace GitHubNode.Commands
         {
             Title = title;
             Width = 400;
-            Height = 160;
-            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            SizeToContent = SizeToContent.Height;
             ResizeMode = ResizeMode.NoResize;
             HasMaximizeButton = false;
             HasMinimizeButton = false;
+            ShowInTaskbar = false;
+
+            // Set the owner to VS main window for proper centering
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (Package.GetGlobalService(typeof(Microsoft.VisualStudio.Shell.Interop.SDTE)) is EnvDTE.DTE dte)
+            {
+                var hwnd = (IntPtr)dte.MainWindow.HWnd;
+                if (hwnd != IntPtr.Zero)
+                {
+                    Owner = HwndSource.FromHwnd(hwnd)?.RootVisual as Window;
+                }
+            }
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+
+            // Apply VS theme colors
+            SetResourceReference(BackgroundProperty, EnvironmentColors.ToolWindowBackgroundBrushKey);
 
             var grid = new Grid();
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -45,14 +64,19 @@ namespace GitHubNode.Commands
                 Margin = new Thickness(0, 0, 0, 8),
                 TextWrapping = TextWrapping.Wrap
             };
+            label.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
             Grid.SetRow(label, 0);
             grid.Children.Add(label);
 
             _textBox = new TextBox
             {
                 Text = defaultValue,
-                Margin = new Thickness(0, 0, 0, 12)
+                Margin = new Thickness(0, 0, 0, 12),
+                Padding = new Thickness(4, 2, 4, 2)
             };
+            _textBox.SetResourceReference(TextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
+            _textBox.SetResourceReference(TextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+            _textBox.SetResourceReference(TextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
             Grid.SetRow(_textBox, 1);
             grid.Children.Add(_textBox);
 
@@ -63,14 +87,8 @@ namespace GitHubNode.Commands
             };
             Grid.SetRow(buttonPanel, 2);
 
-            var okButton = new Button
-            {
-                Content = "OK",
-                Width = 75,
-                Height = 23,
-                Margin = new Thickness(0, 0, 8, 0),
-                IsDefault = true
-            };
+            var okButton = CreateThemedButton("OK", isDefault: true);
+            okButton.Margin = new Thickness(0, 0, 8, 0);
             okButton.Click += (s, e) =>
             {
                 DialogResult = true;
@@ -78,13 +96,7 @@ namespace GitHubNode.Commands
             };
             buttonPanel.Children.Add(okButton);
 
-            var cancelButton = new Button
-            {
-                Content = "Cancel",
-                Width = 75,
-                Height = 23,
-                IsCancel = true
-            };
+            var cancelButton = CreateThemedButton("Cancel", isCancel: true);
             cancelButton.Click += (s, e) =>
             {
                 DialogResult = false;
@@ -100,6 +112,23 @@ namespace GitHubNode.Commands
                 _textBox.Focus();
                 _textBox.SelectAll();
             };
+        }
+
+        private static Button CreateThemedButton(string content, bool isDefault = false, bool isCancel = false)
+        {
+            var button = new Button
+            {
+                Content = content,
+                MinWidth = 75,
+                Height = 23,
+                Padding = new Thickness(8, 0, 8, 0),
+                IsDefault = isDefault,
+                IsCancel = isCancel
+            };
+            button.SetResourceReference(Button.BackgroundProperty, EnvironmentColors.SystemButtonFaceBrushKey);
+            button.SetResourceReference(Button.ForegroundProperty, EnvironmentColors.SystemButtonTextBrushKey);
+            button.SetResourceReference(Button.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+            return button;
         }
     }
 }

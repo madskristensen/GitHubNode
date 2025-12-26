@@ -45,5 +45,11 @@ namespace GitHubNode
         public const int OpenInFileExplorer = 0x0108;
         public const int OpenInFileExplorerFolder = 0x0109;
         public const int OpenContainingFolder = 0x010A;
+        public const int CopyPathFolder = 0x010B;
+        public const int CopyPathFile = 0x010C;
+        public const int RenameFolder = 0x010D;
+        public const int RenameFile = 0x010E;
+        public const int DeleteFolder = 0x010F;
+        public const int DeleteFile = 0x0110;
     }
 }

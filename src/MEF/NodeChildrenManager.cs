@@ -101,7 +101,7 @@ namespace GitHubNode.SolutionExplorer
 
             _watcher.Created += OnFileSystemChanged;
             _watcher.Deleted += OnFileSystemChanged;
-            _watcher.Renamed += OnFileSystemChanged;
+            _watcher.Renamed += OnFileSystemRenamed;
             _watcher.EnableRaisingEvents = true;
         }
 
@@ -112,6 +112,46 @@ namespace GitHubNode.SolutionExplorer
             _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                RefreshChildren();
+            });
+            #pragma warning restore VSSDK007
+        }
+
+        private void OnFileSystemRenamed(object sender, RenamedEventArgs e)
+        {
+            // Handle renames by updating the node in-place instead of refreshing all children
+            #pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+            {
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                // Only handle renames for direct children of this folder
+                var parentDir = Path.GetDirectoryName(e.OldFullPath);
+                if (!string.Equals(parentDir, _folderPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    // This rename is in a subdirectory - let that folder's manager handle it
+                    return;
+                }
+
+                // Try to find and update the renamed node
+                foreach (var child in _children)
+                {
+                    if (child is GitHubFileNode fileNode && 
+                        string.Equals(fileNode.FilePath, e.OldFullPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        fileNode.UpdatePath(e.FullPath);
+                        return;
+                    }
+
+                    if (child is GitHubFolderNode folderNode && 
+                        string.Equals(folderNode.FolderPath, e.OldFullPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        folderNode.UpdatePath(e.FullPath);
+                        return;
+                    }
+                }
+
+                // Node not found in our children - shouldn't happen for direct children
                 RefreshChildren();
             });
             #pragma warning restore VSSDK007

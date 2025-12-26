@@ -20,7 +20,7 @@ namespace GitHubNode.SolutionExplorer
     {
         private static readonly ConcurrentDictionary<string, ImageMoniker> _fileIconCache = new();
         private static readonly IVsImageService2 _imageService = VS.GetRequiredService<SVsImageService, IVsImageService2>();
-        private readonly string _fileName;
+        private string _fileName;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -41,7 +41,19 @@ namespace GitHubNode.SolutionExplorer
         /// <summary>
         /// Gets the full path to this file.
         /// </summary>
-        public string FilePath { get; }
+        public string FilePath { get; private set; }
+
+        /// <summary>
+        /// Updates the file path after a rename operation.
+        /// </summary>
+        public void UpdatePath(string newPath)
+        {
+            FilePath = newPath;
+            _fileName = Path.GetFileName(newPath);
+            RaisePropertyChanged(nameof(Text));
+            RaisePropertyChanged(nameof(ToolTipText));
+            RaisePropertyChanged(nameof(IconMoniker));
+        }
 
         /// <summary>
         /// Checks if the file exists on disk.

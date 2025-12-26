@@ -20,7 +20,7 @@ namespace GitHubNode.SolutionExplorer
     {
 
         private readonly ObservableCollection<object> _children;
-        private readonly string _folderName;
+        private string _folderName;
         private readonly NodeChildrenManager _childrenManager;
         private bool _isExpanded;
 
@@ -57,7 +57,18 @@ namespace GitHubNode.SolutionExplorer
         /// <summary>
         /// Gets the full path to this folder.
         /// </summary>
-        public string FolderPath { get; }
+        public string FolderPath { get; private set; }
+
+        /// <summary>
+        /// Updates the folder path after a rename operation.
+        /// </summary>
+        public void UpdatePath(string newPath)
+        {
+            FolderPath = newPath;
+            _folderName = Path.GetFileName(newPath);
+            RaisePropertyChanged(nameof(Text));
+            RaisePropertyChanged(nameof(ToolTipText));
+        }
 
         // IAttachedCollectionSource
         public bool HasItems => _childrenManager.HasItems;

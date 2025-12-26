@@ -33,7 +33,7 @@ Right-click on the GitHub node or any subfolder to quickly create new files:
 ![Context Menu](art/context-menu.png)
 
 #### Copilot Customization
-- **Add Copilot Instructions** — Create a `copilot-instructions.md` file with project-specific guidance for GitHub Copilot
+- **Add Copilot Instructions** — Create an instructions file (`.instructions.md`) in the `Instructions` folder
 - **Add Agent** — Create a custom Copilot agent (`.agent.md`) in the `Agents` folder
 - **Add Prompt** — Create a reusable prompt file (`.prompt.md`) in the `Prompts` folder
 - **Add Skill** — Create an agent skill folder with `skill.md` in the `Skills` folder
@@ -44,8 +44,14 @@ Right-click on the GitHub node or any subfolder to quickly create new files:
 - **Add Issue Template** — Create an issue template in the `ISSUE_TEMPLATE` folder
 - **Add Pull Request Template** — Create a `PULL_REQUEST_TEMPLATE.md` file
 
+#### File & Folder Management
+- **Copy Path** — Copy the full path to the clipboard
+- **Rename** — Rename files or folders directly from the context menu
+- **Delete** — Delete files or folders with confirmation
+
 #### Utilities
-- **Open in File Explorer** — Open the folder location in Windows File Explorer
+- **Open in File Explorer** — Open the folder in Windows File Explorer
+- **Open Containing Folder** — Open the parent folder and select the file in File Explorer
 
 ### File Templates
 

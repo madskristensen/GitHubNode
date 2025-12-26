@@ -92,7 +92,7 @@
       <!-- Add Copilot Instructions -->
       <Button guid="GitHubNode" id="AddCopilotInstructions" priority="0x0100" type="Button">
         <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="DocumentOutline" />
+        <Icon guid="ImageCatalogGuid" id="AddDocument" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Copilot Instructions</ButtonText>
@@ -103,7 +103,7 @@
       <!-- Add Agent -->
       <Button guid="GitHubNode" id="AddAgent" priority="0x0200" type="Button">
         <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="Application" />
+        <Icon guid="ImageCatalogGuid" id="AddAgent" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Custom Agent...</ButtonText>
@@ -114,7 +114,7 @@
       <!-- Add Prompt -->
       <Button guid="GitHubNode" id="AddPrompt" priority="0x0300" type="Button">
         <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="Comment" />
+        <Icon guid="ImageCatalogGuid" id="AddComment" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Prompt File...</ButtonText>
@@ -125,7 +125,7 @@
       <!-- Add Skill -->
       <Button guid="GitHubNode" id="AddSkill" priority="0x0400" type="Button">
         <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="ExtensionApplication" />
+        <Icon guid="ImageCatalogGuid" id="AddThread" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Agent Skill...</ButtonText>
@@ -136,7 +136,7 @@
       <!-- Add Workflow -->
       <Button guid="GitHubNode" id="AddWorkflow" priority="0x0100" type="Button">
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="Run" />
+        <Icon guid="ImageCatalogGuid" id="AddEvent" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Actions Workflow...</ButtonText>
@@ -147,7 +147,7 @@
       <!-- Add Dependabot -->
       <Button guid="GitHubNode" id="AddDependabot" priority="0x0200" type="Button">
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="NuGet" />
+        <Icon guid="ImageCatalogGuid" id="AddBehavior" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Dependabot Configuration</ButtonText>
@@ -158,7 +158,7 @@
       <!-- Add Issue Template -->
       <Button guid="GitHubNode" id="AddIssueTemplate" priority="0x0300" type="Button">
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="Bug" />
+        <Icon guid="ImageCatalogGuid" id="AddAttachment" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Issue Template...</ButtonText>
@@ -169,7 +169,7 @@
       <!-- Add Pull Request Template -->
       <Button guid="GitHubNode" id="AddPullRequestTemplate" priority="0x0400" type="Button">
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="PullRequest" />
+        <Icon guid="ImageCatalogGuid" id="AddEntity" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Pull Request Template</ButtonText>
@@ -199,6 +199,39 @@
         </Strings>
       </Button>
       
+      <!-- Copy Path (Folder) -->
+      <Button guid="GitHubNode" id="CopyPathFolder" priority="0x0200" type="Button">
+        <Parent guid="GitHubNode" id="FolderActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="Copy" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Copy Path</ButtonText>
+          <CanonicalName>.GitHubNode.CopyPathFolder</CanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Rename (Folder) -->
+      <Button guid="GitHubNode" id="RenameFolder" priority="0x0300" type="Button">
+        <Parent guid="GitHubNode" id="FolderActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="Rename" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Rename...</ButtonText>
+          <CanonicalName>.GitHubNode.RenameFolder</CanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Delete (Folder) -->
+      <Button guid="GitHubNode" id="DeleteFolder" priority="0x0400" type="Button">
+        <Parent guid="GitHubNode" id="FolderActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="Cancel" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Delete</ButtonText>
+          <CanonicalName>.GitHubNode.DeleteFolder</CanonicalName>
+        </Strings>
+      </Button>
+      
       <!-- Open Containing Folder (File) -->
       <Button guid="GitHubNode" id="OpenContainingFolder" priority="0x0100" type="Button">
         <Parent guid="GitHubNode" id="FileActionsGroup" />
@@ -207,6 +240,39 @@
         <Strings>
           <ButtonText>Open Containing Folder</ButtonText>
           <CanonicalName>.GitHubNode.OpenContainingFolder</CanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Copy Path (File) -->
+      <Button guid="GitHubNode" id="CopyPathFile" priority="0x0200" type="Button">
+        <Parent guid="GitHubNode" id="FileActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="Copy" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Copy Path</ButtonText>
+          <CanonicalName>.GitHubNode.CopyPathFile</CanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Rename (File) -->
+      <Button guid="GitHubNode" id="RenameFile" priority="0x0300" type="Button">
+        <Parent guid="GitHubNode" id="FileActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="Rename" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Rename...</ButtonText>
+          <CanonicalName>.GitHubNode.RenameFile</CanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Delete (File) -->
+      <Button guid="GitHubNode" id="DeleteFile" priority="0x0400" type="Button">
+        <Parent guid="GitHubNode" id="FileActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="Cancel" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Delete</ButtonText>
+          <CanonicalName>.GitHubNode.DeleteFile</CanonicalName>
         </Strings>
       </Button>
     </Buttons>
@@ -244,6 +310,12 @@
       <IDSymbol name="OpenInFileExplorer" value="0x0108" />
       <IDSymbol name="OpenInFileExplorerFolder" value="0x0109" />
       <IDSymbol name="OpenContainingFolder" value="0x010A" />
+      <IDSymbol name="CopyPathFolder" value="0x010B" />
+      <IDSymbol name="CopyPathFile" value="0x010C" />
+      <IDSymbol name="RenameFolder" value="0x010D" />
+      <IDSymbol name="RenameFile" value="0x010E" />
+      <IDSymbol name="DeleteFolder" value="0x010F" />
+      <IDSymbol name="DeleteFile" value="0x0110" />
     </GuidSymbol>
   </Symbols>
 </CommandTable>

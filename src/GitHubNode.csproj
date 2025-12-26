@@ -54,9 +54,12 @@
     <Compile Include="Commands\AddSkillCommand.cs" />
     <Compile Include="Commands\AddWorkflowCommand.cs" />
     <Compile Include="Commands\CommandHelpers.cs" />
+    <Compile Include="Commands\CopyPathCommand.cs" />
+    <Compile Include="Commands\DeleteCommand.cs" />
     <Compile Include="Commands\GitHubFileCommandBase.cs" />
     <Compile Include="Commands\InputDialog.cs" />
     <Compile Include="Commands\OpenInFileExplorerCommand.cs" />
+    <Compile Include="Commands\RenameCommand.cs" />
     <Compile Include="FileTemplates.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="GitHubNodePackage.cs" />
