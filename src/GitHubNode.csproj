@@ -73,6 +73,7 @@
     <Compile Include="MEF\GitHubSourceProvider.cs" />
     <Compile Include="MEF\NodeChildrenManager.cs" />
     <Compile Include="MEF\Relationships.cs" />
+    <Compile Include="Services\AwesomeCopilotService.cs" />
     <Compile Include="source.extension.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

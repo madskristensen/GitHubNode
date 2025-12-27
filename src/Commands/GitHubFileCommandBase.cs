@@ -1,4 +1,5 @@
 using System.IO;
+using GitHubNode.Services;
 using GitHubNode.SolutionExplorer;
 
 namespace GitHubNode.Commands
@@ -36,6 +37,12 @@ namespace GitHubNode.Commands
         /// </summary>
         protected virtual bool RequiresGitHubFolder => true;
 
+        /// <summary>
+        /// Gets the template type for loading templates from awesome-copilot.
+        /// Return null if templates are not supported for this command.
+        /// </summary>
+        protected virtual TemplateType? TemplateType => null;
+
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -65,16 +72,18 @@ namespace GitHubNode.Commands
 
             // Get user input if dialog is configured
             string userInput = null;
+            string selectedTemplateContent = null;
             if (DialogTitle != null)
             {
                 // Create preview generator that uses the subclass's GetFileContent method
-                Func<string, string> previewGenerator = input => GetFileContent(input);
-                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator);
+                Func<string, string> previewGenerator = GetFileContent;
+                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator, TemplateType);
                 if (dialog.ShowModal() != true || string.IsNullOrWhiteSpace(dialog.InputText))
                 {
                     return;
                 }
                 userInput = dialog.InputText;
+                selectedTemplateContent = dialog.SelectedTemplateContent;
 
                 // Allow subclasses to validate the input
                 if (!await ValidateInputAsync(userInput))
@@ -111,7 +120,8 @@ namespace GitHubNode.Commands
             // Create the file
             try
             {
-                var content = GetFileContent(userInput);
+                // Use selected template content if available, otherwise use default content
+                var content = selectedTemplateContent ?? GetFileContent(userInput);
                 File.WriteAllText(filePath, content);
                 await VS.Documents.OpenAsync(filePath);
             }

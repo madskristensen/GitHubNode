@@ -1,4 +1,5 @@
 using System.IO;
+using GitHubNode.Services;
 
 namespace GitHubNode.Commands
 {
@@ -9,9 +10,10 @@ namespace GitHubNode.Commands
     internal sealed class AddSkillCommand : GitHubFileCommandBase<AddSkillCommand>
     {
         protected override string DialogTitle => "New Agent Skill";
-        protected override string DialogPrompt => "Enter the skill name:";
+        protected override string DialogPrompt => "Select a template or create a custom skill:";
         protected override string DialogDefaultValue => "my-skill";
         protected override string ErrorMessagePrefix => "Failed to create skill";
+        protected override TemplateType? TemplateType => Services.TemplateType.Skill;
 
         protected override string GetFilePath(string targetFolder, string userInput)
         {

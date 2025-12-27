@@ -1,4 +1,5 @@
 using System.IO;
+using GitHubNode.Services;
 
 namespace GitHubNode.Commands
 {
@@ -9,9 +10,10 @@ namespace GitHubNode.Commands
     internal sealed class AddPromptCommand : GitHubFileCommandBase<AddPromptCommand>
     {
         protected override string DialogTitle => "New Prompt File";
-        protected override string DialogPrompt => "Enter the prompt file name (must end with .prompt.md):";
+        protected override string DialogPrompt => "Select a template or create a custom prompt:";
         protected override string DialogDefaultValue => "my-prompt.prompt.md";
         protected override string ErrorMessagePrefix => "Failed to create prompt file";
+        protected override TemplateType? TemplateType => Services.TemplateType.Prompt;
 
         protected override async System.Threading.Tasks.Task<bool> ValidateInputAsync(string input)
         {

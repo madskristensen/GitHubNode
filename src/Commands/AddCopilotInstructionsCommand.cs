@@ -1,4 +1,5 @@
 using System.IO;
+using GitHubNode.Services;
 
 namespace GitHubNode.Commands
 {
@@ -9,9 +10,10 @@ namespace GitHubNode.Commands
     internal sealed class AddCopilotInstructionsCommand : GitHubFileCommandBase<AddCopilotInstructionsCommand>
     {
         protected override string DialogTitle => "New Copilot Instructions";
-        protected override string DialogPrompt => "Enter the instructions file name (must end with .instructions.md):";
+        protected override string DialogPrompt => "Select a template or create custom instructions:";
         protected override string DialogDefaultValue => "copilot.instructions.md";
         protected override string ErrorMessagePrefix => "Failed to create instructions file";
+        protected override TemplateType? TemplateType => Services.TemplateType.Instructions;
 
         protected override async System.Threading.Tasks.Task<bool> ValidateInputAsync(string input)
         {
