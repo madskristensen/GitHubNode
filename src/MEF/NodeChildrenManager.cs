@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Threading;
+using GitHubNode.Services;
 
 namespace GitHubNode.SolutionExplorer
 {
@@ -16,6 +18,8 @@ namespace GitHubNode.SolutionExplorer
         private readonly bool _includeSubdirectories;
         private FileSystemWatcher _watcher;
         private bool _disposed;
+        private CancellationTokenSource _debounceCts;
+        private readonly object _debounceLock = new();
 
         /// <summary>
         /// Creates a new NodeChildrenManager.
@@ -96,7 +100,9 @@ namespace GitHubNode.SolutionExplorer
             _watcher = new FileSystemWatcher(_folderPath)
             {
                 IncludeSubdirectories = _includeSubdirectories,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite
+                // Only watch for file/folder creation, deletion, and renames
+                // Do NOT include LastWrite - that triggers on every file save and causes tree refresh
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName
             };
 
             _watcher.Created += OnFileSystemChanged;
@@ -107,20 +113,93 @@ namespace GitHubNode.SolutionExplorer
 
         private void OnFileSystemChanged(object sender, FileSystemEventArgs e)
         {
-            // FireAndForget is appropriate here since this is a fire-and-forget file system event
-            #pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
-            _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+            // Ignore temp files that VS creates during save operations
+            if (IsTempFile(e.FullPath))
             {
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                RefreshChildren();
-            });
-            #pragma warning restore VSSDK007
+                return;
+            }
+
+            // Only handle changes to direct children of this folder
+            // Subdirectory changes are handled by their own NodeChildrenManager
+            var parentDir = Path.GetDirectoryName(e.FullPath);
+            if (!string.Equals(parentDir, _folderPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            // Debounce rapid file system changes (e.g., VS save operations)
+            DebouncedRefresh();
+        }
+
+        private void DebouncedRefresh()
+        {
+            lock (_debounceLock)
+            {
+                _debounceCts?.Cancel();
+                _debounceCts = new CancellationTokenSource();
+                CancellationToken token = _debounceCts.Token;
+
+                // FireAndForget is appropriate here since this is a fire-and-forget file system event
+#pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
+                _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+                {
+                    try
+                    {
+                        // Wait 100ms for additional changes before refreshing
+                        await System.Threading.Tasks.Task.Delay(100, token);
+
+                        if (token.IsCancellationRequested)
+                        {
+                            return;
+                        }
+
+                        // Invalidate Git status cache so new files show correct status
+                        GitStatusService.InvalidateCache();
+
+                        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(token);
+                        RefreshChildren();
+                    }
+                    catch (System.Threading.Tasks.TaskCanceledException)
+                    {
+                        // Debounce cancelled - another change came in
+                    }
+                });
+#pragma warning restore VSSDK007
+            }
+        }
+
+        private static bool IsTempFile(string path)
+        {
+            var fileName = Path.GetFileName(path);
+
+            // VS creates temp files during save
+            if (fileName.StartsWith("~") || fileName.EndsWith(".tmp") || fileName.EndsWith(".TMP"))
+            {
+                return true;
+            }
+
+            // Also ignore hidden/system temp patterns
+            if (fileName.StartsWith("."))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private void OnFileSystemRenamed(object sender, RenamedEventArgs e)
         {
+            // Ignore temp file renames that VS creates during save operations
+            if (IsTempFile(e.OldFullPath) || IsTempFile(e.FullPath))
+            {
+                return;
+            }
+
+            // Invalidate Git status cache so renamed files show correct status
+            GitStatusService.InvalidateCache();
+
             // Handle renames by updating the node in-place instead of refreshing all children
-            #pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
+#pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
             _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -136,14 +215,14 @@ namespace GitHubNode.SolutionExplorer
                 // Try to find and update the renamed node
                 foreach (var child in _children)
                 {
-                    if (child is GitHubFileNode fileNode && 
+                    if (child is GitHubFileNode fileNode &&
                         string.Equals(fileNode.FilePath, e.OldFullPath, StringComparison.OrdinalIgnoreCase))
                     {
                         fileNode.UpdatePath(e.FullPath);
                         return;
                     }
 
-                    if (child is GitHubFolderNode folderNode && 
+                    if (child is GitHubFolderNode folderNode &&
                         string.Equals(folderNode.FolderPath, e.OldFullPath, StringComparison.OrdinalIgnoreCase))
                     {
                         folderNode.UpdatePath(e.FullPath);
@@ -154,7 +233,7 @@ namespace GitHubNode.SolutionExplorer
                 // Node not found in our children - shouldn't happen for direct children
                 RefreshChildren();
             });
-            #pragma warning restore VSSDK007
+#pragma warning restore VSSDK007
         }
 
         public void Dispose()
@@ -163,6 +242,13 @@ namespace GitHubNode.SolutionExplorer
                 return;
 
             _disposed = true;
+
+            lock (_debounceLock)
+            {
+                _debounceCts?.Cancel();
+                _debounceCts?.Dispose();
+                _debounceCts = null;
+            }
 
             if (_watcher != null)
             {

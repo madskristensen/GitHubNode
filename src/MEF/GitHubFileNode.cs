@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Imaging.Interop;
@@ -21,6 +22,8 @@ namespace GitHubNode.SolutionExplorer
         private static readonly ConcurrentDictionary<string, ImageMoniker> _fileIconCache = new();
         private static readonly IVsImageService2 _imageService = VS.GetRequiredService<SVsImageService, IVsImageService2>();
         private string _fileName;
+        private GitFileStatus _cachedGitStatus = GitFileStatus.NotInRepo;
+        private bool _gitStatusLoaded;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -36,6 +39,9 @@ namespace GitHubNode.SolutionExplorer
         {
             FilePath = filePath;
             _fileName = Path.GetFileName(filePath);
+
+            // Load Git status asynchronously
+            LoadGitStatusAsync().FireAndForget();
         }
 
         /// <summary>
@@ -53,6 +59,17 @@ namespace GitHubNode.SolutionExplorer
             RaisePropertyChanged(nameof(Text));
             RaisePropertyChanged(nameof(ToolTipText));
             RaisePropertyChanged(nameof(IconMoniker));
+
+            // Reload Git status for new path
+            LoadGitStatusAsync().FireAndForget();
+        }
+
+        /// <summary>
+        /// Refreshes the Git status icon asynchronously.
+        /// </summary>
+        public void RefreshGitStatus()
+        {
+            LoadGitStatusAsync().FireAndForget();
         }
 
         /// <summary>
@@ -63,7 +80,7 @@ namespace GitHubNode.SolutionExplorer
         // ITreeDisplayItem
         public override string Text => _fileName;
         public override string ToolTipText => FilePath;
-        public override string StateToolTipText => FileExists ? string.Empty : "File not found";
+        public override string StateToolTipText => FileExists ? GetGitStatusTooltip() : "File not found";
         public override bool IsCut => !FileExists;
 
         // ITreeDisplayItemWithImages
@@ -87,7 +104,19 @@ namespace GitHubNode.SolutionExplorer
         }
 
         public ImageMoniker OverlayIconMoniker => default;
-        public ImageMoniker StateIconMoniker => FileExists ? default : KnownMonikers.StatusWarning;
+        public ImageMoniker StateIconMoniker
+        {
+            get
+            {
+                if (!FileExists)
+                {
+                    return KnownMonikers.StatusWarning;
+                }
+
+                // Return cached status - it will be updated asynchronously
+                return GitStatusService.GetStatusIcon(_cachedGitStatus);
+            }
+        }
 
         // IPrioritizedComparable - Files appear after folders
         public int Priority => 1;
@@ -104,6 +133,63 @@ namespace GitHubNode.SolutionExplorer
         // IContextMenuPattern
         public IContextMenuController ContextMenuController => GitHubContextMenuController.Instance;
 
+        private async Task LoadGitStatusAsync()
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            GitFileStatus status = await GitStatusService.GetFileStatusAsync(FilePath);
+
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            var statusChanged = _cachedGitStatus != status || !_gitStatusLoaded;
+            _cachedGitStatus = status;
+            _gitStatusLoaded = true;
+
+            if (statusChanged)
+            {
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                if (!IsDisposed)
+                {
+                    RaisePropertyChanged(nameof(StateIconMoniker));
+                    RaisePropertyChanged(nameof(StateToolTipText));
+                }
+            }
+        }
+
+        private string GetGitStatusTooltip()
+        {
+            switch (_cachedGitStatus)
+            {
+                case GitFileStatus.Unmodified:
+                    return "Unchanged";
+                case GitFileStatus.Modified:
+                    return "Modified";
+                case GitFileStatus.Staged:
+                    return "Staged";
+                case GitFileStatus.Added:
+                    return "Added";
+                case GitFileStatus.Untracked:
+                    return "Untracked";
+                case GitFileStatus.Deleted:
+                    return "Deleted";
+                case GitFileStatus.Conflict:
+                    return "Conflict";
+                case GitFileStatus.Ignored:
+                    return "Ignored";
+                case GitFileStatus.Renamed:
+                    return "Renamed";
+                default:
+                    return string.Empty;
+            }
+        }
+
         private static ImageMoniker GetFileIcon(string filePath)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -112,10 +198,17 @@ namespace GitHubNode.SolutionExplorer
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
             var cacheKey = string.IsNullOrEmpty(extension) ? fileName.ToLowerInvariant() : extension;
 
-            return _fileIconCache.GetOrAdd(cacheKey, _ =>
+            return _fileIconCache.GetOrAdd(cacheKey, key =>
             {
                 ThreadHelper.ThrowIfNotOnUIThread();
-                ImageMoniker moniker = _imageService.GetImageMonikerForFile(filePath);
+
+                // Use a fake path with just the extension to avoid locking the actual file
+                // The image service determines the icon based on extension, not file contents
+                var fakePath = string.IsNullOrEmpty(extension)
+                    ? fileName  // For extensionless files like CODEOWNERS, use the filename
+                    : "file" + extension;
+
+                ImageMoniker moniker = _imageService.GetImageMonikerForFile(fakePath);
                 return moniker.Id < 0 ? KnownMonikers.Document : moniker;
             });
         }

@@ -79,6 +79,7 @@
     <Compile Include="MEF\Relationships.cs" />
     <Compile Include="Services\AwesomeCopilotService.cs" />
     <Compile Include="Services\GitHubUrlService.cs" />
+    <Compile Include="Services\GitStatusService.cs" />
     <Compile Include="Services\MarkdownSyntaxHighlighter.cs" />
     <Compile Include="Services\SyntaxColors.cs" />
     <Compile Include="source.extension.cs">
