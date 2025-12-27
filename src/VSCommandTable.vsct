@@ -182,6 +182,39 @@
         </Strings>
       </Button>
       
+      <!-- Add CODEOWNERS -->
+      <Button guid="GitHubNode" id="AddCodeOwners" priority="0x0500" type="Button">
+        <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="AddUser" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>CODEOWNERS</ButtonText>
+          <CanonicalName>.GitHubNode.AddCodeOwners</CanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Add FUNDING.yml -->
+      <Button guid="GitHubNode" id="AddFunding" priority="0x0600" type="Button">
+        <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="AddLink" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>FUNDING.yml</ButtonText>
+          <CanonicalName>.GitHubNode.AddFunding</CanonicalName>
+        </Strings>
+      </Button>
+      
+      <!-- Add SECURITY.md -->
+      <Button guid="GitHubNode" id="AddSecurity" priority="0x0700" type="Button">
+        <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Lock" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>SECURITY.md</ButtonText>
+          <CanonicalName>.GitHubNode.AddSecurity</CanonicalName>
+        </Strings>
+      </Button>
+      
       <!-- Open in File Explorer (Root) -->
       <Button guid="GitHubNode" id="OpenInFileExplorer" priority="0x0100" type="Button">
         <Parent guid="GitHubNode" id="RootActionsGroup" />
@@ -332,23 +365,26 @@
       <IDSymbol name="GitHubSubMenuGroup" value="0x0026" />
       
       <!-- Commands -->
-      <IDSymbol name="AddCopilotInstructions" value="0x0100" />
-      <IDSymbol name="AddAgent" value="0x0101" />
-      <IDSymbol name="AddPrompt" value="0x0102" />
-      <IDSymbol name="AddSkill" value="0x0103" />
-      <IDSymbol name="AddWorkflow" value="0x0104" />
-      <IDSymbol name="AddDependabot" value="0x0105" />
-      <IDSymbol name="AddIssueTemplate" value="0x0106" />
-      <IDSymbol name="AddPullRequestTemplate" value="0x0107" />
-      <IDSymbol name="OpenInFileExplorer" value="0x0108" />
-      <IDSymbol name="OpenInFileExplorerFolder" value="0x0109" />
-      <IDSymbol name="OpenContainingFolder" value="0x010A" />
-      <IDSymbol name="CopyPathFolder" value="0x010B" />
-      <IDSymbol name="CopyPathFile" value="0x010C" />
-      <IDSymbol name="RenameFolder" value="0x010D" />
-      <IDSymbol name="RenameFile" value="0x010E" />
-      <IDSymbol name="DeleteFolder" value="0x010F" />
-      <IDSymbol name="DeleteFile" value="0x0110" />
-    </GuidSymbol>
-  </Symbols>
-</CommandTable>
+            <IDSymbol name="AddCopilotInstructions" value="0x0100" />
+            <IDSymbol name="AddAgent" value="0x0101" />
+            <IDSymbol name="AddPrompt" value="0x0102" />
+            <IDSymbol name="AddSkill" value="0x0103" />
+            <IDSymbol name="AddWorkflow" value="0x0104" />
+            <IDSymbol name="AddDependabot" value="0x0105" />
+            <IDSymbol name="AddIssueTemplate" value="0x0106" />
+            <IDSymbol name="AddPullRequestTemplate" value="0x0107" />
+            <IDSymbol name="OpenInFileExplorer" value="0x0108" />
+            <IDSymbol name="OpenInFileExplorerFolder" value="0x0109" />
+            <IDSymbol name="OpenContainingFolder" value="0x010A" />
+            <IDSymbol name="CopyPathFolder" value="0x010B" />
+            <IDSymbol name="CopyPathFile" value="0x010C" />
+            <IDSymbol name="RenameFolder" value="0x010D" />
+            <IDSymbol name="RenameFile" value="0x010E" />
+            <IDSymbol name="DeleteFolder" value="0x010F" />
+            <IDSymbol name="DeleteFile" value="0x0110" />
+            <IDSymbol name="AddCodeOwners" value="0x0111" />
+            <IDSymbol name="AddFunding" value="0x0112" />
+            <IDSymbol name="AddSecurity" value="0x0113" />
+          </GuidSymbol>
+        </Symbols>
+      </CommandTable>

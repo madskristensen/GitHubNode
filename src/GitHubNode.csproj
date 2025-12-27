@@ -46,11 +46,14 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Commands\AddAgentCommand.cs" />
+    <Compile Include="Commands\AddCodeOwnersCommand.cs" />
     <Compile Include="Commands\AddCopilotInstructionsCommand.cs" />
     <Compile Include="Commands\AddDependabotCommand.cs" />
+    <Compile Include="Commands\AddFundingCommand.cs" />
     <Compile Include="Commands\AddIssueTemplateCommand.cs" />
     <Compile Include="Commands\AddPromptCommand.cs" />
     <Compile Include="Commands\AddPullRequestTemplateCommand.cs" />
+    <Compile Include="Commands\AddSecurityCommand.cs" />
     <Compile Include="Commands\AddSkillCommand.cs" />
     <Compile Include="Commands\AddWorkflowCommand.cs" />
     <Compile Include="Commands\CommandHelpers.cs" />

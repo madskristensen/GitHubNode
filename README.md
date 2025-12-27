@@ -33,16 +33,22 @@ Right-click on the GitHub node or any subfolder to quickly create new files:
 ![Context Menu](art/context-menu.png)
 
 #### Copilot Customization
-- **Add Copilot Instructions** - Create an instructions file (`.instructions.md`) in the `Instructions` folder
-- **Add Agent** - Create a custom Copilot agent (`.agent.md`) in the `Agents` folder
-- **Add Prompt** - Create a reusable prompt file (`.prompt.md`) in the `Prompts` folder
-- **Add Skill** - Create an agent skill folder with `skill.md` in the `Skills` folder
+- **Add Copilot Instructions** - Create an instructions file (`.instructions.md`) in the `instructions` folder
+- **Add Agent** - Create a custom Copilot agent (`.agent.md`) in the `agents` folder
+- **Add Prompt** - Create a reusable prompt file (`.prompt.md`) in the `prompts` folder
+- **Add Skill** - Create an agent skill folder with `skill.md` in the `skills` folder
 
 #### GitHub Configuration
-- **Add Workflow** - Create a new GitHub Actions workflow (`.yml`) in the `Workflows` folder
+- **Add Workflow** - Create a new GitHub Actions workflow (`.yml`) in the `workflows` folder
 - **Add Dependabot Config** - Create a `dependabot.yml` for automated dependency updates
 - **Add Issue Template** - Create an issue template in the `ISSUE_TEMPLATE` folder
 - **Add Pull Request Template** - Create a `PULL_REQUEST_TEMPLATE.md` file
+- **Add CODEOWNERS** - Create a `CODEOWNERS` file for automatic reviewer assignment
+- **Add FUNDING.yml** - Create a `FUNDING.yml` file for sponsor button configuration
+- **Add SECURITY.md** - Create a `SECURITY.md` file for security policy documentation
+
+#### Folder-Specific Commands
+When you right-click on a specific folder (e.g., `agents`, `prompts`, `skills`, `instructions`, or `workflows`), the relevant "Add" command appears directly in the context menu for quick access.
 
 #### File and Folder Management
 - **Copy Path** - Copy the full path to the clipboard
@@ -83,6 +89,9 @@ All created files come with helpful starter templates that follow best practices
 - **Skills** - YAML frontmatter with structured sections for purpose, instructions, and examples
 - **Workflows** - Basic GitHub Actions workflow with common triggers and job structure
 - **Issue Templates** - YAML frontmatter with description fields and standard issue sections
+- **CODEOWNERS** - Comments explaining syntax with example patterns for teams
+- **FUNDING.yml** - Configuration for GitHub Sponsors and other funding platforms
+- **SECURITY.md** - Sections for supported versions, reporting vulnerabilities, and security updates
 
 ## Requirements
 

@@ -50,6 +50,9 @@ namespace GitHubNode
         public const int RenameFolder = 0x010D;
         public const int RenameFile = 0x010E;
         public const int DeleteFolder = 0x010F;
-        public const int DeleteFile = 0x0110;
-    }
-}
+                public const int DeleteFile = 0x0110;
+                public const int AddCodeOwners = 0x0111;
+                public const int AddFunding = 0x0112;
+                public const int AddSecurity = 0x0113;
+            }
+        }

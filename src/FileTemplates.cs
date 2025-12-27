@@ -280,30 +280,85 @@ Add any other context about the problem here.
 ";
 
         /// <summary>
-        /// Template for pull request template.
-        /// </summary>
-        public const string PullRequestTemplate = @"## Description
+                /// Template for pull request template.
+                /// </summary>
+                public const string PullRequestTemplate = @"## Description
 
-Please include a summary of the changes and which issue is fixed.
+        Please include a summary of the changes and which issue is fixed.
 
-Fixes # (issue)
+        Fixes # (issue)
 
-## Type of Change
+        ## Type of Change
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
+        - [ ] Bug fix (non-breaking change which fixes an issue)
+        - [ ] New feature (non-breaking change which adds functionality)
+        - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+        - [ ] Documentation update
 
-## Checklist
+        ## Checklist
 
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-";
-    }
-}
+        - [ ] My code follows the style guidelines of this project
+        - [ ] I have performed a self-review of my code
+        - [ ] I have commented my code, particularly in hard-to-understand areas
+        - [ ] I have made corresponding changes to the documentation
+        - [ ] My changes generate no new warnings
+        - [ ] I have added tests that prove my fix is effective or that my feature works
+        - [ ] New and existing unit tests pass locally with my changes
+        ";
+
+                /// <summary>
+                /// Template for FUNDING.yml file.
+                /// </summary>
+                public const string Funding = @"# Funding configuration
+        # Learn more: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+        # GitHub Sponsors username
+        github: [your-username]
+
+        # Other funding platforms (uncomment and configure as needed)
+        # patreon: your-patreon-username
+        # open_collective: your-opencollective-username
+        # ko_fi: your-ko-fi-username
+        # buy_me_a_coffee: your-buymeacoffee-username
+        # liberapay: your-liberapay-username
+        # issuehunt: your-issuehunt-username
+        # community_bridge: your-project-slug
+        # polar: your-polar-username
+        # custom: [""https://your-custom-link.com""]
+        ";
+
+                /// <summary>
+                /// Template for SECURITY.md file.
+                /// </summary>
+                public const string Security = @"# Security Policy
+
+        ## Supported Versions
+
+        | Version | Supported          |
+        | ------- | ------------------ |
+        | x.x.x   | :white_check_mark: |
+        | x.x.x   | :x:                |
+
+        ## Reporting a Vulnerability
+
+        If you discover a security vulnerability in this project, please report it responsibly.
+
+        **Please do NOT report security vulnerabilities through public GitHub issues.**
+
+        Instead, please send an email to [security@example.com] with:
+
+        - Description of the vulnerability
+        - Steps to reproduce the issue
+        - Potential impact of the vulnerability
+        - Any suggestions for fixing the issue (optional)
+
+        You should receive a response within 48 hours. If the issue is confirmed, we will release a patch as soon as possible.
+
+        ## Security Updates
+
+        Security updates will be released as patch versions and announced through:
+        - GitHub Security Advisories
+        - Release notes
+        ";
+            }
+        }
