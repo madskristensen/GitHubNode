@@ -62,6 +62,7 @@
     <Compile Include="Commands\GitHubFileCommandBase.cs" />
     <Compile Include="Commands\InputDialog.cs" />
     <Compile Include="Commands\OpenInFileExplorerCommand.cs" />
+    <Compile Include="Commands\OpenOnGitHubCommand.cs" />
     <Compile Include="Commands\RenameCommand.cs" />
     <Compile Include="FileTemplates.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -77,6 +78,7 @@
     <Compile Include="MEF\NodeChildrenManager.cs" />
     <Compile Include="MEF\Relationships.cs" />
     <Compile Include="Services\AwesomeCopilotService.cs" />
+    <Compile Include="Services\GitHubUrlService.cs" />
     <Compile Include="Services\MarkdownSyntaxHighlighter.cs" />
     <Compile Include="Services\SyntaxColors.cs" />
     <Compile Include="source.extension.cs">

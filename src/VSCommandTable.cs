@@ -29,11 +29,16 @@ namespace GitHubNode
         public const int AddGitHubSubMenu = 0x0011;
         public const int RootAddGroup = 0x0020;
         public const int RootActionsGroup = 0x0021;
-        public const int FolderAddGroup = 0x0022;
-        public const int FolderActionsGroup = 0x0023;
-        public const int FileActionsGroup = 0x0024;
-        public const int CopilotSubMenuGroup = 0x0025;
-        public const int GitHubSubMenuGroup = 0x0026;
+        public const int RootGitHubGroup = 0x0022;
+        public const int FolderAddGroup = 0x0030;
+        public const int FolderOpenGroup = 0x0031;
+        public const int FolderEditGroup = 0x0032;
+        public const int FolderGitHubGroup = 0x0033;
+        public const int FileOpenGroup = 0x0040;
+        public const int FileEditGroup = 0x0041;
+        public const int FileGitHubGroup = 0x0042;
+        public const int CopilotSubMenuGroup = 0x0050;
+        public const int GitHubSubMenuGroup = 0x0051;
         public const int AddCopilotInstructions = 0x0100;
         public const int AddAgent = 0x0101;
         public const int AddPrompt = 0x0102;
@@ -50,9 +55,11 @@ namespace GitHubNode
         public const int RenameFolder = 0x010D;
         public const int RenameFile = 0x010E;
         public const int DeleteFolder = 0x010F;
-                public const int DeleteFile = 0x0110;
-                public const int AddCodeOwners = 0x0111;
-                public const int AddFunding = 0x0112;
-                public const int AddSecurity = 0x0113;
-            }
-        }
+        public const int DeleteFile = 0x0110;
+        public const int AddCodeOwners = 0x0111;
+        public const int AddFunding = 0x0112;
+        public const int AddSecurity = 0x0113;
+        public const int OpenOnGitHubFile = 0x0114;
+        public const int OpenOnGitHubFolder = 0x0115;
+    }
+}

@@ -63,17 +63,32 @@
       <Group guid="GitHubNode" id="RootActionsGroup" priority="0x0200">
         <Parent guid="GitHubNode" id="GitHubRootContextMenu"/>
       </Group>
+      <Group guid="GitHubNode" id="RootGitHubGroup" priority="0x0300">
+        <Parent guid="GitHubNode" id="GitHubRootContextMenu"/>
+      </Group>
       
       <!-- Folder context menu groups -->
       <Group guid="GitHubNode" id="FolderAddGroup" priority="0x0100">
         <Parent guid="GitHubNode" id="GitHubFolderContextMenu"/>
       </Group>
-      <Group guid="GitHubNode" id="FolderActionsGroup" priority="0x0200">
+      <Group guid="GitHubNode" id="FolderOpenGroup" priority="0x0200">
+        <Parent guid="GitHubNode" id="GitHubFolderContextMenu"/>
+      </Group>
+      <Group guid="GitHubNode" id="FolderEditGroup" priority="0x0300">
+        <Parent guid="GitHubNode" id="GitHubFolderContextMenu"/>
+      </Group>
+      <Group guid="GitHubNode" id="FolderGitHubGroup" priority="0x0400">
         <Parent guid="GitHubNode" id="GitHubFolderContextMenu"/>
       </Group>
       
       <!-- File context menu groups -->
-      <Group guid="GitHubNode" id="FileActionsGroup" priority="0x0100">
+      <Group guid="GitHubNode" id="FileOpenGroup" priority="0x0100">
+        <Parent guid="GitHubNode" id="GitHubFileContextMenu"/>
+      </Group>
+      <Group guid="GitHubNode" id="FileEditGroup" priority="0x0200">
+        <Parent guid="GitHubNode" id="GitHubFileContextMenu"/>
+      </Group>
+      <Group guid="GitHubNode" id="FileGitHubGroup" priority="0x0300">
         <Parent guid="GitHubNode" id="GitHubFileContextMenu"/>
       </Group>
       
@@ -226,9 +241,9 @@
         </Strings>
       </Button>
       
-      <!-- Open in File Explorer (Folder) - duplicate for folder context -->
+      <!-- Open in File Explorer (Folder) -->
       <Button guid="GitHubNode" id="OpenInFileExplorerFolder" priority="0x0100" type="Button">
-        <Parent guid="GitHubNode" id="FolderActionsGroup" />
+        <Parent guid="GitHubNode" id="FolderOpenGroup" />
         <Icon guid="ImageCatalogGuid" id="OpenFolder" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
@@ -239,7 +254,7 @@
       
       <!-- Copy Path (Folder) -->
       <Button guid="GitHubNode" id="CopyPathFolder" priority="0x0200" type="Button">
-        <Parent guid="GitHubNode" id="FolderActionsGroup" />
+        <Parent guid="GitHubNode" id="FolderOpenGroup" />
         <Icon guid="ImageCatalogGuid" id="Copy" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
@@ -249,8 +264,8 @@
       </Button>
       
       <!-- Rename (Folder) -->
-      <Button guid="GitHubNode" id="RenameFolder" priority="0x0300" type="Button">
-        <Parent guid="GitHubNode" id="FolderActionsGroup" />
+      <Button guid="GitHubNode" id="RenameFolder" priority="0x0100" type="Button">
+        <Parent guid="GitHubNode" id="FolderEditGroup" />
         <Icon guid="ImageCatalogGuid" id="Rename" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
@@ -260,8 +275,8 @@
       </Button>
       
       <!-- Delete (Folder) -->
-      <Button guid="GitHubNode" id="DeleteFolder" priority="0x0400" type="Button">
-        <Parent guid="GitHubNode" id="FolderActionsGroup" />
+      <Button guid="GitHubNode" id="DeleteFolder" priority="0x0200" type="Button">
+        <Parent guid="GitHubNode" id="FolderEditGroup" />
         <Icon guid="ImageCatalogGuid" id="Cancel" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
@@ -272,7 +287,7 @@
       
       <!-- Open Containing Folder (File) -->
       <Button guid="GitHubNode" id="OpenContainingFolder" priority="0x0100" type="Button">
-        <Parent guid="GitHubNode" id="FileActionsGroup" />
+        <Parent guid="GitHubNode" id="FileOpenGroup" />
         <Icon guid="ImageCatalogGuid" id="OpenFolder" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
@@ -283,7 +298,7 @@
       
       <!-- Copy Path (File) -->
       <Button guid="GitHubNode" id="CopyPathFile" priority="0x0200" type="Button">
-        <Parent guid="GitHubNode" id="FileActionsGroup" />
+        <Parent guid="GitHubNode" id="FileOpenGroup" />
         <Icon guid="ImageCatalogGuid" id="Copy" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
@@ -293,8 +308,8 @@
       </Button>
       
       <!-- Rename (File) -->
-      <Button guid="GitHubNode" id="RenameFile" priority="0x0300" type="Button">
-        <Parent guid="GitHubNode" id="FileActionsGroup" />
+      <Button guid="GitHubNode" id="RenameFile" priority="0x0100" type="Button">
+        <Parent guid="GitHubNode" id="FileEditGroup" />
         <Icon guid="ImageCatalogGuid" id="Rename" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
@@ -304,16 +319,38 @@
       </Button>
       
       <!-- Delete (File) -->
-      <Button guid="GitHubNode" id="DeleteFile" priority="0x0400" type="Button">
-        <Parent guid="GitHubNode" id="FileActionsGroup" />
-        <Icon guid="ImageCatalogGuid" id="Cancel" />
-        <CommandFlag>IconIsMoniker</CommandFlag>
-        <Strings>
-          <ButtonText>Delete</ButtonText>
-          <CanonicalName>.GitHubNode.DeleteFile</CanonicalName>
-        </Strings>
-      </Button>
-    </Buttons>
+        <Button guid="GitHubNode" id="DeleteFile" priority="0x0200" type="Button">
+          <Parent guid="GitHubNode" id="FileEditGroup" />
+          <Icon guid="ImageCatalogGuid" id="Cancel" />
+          <CommandFlag>IconIsMoniker</CommandFlag>
+          <Strings>
+            <ButtonText>Delete</ButtonText>
+            <CanonicalName>.GitHubNode.DeleteFile</CanonicalName>
+          </Strings>
+        </Button>
+      
+        <!-- Open on GitHub (File) -->
+        <Button guid="GitHubNode" id="OpenOnGitHubFile" priority="0x0100" type="Button">
+          <Parent guid="GitHubNode" id="FileGitHubGroup" />
+          <Icon guid="ImageCatalogGuid" id="OpenLink" />
+          <CommandFlag>IconIsMoniker</CommandFlag>
+          <Strings>
+            <ButtonText>Open on GitHub</ButtonText>
+            <CanonicalName>.GitHubNode.OpenOnGitHubFile</CanonicalName>
+          </Strings>
+        </Button>
+      
+        <!-- Open on GitHub (Folder) -->
+        <Button guid="GitHubNode" id="OpenOnGitHubFolder" priority="0x0100" type="Button">
+          <Parent guid="GitHubNode" id="FolderGitHubGroup" />
+          <Icon guid="ImageCatalogGuid" id="GoToSourceCode" />
+          <CommandFlag>IconIsMoniker</CommandFlag>
+          <Strings>
+            <ButtonText>Open on GitHub</ButtonText>
+            <CanonicalName>.GitHubNode.OpenOnGitHubFolder</CanonicalName>
+          </Strings>
+        </Button>
+      </Buttons>
     </Commands>
 
     <!-- Place Add commands in folder context menu for specific folders -->
@@ -339,10 +376,15 @@
       </CommandPlacement>
     
       <!-- Add Workflow in workflows folder -->
-      <CommandPlacement guid="GitHubNode" id="AddWorkflow" priority="0x0100">
-        <Parent guid="GitHubNode" id="FolderAddGroup"/>
-      </CommandPlacement>
-    </CommandPlacements>
+        <CommandPlacement guid="GitHubNode" id="AddWorkflow" priority="0x0100">
+          <Parent guid="GitHubNode" id="FolderAddGroup"/>
+        </CommandPlacement>
+    
+        <!-- Open on GitHub in root context menu -->
+        <CommandPlacement guid="GitHubNode" id="OpenOnGitHubFolder" priority="0x0100">
+          <Parent guid="GitHubNode" id="RootGitHubGroup"/>
+        </CommandPlacement>
+      </CommandPlacements>
 
     <Symbols>
     <GuidSymbol name="GitHubNode" value="{058f0e26-d2fd-4c6e-8eed-7c6e49e81527}">
@@ -358,11 +400,16 @@
       <!-- Groups -->
       <IDSymbol name="RootAddGroup" value="0x0020" />
       <IDSymbol name="RootActionsGroup" value="0x0021" />
-      <IDSymbol name="FolderAddGroup" value="0x0022" />
-      <IDSymbol name="FolderActionsGroup" value="0x0023" />
-      <IDSymbol name="FileActionsGroup" value="0x0024" />
-      <IDSymbol name="CopilotSubMenuGroup" value="0x0025" />
-      <IDSymbol name="GitHubSubMenuGroup" value="0x0026" />
+      <IDSymbol name="RootGitHubGroup" value="0x0022" />
+      <IDSymbol name="FolderAddGroup" value="0x0030" />
+      <IDSymbol name="FolderOpenGroup" value="0x0031" />
+      <IDSymbol name="FolderEditGroup" value="0x0032" />
+      <IDSymbol name="FolderGitHubGroup" value="0x0033" />
+      <IDSymbol name="FileOpenGroup" value="0x0040" />
+      <IDSymbol name="FileEditGroup" value="0x0041" />
+      <IDSymbol name="FileGitHubGroup" value="0x0042" />
+      <IDSymbol name="CopilotSubMenuGroup" value="0x0050" />
+      <IDSymbol name="GitHubSubMenuGroup" value="0x0051" />
       
       <!-- Commands -->
             <IDSymbol name="AddCopilotInstructions" value="0x0100" />
@@ -385,6 +432,8 @@
             <IDSymbol name="AddCodeOwners" value="0x0111" />
             <IDSymbol name="AddFunding" value="0x0112" />
             <IDSymbol name="AddSecurity" value="0x0113" />
+            <IDSymbol name="OpenOnGitHubFile" value="0x0114" />
+            <IDSymbol name="OpenOnGitHubFolder" value="0x0115" />
           </GuidSymbol>
         </Symbols>
       </CommandTable>
