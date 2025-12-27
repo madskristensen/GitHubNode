@@ -94,6 +94,7 @@
         <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddDocument" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Copilot Instructions</ButtonText>
           <CanonicalName>.GitHubNode.AddCopilotInstructions</CanonicalName>
@@ -105,6 +106,7 @@
         <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddAgent" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Custom Agent...</ButtonText>
           <CanonicalName>.GitHubNode.AddAgent</CanonicalName>
@@ -116,6 +118,7 @@
         <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddComment" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Prompt File...</ButtonText>
           <CanonicalName>.GitHubNode.AddPrompt</CanonicalName>
@@ -127,6 +130,7 @@
         <Parent guid="GitHubNode" id="CopilotSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddThread" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Agent Skill...</ButtonText>
           <CanonicalName>.GitHubNode.AddSkill</CanonicalName>
@@ -138,8 +142,9 @@
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddEvent" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
-          <ButtonText>Actions Workflow...</ButtonText>
+          <ButtonText>GitHub Actions Workflow...</ButtonText>
           <CanonicalName>.GitHubNode.AddWorkflow</CanonicalName>
         </Strings>
       </Button>
@@ -276,9 +281,37 @@
         </Strings>
       </Button>
     </Buttons>
-  </Commands>
+    </Commands>
 
-  <Symbols>
+    <!-- Place Add commands in folder context menu for specific folders -->
+    <CommandPlacements>
+      <!-- Add Agent in agents folder -->
+      <CommandPlacement guid="GitHubNode" id="AddAgent" priority="0x0100">
+        <Parent guid="GitHubNode" id="FolderAddGroup"/>
+      </CommandPlacement>
+    
+      <!-- Add Prompt in prompts folder -->
+      <CommandPlacement guid="GitHubNode" id="AddPrompt" priority="0x0100">
+        <Parent guid="GitHubNode" id="FolderAddGroup"/>
+      </CommandPlacement>
+    
+      <!-- Add Skill in skills folder -->
+      <CommandPlacement guid="GitHubNode" id="AddSkill" priority="0x0100">
+        <Parent guid="GitHubNode" id="FolderAddGroup"/>
+      </CommandPlacement>
+    
+      <!-- Add Instructions in instructions folder -->
+      <CommandPlacement guid="GitHubNode" id="AddCopilotInstructions" priority="0x0100">
+        <Parent guid="GitHubNode" id="FolderAddGroup"/>
+      </CommandPlacement>
+    
+      <!-- Add Workflow in workflows folder -->
+      <CommandPlacement guid="GitHubNode" id="AddWorkflow" priority="0x0100">
+        <Parent guid="GitHubNode" id="FolderAddGroup"/>
+      </CommandPlacement>
+    </CommandPlacements>
+
+    <Symbols>
     <GuidSymbol name="GitHubNode" value="{058f0e26-d2fd-4c6e-8eed-7c6e49e81527}">
       <!-- Context Menus -->
       <IDSymbol name="GitHubRootContextMenu" value="0x0001" />

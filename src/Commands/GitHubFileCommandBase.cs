@@ -55,6 +55,30 @@ namespace GitHubNode.Commands
         /// </summary>
         protected virtual string SubfolderName => null;
 
+        /// <summary>
+        /// Controls visibility of the command in folder context menus.
+        /// Shows the command only when right-clicking the matching subfolder.
+        /// </summary>
+        protected override void BeforeQueryStatus(EventArgs e)
+        {
+            base.BeforeQueryStatus(e);
+
+            // Always visible in root menu (via submenus)
+            if (GitHubContextMenuController.CurrentItem is GitHubRootNode)
+            {
+                Command.Visible = true;
+                return;
+            }
+
+            // For folder context, show only if it's the matching subfolder
+            if (GitHubContextMenuController.CurrentItem is GitHubFolderNode folder &&
+                !string.IsNullOrEmpty(SubfolderName))
+            {
+                var folderName = Path.GetFileName(folder.FolderPath);
+                Command.Visible = string.Equals(folderName, SubfolderName, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
