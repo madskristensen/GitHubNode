@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using GitHubNode.Services;
@@ -18,17 +18,21 @@ namespace GitHubNode.Commands
     internal sealed class InputDialog : DialogWindow
     {
         private const string _customTemplateText = "<Custom>";
+        private const string _settingsKey = "InputDialog";
 
         private readonly TextBox _textBox;
         private readonly RichTextBox _previewBox;
         private readonly ComboBox _templateComboBox;
+        private readonly TextBlock _templateLabel;
         private readonly TextBlock _statusText;
         private readonly Button _refreshButton;
+        private readonly Button _copyButton;
         private readonly Func<string, string> _previewGenerator;
         private readonly TemplateType? _templateType;
         private readonly string _defaultFileName;
         private bool _userModifiedFileName;
         private List<TemplateInfo> _templates;
+        private string _currentPreviewContent;
 
         /// <summary>
         /// Gets the text entered by the user.
@@ -116,14 +120,14 @@ namespace GitHubNode.Commands
             // Template dropdown (if template type specified)
             if (templateType != null)
             {
-                var templateLabel = new TextBlock
+                _templateLabel = new TextBlock
                 {
                     Text = "Template:",
                     Margin = new Thickness(0, 0, 0, 4)
                 };
-                templateLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-                Grid.SetRow(templateLabel, currentRow++);
-                grid.Children.Add(templateLabel);
+                _templateLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+                Grid.SetRow(_templateLabel, currentRow++);
+                grid.Children.Add(_templateLabel);
 
                 _templateComboBox = new ComboBox
                 {
@@ -216,16 +220,30 @@ namespace GitHubNode.Commands
                 _refreshButton = new Button
                 {
                     Content = "\u21BB", // Clockwise open circle arrow (refresh icon)
-                    Width = 20,
+                    Width = 16,
                     Height = 20,
                     Padding = new Thickness(0),
                     FontSize = 12,
-                    ToolTip = "Refresh templates from GitHub",
-                    Margin = new Thickness(0, 0, 8, 0)
+                    ToolTip = "Refresh templates from GitHub (F5)",
+                    Margin = new Thickness(0, 0, 4, 0)
                 };
-                _refreshButton.SetResourceReference(Button.StyleProperty, VsResourceKeys.ButtonStyleKey);
+                _refreshButton.SetResourceReference(StyleProperty, VsResourceKeys.ButtonStyleKey);
                 _refreshButton.Click += OnRefreshButtonClick;
                 statusPanel.Children.Add(_refreshButton);
+
+                _copyButton = new Button
+                {
+                    Content = "\uD83D\uDCCB", // Clipboard icon
+                    Width = 16,
+                    Height = 20,
+                    Padding = new Thickness(0),
+                    FontSize = 10,
+                    ToolTip = "Copy preview content to clipboard",
+                    Margin = new Thickness(0, 0, 8, 0)
+                };
+                _copyButton.SetResourceReference(StyleProperty, VsResourceKeys.ButtonStyleKey);
+                _copyButton.Click += OnCopyButtonClick;
+                statusPanel.Children.Add(_copyButton);
 
                 _statusText = new TextBlock
                 {
@@ -273,6 +291,63 @@ namespace GitHubNode.Commands
             Content = grid;
 
             Loaded += OnDialogLoaded;
+            Closing += OnDialogClosing;
+            KeyDown += OnKeyDown;
+
+            // Restore dialog size from settings
+            RestoreDialogSize();
+        }
+
+        private void RestoreDialogSize()
+        {
+            try
+            {
+                Dictionary<string, double> settings = GitHubNodePackage.Instance?.DialogSettings;
+                if (settings != null && settings.TryGetValue(_settingsKey + "_Width", out var width) &&
+                    settings.TryGetValue(_settingsKey + "_Height", out var height))
+                {
+                    if (width >= MinWidth && height >= MinHeight)
+                    {
+                        Width = width;
+                        Height = height;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore settings errors
+            }
+        }
+
+        private void SaveDialogSize()
+        {
+            try
+            {
+                Dictionary<string, double> settings = GitHubNodePackage.Instance?.DialogSettings;
+                if (settings != null)
+                {
+                    settings[_settingsKey + "_Width"] = ActualWidth;
+                    settings[_settingsKey + "_Height"] = ActualHeight;
+                }
+            }
+            catch
+            {
+                // Ignore settings errors
+            }
+        }
+
+        private void OnDialogClosing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            SaveDialogSize();
+        }
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F5 && _refreshButton != null && _refreshButton.IsEnabled)
+            {
+                OnRefreshButtonClick(_refreshButton, new RoutedEventArgs());
+                e.Handled = true;
+            }
         }
 
 #pragma warning disable VSTHRD100 // Avoid async void methods - this is an event handler with try-catch
@@ -327,6 +402,10 @@ namespace GitHubNode.Commands
                 if (_templates.Count > 0)
                 {
                     SetStatus($"Loaded {_templates.Count} templates");
+                    if (_templateLabel != null)
+                    {
+                        _templateLabel.Text = $"Template ({_templates.Count} available):";
+                    }
                 }
                 else
                 {
@@ -359,6 +438,22 @@ namespace GitHubNode.Commands
             catch
             {
                 // Handled in LoadTemplatesAsync
+            }
+        }
+
+        private void OnCopyButtonClick(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(_currentPreviewContent))
+            {
+                try
+                {
+                    Clipboard.SetText(_currentPreviewContent);
+                    SetStatus("Copied to clipboard");
+                }
+                catch
+                {
+                    SetStatus("Failed to copy");
+                }
             }
         }
 
@@ -416,6 +511,7 @@ namespace GitHubNode.Commands
                         _textBox.Text = _defaultFileName;
                     }
                     UpdatePreview();
+                    SetStatus("");
                 }
                 else if (_templates != null && _templateComboBox.SelectedIndex > 0)
                 {
@@ -432,11 +528,14 @@ namespace GitHubNode.Commands
                     {
                         SetStatus("Loading template content...");
                         template.Content = await AwesomeCopilotService.GetTemplateContentAsync(template);
-                        SetStatus($"Loaded {_templates.Count} templates");
                     }
 
                     SelectedTemplateContent = template.Content;
                     UpdatePreviewWithContent(template.Content);
+
+                    // Show file size in status
+                    var sizeKb = (template.Content?.Length ?? 0) / 1024.0;
+                    SetStatus(sizeKb >= 1.0 ? $"{sizeKb:F1} KB" : $"{template.Content?.Length ?? 0} bytes");
                 }
             }
             catch
@@ -457,6 +556,8 @@ namespace GitHubNode.Commands
             if (_previewGenerator == null)
             {
                 _previewBox.Document.Blocks.Clear();
+                _currentPreviewContent = null;
+                SetCopyEnabled(false);
                 return;
             }
 
@@ -469,6 +570,8 @@ namespace GitHubNode.Commands
             {
                 _previewBox.Document.Blocks.Clear();
                 _previewBox.Document.Blocks.Add(new Paragraph(new Run("(Preview unavailable)")));
+                _currentPreviewContent = null;
+                SetCopyEnabled(false);
             }
         }
 
@@ -476,6 +579,10 @@ namespace GitHubNode.Commands
         {
             if (_previewBox == null || content == null)
                 return;
+
+            // Track content for copy button
+            _currentPreviewContent = content;
+            SetCopyEnabled(true);
 
             // Limit preview to first ~50 lines for performance
             var lines = content.Split('\n');
@@ -492,165 +599,14 @@ namespace GitHubNode.Commands
             }
 
             // Apply syntax highlighting
-            FlowDocument document = CreateHighlightedDocument(displayContent, truncated);
-            _previewBox.Document = document;
+            _previewBox.Document = MarkdownSyntaxHighlighter.CreateHighlightedDocument(displayContent, truncated);
         }
 
-        private FlowDocument CreateHighlightedDocument(string content, bool truncated)
+        private void SetCopyEnabled(bool enabled)
         {
-            var document = new FlowDocument
+            if (_copyButton != null)
             {
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 12,
-                PagePadding = new Thickness(0)
-            };
-            document.SetResourceReference(FlowDocument.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
-
-            // VS theme colors for syntax highlighting
-            var headerBrush = new SolidColorBrush(Color.FromRgb(86, 156, 214));    // Blue for headers
-            var commentBrush = new SolidColorBrush(Color.FromRgb(106, 153, 85));   // Green for comments
-            var stringBrush = new SolidColorBrush(Color.FromRgb(206, 145, 120));   // Orange for strings/URLs
-            var keywordBrush = new SolidColorBrush(Color.FromRgb(197, 134, 192));  // Purple for YAML keys
-            var codeBrush = new SolidColorBrush(Color.FromRgb(156, 220, 254));     // Light blue for inline code
-
-            var lines = content.Split('\n');
-            var inCodeBlock = false;
-            var inYamlFrontMatter = false;
-            var yamlDashCount = 0;
-
-            foreach (var line in lines)
-            {
-                var paragraph = new Paragraph { Margin = new Thickness(0), LineHeight = 1 };
-                var trimmedLine = line.TrimEnd('\r');
-
-                // Track YAML front matter (between --- markers)
-                if (trimmedLine == "---")
-                {
-                    yamlDashCount++;
-                    inYamlFrontMatter = yamlDashCount == 1;
-                    paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = commentBrush });
-                }
-                // Track code blocks
-                else if (trimmedLine.StartsWith("```"))
-                {
-                    inCodeBlock = !inCodeBlock;
-                    paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = commentBrush });
-                }
-                else if (inCodeBlock)
-                {
-                    // Code block content - use default color
-                    paragraph.Inlines.Add(new Run(trimmedLine));
-                }
-                else if (inYamlFrontMatter)
-                {
-                    // YAML front matter - highlight keys
-                    HighlightYamlLine(paragraph, trimmedLine, keywordBrush, stringBrush);
-                }
-                // Markdown headers
-                else if (Regex.IsMatch(trimmedLine, @"^#{1,6}\s"))
-                {
-                    paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = headerBrush, FontWeight = FontWeights.Bold });
-                }
-                // HTML/XML comments
-                else if (trimmedLine.TrimStart().StartsWith("<!--") || trimmedLine.TrimStart().StartsWith("-->") ||
-                         (trimmedLine.Contains("<!--") && trimmedLine.Contains("-->")))
-                {
-                    paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = commentBrush });
-                }
-                // Lines with inline code or links
-                else if (trimmedLine.Contains("`") || trimmedLine.Contains("["))
-                {
-                    HighlightInlineElements(paragraph, trimmedLine, codeBrush, stringBrush);
-                }
-                else
-                {
-                    paragraph.Inlines.Add(new Run(trimmedLine));
-                }
-
-                document.Blocks.Add(paragraph);
-            }
-
-            if (truncated)
-            {
-                var truncatedPara = new Paragraph(new Run("\n... (truncated)") { Foreground = commentBrush })
-                {
-                    Margin = new Thickness(0)
-                };
-                document.Blocks.Add(truncatedPara);
-            }
-
-            return document;
-        }
-
-        private static void HighlightYamlLine(Paragraph paragraph, string line, Brush keyBrush, Brush valueBrush)
-        {
-            var colonIndex = line.IndexOf(':');
-            if (colonIndex > 0 && !line.TrimStart().StartsWith("-"))
-            {
-                var key = line.Substring(0, colonIndex + 1);
-                var value = line.Substring(colonIndex + 1);
-                paragraph.Inlines.Add(new Run(key) { Foreground = keyBrush });
-                if (!string.IsNullOrWhiteSpace(value))
-                {
-                    paragraph.Inlines.Add(new Run(value) { Foreground = valueBrush });
-                }
-            }
-            else
-            {
-                paragraph.Inlines.Add(new Run(line));
-            }
-        }
-
-        private static void HighlightInlineElements(Paragraph paragraph, string line, Brush codeBrush, Brush linkBrush)
-        {
-            // Simple highlighting for inline code (`code`) and links [text](url)
-            var i = 0;
-            while (i < line.Length)
-            {
-                // Check for inline code
-                if (line[i] == '`')
-                {
-                    var endIndex = line.IndexOf('`', i + 1);
-                    if (endIndex > i)
-                    {
-                        paragraph.Inlines.Add(new Run(line.Substring(i, endIndex - i + 1)) { Foreground = codeBrush });
-                        i = endIndex + 1;
-                        continue;
-                    }
-                }
-                // Check for markdown links [text](url)
-                else if (line[i] == '[')
-                {
-                    Match match = Regex.Match(line.Substring(i), @"^\[([^\]]+)\]\(([^)]+)\)");
-                    if (match.Success)
-                    {
-                        paragraph.Inlines.Add(new Run("["));
-                        paragraph.Inlines.Add(new Run(match.Groups[1].Value) { Foreground = linkBrush });
-                        paragraph.Inlines.Add(new Run("]("));
-                        paragraph.Inlines.Add(new Run(match.Groups[2].Value) { Foreground = linkBrush, TextDecorations = TextDecorations.Underline });
-                        paragraph.Inlines.Add(new Run(")"));
-                        i += match.Length;
-                        continue;
-                    }
-                }
-
-                // Find next special character or end of line
-                var nextSpecial = line.Length;
-                var nextBacktick = line.IndexOf('`', i + 1);
-                var nextBracket = line.IndexOf('[', i + 1);
-                if (nextBacktick >= 0 && nextBacktick < nextSpecial) nextSpecial = nextBacktick;
-                if (nextBracket >= 0 && nextBracket < nextSpecial) nextSpecial = nextBracket;
-
-                if (i < nextSpecial)
-                {
-                    paragraph.Inlines.Add(new Run(line.Substring(i, nextSpecial - i)));
-                    i = nextSpecial;
-                }
-                else
-                {
-                    paragraph.Inlines.Add(new Run(line[i].ToString()));
-                    i++;
-                }
+                _copyButton.IsEnabled = enabled;
             }
         }
 

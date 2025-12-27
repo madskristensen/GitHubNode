@@ -74,6 +74,8 @@
     <Compile Include="MEF\NodeChildrenManager.cs" />
     <Compile Include="MEF\Relationships.cs" />
     <Compile Include="Services\AwesomeCopilotService.cs" />
+    <Compile Include="Services\MarkdownSyntaxHighlighter.cs" />
+    <Compile Include="Services\SyntaxColors.cs" />
     <Compile Include="source.extension.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

@@ -43,6 +43,18 @@ namespace GitHubNode.Commands
         /// </summary>
         protected virtual TemplateType? TemplateType => null;
 
+        /// <summary>
+        /// Gets the required file extension for this file type (e.g., ".agent.md", ".prompt.md").
+        /// Return null if no specific extension is required.
+        /// </summary>
+        protected virtual string RequiredExtension => null;
+
+        /// <summary>
+        /// Gets the subfolder name within .github where files should be created (e.g., "agents", "prompts").
+        /// Return null if files should be created directly in the target folder.
+        /// </summary>
+        protected virtual string SubfolderName => null;
+
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -133,8 +145,70 @@ namespace GitHubNode.Commands
 
         /// <summary>
         /// Validates the user input. Return false to cancel the command.
+        /// Default implementation validates against RequiredExtension if set.
         /// </summary>
-        protected virtual System.Threading.Tasks.Task<bool> ValidateInputAsync(string input) => System.Threading.Tasks.Task.FromResult(true);
+        protected virtual async System.Threading.Tasks.Task<bool> ValidateInputAsync(string input)
+        {
+            if (!string.IsNullOrEmpty(RequiredExtension) &&
+                !input.EndsWith(RequiredExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                await VS.MessageBox.ShowWarningAsync("Invalid File Name", $"File names must end with {RequiredExtension}");
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Gets the subfolder path for this command, creating it from SubfolderName if set.
+        /// </summary>
+        protected string GetSubfolderPath(string targetFolder)
+        {
+            return string.IsNullOrEmpty(SubfolderName)
+                ? targetFolder
+                : Path.Combine(targetFolder, SubfolderName);
+        }
+
+        /// <summary>
+        /// Builds the file path using SubfolderName, sanitized input, and RequiredExtension.
+        /// </summary>
+        protected string BuildFilePath(string targetFolder, string userInput)
+        {
+            var subfolder = GetSubfolderPath(targetFolder);
+            var baseName = GetBaseName(userInput);
+            var fileName = CommandHelpers.SanitizeFileName(baseName) + (RequiredExtension ?? "");
+            return Path.Combine(subfolder, fileName);
+        }
+
+        /// <summary>
+        /// Extracts the base name from user input by stripping the required extension if present.
+        /// </summary>
+        protected string GetBaseName(string userInput)
+        {
+            if (string.IsNullOrEmpty(userInput))
+                return userInput;
+
+            // Strip the required extension if present
+            if (!string.IsNullOrEmpty(RequiredExtension) &&
+                userInput.EndsWith(RequiredExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                return userInput.Substring(0, userInput.Length - RequiredExtension.Length);
+            }
+
+            // For double extensions like .agent.md, strip both parts
+            var ext1 = Path.GetExtension(userInput);
+            if (!string.IsNullOrEmpty(ext1))
+            {
+                var withoutExt1 = Path.GetFileNameWithoutExtension(userInput);
+                var ext2 = Path.GetExtension(withoutExt1);
+                if (!string.IsNullOrEmpty(ext2))
+                {
+                    return Path.GetFileNameWithoutExtension(withoutExt1);
+                }
+                return withoutExt1;
+            }
+
+            return userInput;
+        }
 
         /// <summary>
         /// Gets the full file path where the file should be created.

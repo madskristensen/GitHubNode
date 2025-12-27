@@ -14,17 +14,17 @@ namespace GitHubNode.Commands
         protected override string DialogDefaultValue => "my-skill";
         protected override string ErrorMessagePrefix => "Failed to create skill";
         protected override TemplateType? TemplateType => Services.TemplateType.Skill;
+        protected override string SubfolderName => "skills";
 
         protected override string GetFilePath(string targetFolder, string userInput)
         {
-            var skillsFolder = Path.Combine(targetFolder, "Skills");
+            // Skills have a nested folder structure: skills/{skillName}/skill.md
+            var skillsFolder = GetSubfolderPath(targetFolder);
             var skillFolder = Path.Combine(skillsFolder, CommandHelpers.SanitizeFileName(userInput));
             return Path.Combine(skillFolder, "skill.md");
         }
 
         protected override string GetFileContent(string userInput)
-        {
-            return string.Format(FileTemplates.AgentSkill, userInput);
-        }
+            => string.Format(FileTemplates.AgentSkill, userInput);
     }
 }

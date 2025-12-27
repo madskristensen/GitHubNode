@@ -1,4 +1,3 @@
-using System.IO;
 using GitHubNode.Services;
 
 namespace GitHubNode.Commands
@@ -14,29 +13,13 @@ namespace GitHubNode.Commands
         protected override string DialogDefaultValue => "my-prompt.prompt.md";
         protected override string ErrorMessagePrefix => "Failed to create prompt file";
         protected override TemplateType? TemplateType => Services.TemplateType.Prompt;
-
-        protected override async System.Threading.Tasks.Task<bool> ValidateInputAsync(string input)
-        {
-            if (!input.EndsWith(".prompt.md", StringComparison.OrdinalIgnoreCase))
-            {
-                await VS.MessageBox.ShowWarningAsync("Invalid File Name", "Prompt file names must end with .prompt.md");
-                return false;
-            }
-            return true;
-        }
+        protected override string RequiredExtension => ".prompt.md";
+        protected override string SubfolderName => "prompts";
 
         protected override string GetFilePath(string targetFolder, string userInput)
-        {
-            var promptsFolder = Path.Combine(targetFolder, "Prompts");
-            var baseName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(userInput));
-            var fileName = CommandHelpers.SanitizeFileName(baseName) + ".prompt.md";
-            return Path.Combine(promptsFolder, fileName);
-        }
+            => BuildFilePath(targetFolder, userInput);
 
         protected override string GetFileContent(string userInput)
-        {
-            var baseName = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(userInput));
-            return string.Format(FileTemplates.PromptFile, baseName);
-        }
+            => string.Format(FileTemplates.PromptFile, GetBaseName(userInput));
     }
 }

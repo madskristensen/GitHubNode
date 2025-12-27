@@ -1,4 +1,3 @@
-using System.IO;
 using GitHubNode.Services;
 
 namespace GitHubNode.Commands
@@ -14,18 +13,13 @@ namespace GitHubNode.Commands
         protected override string DialogDefaultValue => "my-agent.agent.md";
         protected override string ErrorMessagePrefix => "Failed to create agent";
         protected override TemplateType? TemplateType => Services.TemplateType.Agent;
+        protected override string RequiredExtension => ".agent.md";
+        protected override string SubfolderName => "agents";
 
         protected override string GetFilePath(string targetFolder, string userInput)
-        {
-            var agentsFolder = Path.Combine(targetFolder, "agents");
-            // User input is already a complete filename (e.g., my-agent.agent.md)
-            var fileName = CommandHelpers.SanitizeFileName(Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(userInput))) + ".agent.md";
-            return Path.Combine(agentsFolder, fileName);
-        }
+            => BuildFilePath(targetFolder, userInput);
 
         protected override string GetFileContent(string userInput)
-        {
-            return string.Format(FileTemplates.CustomAgent, userInput);
-        }
+            => string.Format(FileTemplates.CustomAgent, GetBaseName(userInput));
     }
 }

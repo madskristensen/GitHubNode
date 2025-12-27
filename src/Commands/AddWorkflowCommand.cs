@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace GitHubNode.Commands
 {
     /// <summary>
@@ -12,17 +10,13 @@ namespace GitHubNode.Commands
         protected override string DialogPrompt => "Enter the workflow name:";
         protected override string DialogDefaultValue => "build";
         protected override string ErrorMessagePrefix => "Failed to create workflow";
+        protected override string RequiredExtension => ".yml";
+        protected override string SubfolderName => "workflows";
 
         protected override string GetFilePath(string targetFolder, string userInput)
-        {
-            var workflowsFolder = Path.Combine(targetFolder, "Workflows");
-            var fileName = CommandHelpers.SanitizeFileName(userInput) + ".yml";
-            return Path.Combine(workflowsFolder, fileName);
-        }
+            => BuildFilePath(targetFolder, userInput);
 
         protected override string GetFileContent(string userInput)
-        {
-            return string.Format(FileTemplates.GitHubActionsWorkflow, userInput);
-        }
+            => string.Format(FileTemplates.GitHubActionsWorkflow, GetBaseName(userInput));
     }
 }
