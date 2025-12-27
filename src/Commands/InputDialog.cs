@@ -1,7 +1,10 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Interop;
+using System.Windows.Media;
 using GitHubNode.Services;
 using Microsoft.VisualStudio.PlatformUI;
 
@@ -17,7 +20,7 @@ namespace GitHubNode.Commands
         private const string _customTemplateText = "<Custom>";
 
         private readonly TextBox _textBox;
-        private readonly TextBox _previewBox;
+        private readonly RichTextBox _previewBox;
         private readonly ComboBox _templateComboBox;
         private readonly TextBlock _statusText;
         private readonly Button _refreshButton;
@@ -176,21 +179,20 @@ namespace GitHubNode.Commands
                 Grid.SetRow(previewLabel, currentRow++);
                 grid.Children.Add(previewLabel);
 
-                _previewBox = new TextBox
+                _previewBox = new RichTextBox
                 {
                     IsReadOnly = true,
-                    TextWrapping = TextWrapping.Wrap,
-                    AcceptsReturn = true,
                     VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                     HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                    FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                    FontFamily = new FontFamily("Consolas"),
                     FontSize = 12,
                     Margin = new Thickness(0, 0, 0, 12),
-                    Padding = new Thickness(4)
+                    Padding = new Thickness(4),
+                    BorderThickness = new Thickness(1)
                 };
-                _previewBox.SetResourceReference(TextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
-                _previewBox.SetResourceReference(TextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
-                _previewBox.SetResourceReference(TextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+                _previewBox.SetResourceReference(RichTextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
+                _previewBox.SetResourceReference(RichTextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+                _previewBox.SetResourceReference(RichTextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
                 Grid.SetRow(_previewBox, currentRow++);
                 grid.Children.Add(_previewBox);
             }
@@ -214,10 +216,10 @@ namespace GitHubNode.Commands
                 _refreshButton = new Button
                 {
                     Content = "\u21BB", // Clockwise open circle arrow (refresh icon)
-                    Width = 23,
-                    Height = 23,
+                    Width = 20,
+                    Height = 20,
                     Padding = new Thickness(0),
-                    FontSize = 14,
+                    FontSize = 12,
                     ToolTip = "Refresh templates from GitHub",
                     Margin = new Thickness(0, 0, 8, 0)
                 };
@@ -454,7 +456,7 @@ namespace GitHubNode.Commands
 
             if (_previewGenerator == null)
             {
-                _previewBox.Text = string.Empty;
+                _previewBox.Document.Blocks.Clear();
                 return;
             }
 
@@ -465,7 +467,8 @@ namespace GitHubNode.Commands
             }
             catch
             {
-                _previewBox.Text = "(Preview unavailable)";
+                _previewBox.Document.Blocks.Clear();
+                _previewBox.Document.Blocks.Add(new Paragraph(new Run("(Preview unavailable)")));
             }
         }
 
@@ -476,13 +479,178 @@ namespace GitHubNode.Commands
 
             // Limit preview to first ~50 lines for performance
             var lines = content.Split('\n');
+            string displayContent;
+            var truncated = false;
             if (lines.Length > 50)
             {
-                _previewBox.Text = string.Join("\n", lines, 0, 50) + "\n\n... (truncated)";
+                displayContent = string.Join("\n", lines, 0, 50);
+                truncated = true;
             }
             else
             {
-                _previewBox.Text = content;
+                displayContent = content;
+            }
+
+            // Apply syntax highlighting
+            FlowDocument document = CreateHighlightedDocument(displayContent, truncated);
+            _previewBox.Document = document;
+        }
+
+        private FlowDocument CreateHighlightedDocument(string content, bool truncated)
+        {
+            var document = new FlowDocument
+            {
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 12,
+                PagePadding = new Thickness(0)
+            };
+            document.SetResourceReference(FlowDocument.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+
+            // VS theme colors for syntax highlighting
+            var headerBrush = new SolidColorBrush(Color.FromRgb(86, 156, 214));    // Blue for headers
+            var commentBrush = new SolidColorBrush(Color.FromRgb(106, 153, 85));   // Green for comments
+            var stringBrush = new SolidColorBrush(Color.FromRgb(206, 145, 120));   // Orange for strings/URLs
+            var keywordBrush = new SolidColorBrush(Color.FromRgb(197, 134, 192));  // Purple for YAML keys
+            var codeBrush = new SolidColorBrush(Color.FromRgb(156, 220, 254));     // Light blue for inline code
+
+            var lines = content.Split('\n');
+            var inCodeBlock = false;
+            var inYamlFrontMatter = false;
+            var yamlDashCount = 0;
+
+            foreach (var line in lines)
+            {
+                var paragraph = new Paragraph { Margin = new Thickness(0), LineHeight = 1 };
+                var trimmedLine = line.TrimEnd('\r');
+
+                // Track YAML front matter (between --- markers)
+                if (trimmedLine == "---")
+                {
+                    yamlDashCount++;
+                    inYamlFrontMatter = yamlDashCount == 1;
+                    paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = commentBrush });
+                }
+                // Track code blocks
+                else if (trimmedLine.StartsWith("```"))
+                {
+                    inCodeBlock = !inCodeBlock;
+                    paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = commentBrush });
+                }
+                else if (inCodeBlock)
+                {
+                    // Code block content - use default color
+                    paragraph.Inlines.Add(new Run(trimmedLine));
+                }
+                else if (inYamlFrontMatter)
+                {
+                    // YAML front matter - highlight keys
+                    HighlightYamlLine(paragraph, trimmedLine, keywordBrush, stringBrush);
+                }
+                // Markdown headers
+                else if (Regex.IsMatch(trimmedLine, @"^#{1,6}\s"))
+                {
+                    paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = headerBrush, FontWeight = FontWeights.Bold });
+                }
+                // HTML/XML comments
+                else if (trimmedLine.TrimStart().StartsWith("<!--") || trimmedLine.TrimStart().StartsWith("-->") ||
+                         (trimmedLine.Contains("<!--") && trimmedLine.Contains("-->")))
+                {
+                    paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = commentBrush });
+                }
+                // Lines with inline code or links
+                else if (trimmedLine.Contains("`") || trimmedLine.Contains("["))
+                {
+                    HighlightInlineElements(paragraph, trimmedLine, codeBrush, stringBrush);
+                }
+                else
+                {
+                    paragraph.Inlines.Add(new Run(trimmedLine));
+                }
+
+                document.Blocks.Add(paragraph);
+            }
+
+            if (truncated)
+            {
+                var truncatedPara = new Paragraph(new Run("\n... (truncated)") { Foreground = commentBrush })
+                {
+                    Margin = new Thickness(0)
+                };
+                document.Blocks.Add(truncatedPara);
+            }
+
+            return document;
+        }
+
+        private static void HighlightYamlLine(Paragraph paragraph, string line, Brush keyBrush, Brush valueBrush)
+        {
+            var colonIndex = line.IndexOf(':');
+            if (colonIndex > 0 && !line.TrimStart().StartsWith("-"))
+            {
+                var key = line.Substring(0, colonIndex + 1);
+                var value = line.Substring(colonIndex + 1);
+                paragraph.Inlines.Add(new Run(key) { Foreground = keyBrush });
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    paragraph.Inlines.Add(new Run(value) { Foreground = valueBrush });
+                }
+            }
+            else
+            {
+                paragraph.Inlines.Add(new Run(line));
+            }
+        }
+
+        private static void HighlightInlineElements(Paragraph paragraph, string line, Brush codeBrush, Brush linkBrush)
+        {
+            // Simple highlighting for inline code (`code`) and links [text](url)
+            var i = 0;
+            while (i < line.Length)
+            {
+                // Check for inline code
+                if (line[i] == '`')
+                {
+                    var endIndex = line.IndexOf('`', i + 1);
+                    if (endIndex > i)
+                    {
+                        paragraph.Inlines.Add(new Run(line.Substring(i, endIndex - i + 1)) { Foreground = codeBrush });
+                        i = endIndex + 1;
+                        continue;
+                    }
+                }
+                // Check for markdown links [text](url)
+                else if (line[i] == '[')
+                {
+                    Match match = Regex.Match(line.Substring(i), @"^\[([^\]]+)\]\(([^)]+)\)");
+                    if (match.Success)
+                    {
+                        paragraph.Inlines.Add(new Run("["));
+                        paragraph.Inlines.Add(new Run(match.Groups[1].Value) { Foreground = linkBrush });
+                        paragraph.Inlines.Add(new Run("]("));
+                        paragraph.Inlines.Add(new Run(match.Groups[2].Value) { Foreground = linkBrush, TextDecorations = TextDecorations.Underline });
+                        paragraph.Inlines.Add(new Run(")"));
+                        i += match.Length;
+                        continue;
+                    }
+                }
+
+                // Find next special character or end of line
+                var nextSpecial = line.Length;
+                var nextBacktick = line.IndexOf('`', i + 1);
+                var nextBracket = line.IndexOf('[', i + 1);
+                if (nextBacktick >= 0 && nextBacktick < nextSpecial) nextSpecial = nextBacktick;
+                if (nextBracket >= 0 && nextBracket < nextSpecial) nextSpecial = nextBracket;
+
+                if (i < nextSpecial)
+                {
+                    paragraph.Inlines.Add(new Run(line.Substring(i, nextSpecial - i)));
+                    i = nextSpecial;
+                }
+                else
+                {
+                    paragraph.Inlines.Add(new Run(line[i].ToString()));
+                    i++;
+                }
             }
         }
 

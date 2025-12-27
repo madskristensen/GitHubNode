@@ -29,8 +29,10 @@ namespace GitHubNode.Services
             // Ensure TLS 1.2 is enabled for GitHub API (required for .NET Framework 4.8)
             System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
 
-            var client = new HttpClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
+            var client = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
             client.DefaultRequestHeaders.Add("User-Agent", "GitHubNode-VSExtension");
             client.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
             return client;

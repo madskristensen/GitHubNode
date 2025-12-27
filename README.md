@@ -11,7 +11,7 @@ or get the [CI build][vsixgallery].
 
 ----------------------------------------
 
-Adds a **GitHub** node to Solution Explorer that displays the contents of your repository's `.github` folder. Quickly access and manage GitHub-specific files like workflows, Copilot instructions, agents, and more — all without leaving Visual Studio.
+Adds a **GitHub** node to Solution Explorer that displays the contents of your repository's `.github` folder. Quickly access and manage GitHub-specific files like workflows, Copilot instructions, agents, and more - all without leaving Visual Studio.
 
 ![GitHub Node in Solution Explorer](art/github-node.png)
 
@@ -33,36 +33,56 @@ Right-click on the GitHub node or any subfolder to quickly create new files:
 ![Context Menu](art/context-menu.png)
 
 #### Copilot Customization
-- **Add Copilot Instructions** — Create an instructions file (`.instructions.md`) in the `Instructions` folder
-- **Add Agent** — Create a custom Copilot agent (`.agent.md`) in the `Agents` folder
-- **Add Prompt** — Create a reusable prompt file (`.prompt.md`) in the `Prompts` folder
-- **Add Skill** — Create an agent skill folder with `skill.md` in the `Skills` folder
+- **Add Copilot Instructions** - Create an instructions file (`.instructions.md`) in the `Instructions` folder
+- **Add Agent** - Create a custom Copilot agent (`.agent.md`) in the `Agents` folder
+- **Add Prompt** - Create a reusable prompt file (`.prompt.md`) in the `Prompts` folder
+- **Add Skill** - Create an agent skill folder with `skill.md` in the `Skills` folder
 
 #### GitHub Configuration
-- **Add Workflow** — Create a new GitHub Actions workflow (`.yml`) in the `Workflows` folder
-- **Add Dependabot Config** — Create a `dependabot.yml` for automated dependency updates
-- **Add Issue Template** — Create an issue template in the `ISSUE_TEMPLATE` folder
-- **Add Pull Request Template** — Create a `PULL_REQUEST_TEMPLATE.md` file
+- **Add Workflow** - Create a new GitHub Actions workflow (`.yml`) in the `Workflows` folder
+- **Add Dependabot Config** - Create a `dependabot.yml` for automated dependency updates
+- **Add Issue Template** - Create an issue template in the `ISSUE_TEMPLATE` folder
+- **Add Pull Request Template** - Create a `PULL_REQUEST_TEMPLATE.md` file
 
-#### File & Folder Management
-- **Copy Path** — Copy the full path to the clipboard
-- **Rename** — Rename files or folders directly from the context menu
-- **Delete** — Delete files or folders with confirmation
+#### File and Folder Management
+- **Copy Path** - Copy the full path to the clipboard
+- **Rename** - Rename files or folders directly from the context menu
+- **Delete** - Delete files or folders with confirmation
 
 #### Utilities
-- **Open in File Explorer** — Open the folder in Windows File Explorer
-- **Open Containing Folder** — Open the parent folder and select the file in File Explorer
+- **Open in File Explorer** - Open the folder in Windows File Explorer
+- **Open Containing Folder** - Open the parent folder and select the file in File Explorer
+
+### Community Templates from awesome-copilot
+
+When creating Copilot agents, instructions, prompts, or skills, the dialog offers a curated collection of community templates sourced from the [awesome-copilot](https://github.com/github/awesome-copilot) repository.
+
+![Template Selection Dialog](art/template-dialog.png)
+
+Features:
+- **Template dropdown** - Browse and select from community-contributed templates
+- **Live preview** - See the template content with syntax highlighting before creating the file
+- **Auto-fill filename** - Template names are automatically used as the filename
+- **Refresh button** - Fetch the latest templates from GitHub
+- **Caching** - Templates are cached locally for 7 days for fast access
+
+The preview pane includes syntax highlighting for:
+- Markdown headers and formatting
+- YAML front matter (keys and values)
+- Code blocks and inline code
+- Links and URLs
+- HTML comments
 
 ### File Templates
 
 All created files come with helpful starter templates that follow best practices:
 
-- **Copilot Instructions** — Sections for project overview, coding standards, architecture, and testing
-- **Agents** — YAML frontmatter with name/description, plus sections for role, capabilities, and instructions
-- **Prompts** — YAML frontmatter with mode and description, plus context and task sections
-- **Skills** — YAML frontmatter with structured sections for purpose, instructions, and examples
-- **Workflows** — Basic GitHub Actions workflow with common triggers and job structure
-- **Issue Templates** — YAML frontmatter with description fields and standard issue sections
+- **Copilot Instructions** - Sections for project overview, coding standards, architecture, and testing
+- **Agents** - YAML frontmatter with name/description, plus sections for role, capabilities, and instructions
+- **Prompts** - YAML frontmatter with mode and description, plus context and task sections
+- **Skills** - YAML frontmatter with structured sections for purpose, instructions, and examples
+- **Workflows** - Basic GitHub Actions workflow with common triggers and job structure
+- **Issue Templates** - YAML frontmatter with description fields and standard issue sections
 
 ## Requirements
 
@@ -77,6 +97,6 @@ The extension uses Visual Studio's Solution Explorer extensibility to add an att
 
 If you find this extension useful, please:
 
-- ⭐ [Rate it on the Marketplace][marketplace]
-- 🐛 [Report issues or request features][repo]
-- 💝 [Sponsor development](https://github.com/sponsors/madskristensen)
+- [Rate it on the Marketplace][marketplace]
+- [Report issues or request features][repo]
+- [Sponsor development](https://github.com/sponsors/madskristensen)
