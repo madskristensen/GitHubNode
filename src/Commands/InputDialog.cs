@@ -409,7 +409,7 @@ namespace GitHubNode.Commands
                 }
                 else
                 {
-                    SetStatus("No templates found");
+                    SetStatus("No templates available (offline?)");
                 }
             }
             catch

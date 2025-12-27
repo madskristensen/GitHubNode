@@ -47,7 +47,7 @@ namespace GitHubNode.Services
             var cacheFile = GetCacheFilePath(templateType);
 
             // Check cache first
-            List<TemplateInfo> cached = LoadFromCache(cacheFile);
+            List<TemplateInfo> cached = LoadFromCache(cacheFile, expiredOk: false);
             if (cached != null)
             {
                 return cached;
@@ -56,8 +56,20 @@ namespace GitHubNode.Services
             // Fetch from GitHub API
             List<TemplateInfo> templates = await FetchTemplatesFromGitHubAsync(folderName, templateType);
 
-            // Save to cache
-            SaveToCache(cacheFile, templates);
+            if (templates.Count > 0)
+            {
+                // Save to cache only if we got results
+                SaveToCache(cacheFile, templates);
+            }
+            else
+            {
+                // API failed or returned empty - try expired cache as fallback
+                List<TemplateInfo> expiredCache = LoadFromCache(cacheFile, expiredOk: true);
+                if (expiredCache != null && expiredCache.Count > 0)
+                {
+                    return expiredCache;
+                }
+            }
 
             return templates;
         }
@@ -118,7 +130,7 @@ namespace GitHubNode.Services
             return Path.Combine(_cacheDirectory, $"{templateType}.cache");
         }
 
-        private static List<TemplateInfo> LoadFromCache(string cacheFile)
+        private static List<TemplateInfo> LoadFromCache(string cacheFile, bool expiredOk)
         {
             try
             {
@@ -128,15 +140,15 @@ namespace GitHubNode.Services
                 }
 
                 var fileInfo = new FileInfo(cacheFile);
-                if (fileInfo.LastWriteTimeUtc < DateTime.UtcNow.AddDays(-_cacheExpirationDays))
+                if (!expiredOk && fileInfo.LastWriteTimeUtc < DateTime.UtcNow.AddDays(-_cacheExpirationDays))
                 {
-                    // Cache expired
+                    // Cache expired and caller doesn't want expired data
                     return null;
                 }
 
                 var lines = File.ReadAllLines(cacheFile);
 
-                // If cache is empty (0 templates), treat as expired to re-fetch
+                // If cache is empty (0 templates), treat as invalid
                 if (lines.Length == 0)
                 {
                     return null;
@@ -169,7 +181,6 @@ namespace GitHubNode.Services
 
         private static void SaveToCache(string cacheFile, List<TemplateInfo> templates)
         {
-            // Don't cache empty results - they might be due to API failures
             if (templates == null || templates.Count == 0)
             {
                 return;
