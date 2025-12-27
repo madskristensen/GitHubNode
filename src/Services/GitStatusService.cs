@@ -118,15 +118,16 @@ namespace GitHubNode.Services
             }
 
             // Refresh status for all files if cache is stale
-            DateTime now = DateTime.UtcNow;
-            if (now - _lastRefresh > _cacheExpiration)
+            if (DateTime.UtcNow - _lastRefresh > _cacheExpiration)
             {
                 lock (_refreshLock)
                 {
+                    // Recapture 'now' inside the lock
+                    DateTime now = DateTime.UtcNow;
                     if (now - _lastRefresh > _cacheExpiration)
                     {
                         RefreshStatusCache(repoRoot);
-                        _lastRefresh = DateTime.UtcNow;
+                        _lastRefresh = now;
                     }
                 }
             }
@@ -177,15 +178,16 @@ namespace GitHubNode.Services
             }
 
             // Refresh status for all files in .github folder if cache is stale
-            DateTime now = DateTime.UtcNow;
-            if (now - _lastRefresh > _cacheExpiration)
+            if (DateTime.UtcNow - _lastRefresh > _cacheExpiration)
             {
                 lock (_refreshLock)
                 {
+                    // Recapture 'now' inside the lock
+                    DateTime now = DateTime.UtcNow;
                     if (now - _lastRefresh > _cacheExpiration)
                     {
                         RefreshStatusCache(repoRoot);
-                        _lastRefresh = DateTime.UtcNow;
+                        _lastRefresh = now;
                     }
                 }
             }
@@ -413,3 +415,4 @@ namespace GitHubNode.Services
         }
     }
 }
+

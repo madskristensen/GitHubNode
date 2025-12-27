@@ -18,6 +18,10 @@ namespace GitHubNode.Services
         private static readonly SolidColorBrush _keywordBrush = SyntaxColors.CreateBrush(SyntaxColors.Keyword);
         private static readonly SolidColorBrush _codeBrush = SyntaxColors.CreateBrush(SyntaxColors.Code);
 
+        // Pre-compiled regex patterns for better performance
+        private static readonly Regex _headerRegex = new(@"^#{1,6}\s", RegexOptions.Compiled);
+        private static readonly Regex _linkRegex = new(@"^\[([^\]]+)\]\(([^)]+)\)", RegexOptions.Compiled);
+
         /// <summary>
         /// Creates a FlowDocument with syntax highlighting for the given markdown content.
         /// </summary>
@@ -37,7 +41,7 @@ namespace GitHubNode.Services
             var lines = content.Split('\n');
             var inCodeBlock = false;
             var inYamlFrontMatter = false;
-            var yamlDashCount = 0;
+            var yamlFrontMatterStarted = false;
 
             foreach (var line in lines)
             {
@@ -47,8 +51,16 @@ namespace GitHubNode.Services
                 // Track YAML front matter (between --- markers)
                 if (trimmedLine == "---")
                 {
-                    yamlDashCount++;
-                    inYamlFrontMatter = yamlDashCount == 1;
+                    if (!yamlFrontMatterStarted)
+                    {
+                        inYamlFrontMatter = true;
+                        yamlFrontMatterStarted = true;
+                    }
+                    else if (inYamlFrontMatter)
+                    {
+                        inYamlFrontMatter = false;
+                    }
+                    // After YAML front matter is closed, treat further '---' as normal lines
                     paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = _commentBrush });
                 }
                 // Track code blocks
@@ -68,7 +80,7 @@ namespace GitHubNode.Services
                     HighlightYamlLine(paragraph, trimmedLine);
                 }
                 // Markdown headers
-                else if (Regex.IsMatch(trimmedLine, @"^#{1,6}\s"))
+                else if (_headerRegex.IsMatch(trimmedLine))
                 {
                     paragraph.Inlines.Add(new Run(trimmedLine) { Foreground = _headerBrush, FontWeight = FontWeights.Bold });
                 }
@@ -142,7 +154,7 @@ namespace GitHubNode.Services
                 // Check for markdown links [text](url)
                 else if (line[i] == '[')
                 {
-                    Match match = Regex.Match(line.Substring(i), @"^\[([^\]]+)\]\(([^)]+)\)");
+                    Match match = _linkRegex.Match(line.Substring(i));
                     if (match.Success)
                     {
                         paragraph.Inlines.Add(new Run("["));
@@ -176,3 +188,4 @@ namespace GitHubNode.Services
         }
     }
 }
+

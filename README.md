@@ -58,6 +58,19 @@ When you right-click on a specific folder (e.g., `agents`, `prompts`, `skills`, 
 #### Utilities
 - **Open in File Explorer** - Open the folder in Windows File Explorer
 - **Open Containing Folder** - Open the parent folder and select the file in File Explorer
+- **Open on GitHub** - Open the file or folder directly on GitHub.com in your browser
+
+### Git Status Icons
+
+Files display Git status icons, similar to Solution Explorer:
+
+- **Unchanged** - Files committed to the repository with no changes
+- **Modified** - Files with local changes
+- **Staged** - Files staged for commit
+- **Added/Untracked** - New files not yet tracked by Git
+- **Deleted** - Files marked for deletion
+- **Conflict** - Files with merge conflicts
+- **Renamed** - Files that have been renamed
 
 ### Community Templates from awesome-copilot
 

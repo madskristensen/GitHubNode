@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -9,6 +10,14 @@ namespace GitHubNode.Services
     /// </summary>
     internal static class GitHubUrlService
     {
+        // Pre-compiled regex patterns for better performance
+        private static readonly Regex _sshUrlRegex = new(@"git@github\.com:(.+?)(?:\.git)?$", RegexOptions.Compiled);
+        private static readonly Regex _httpsUrlRegex = new(@"https://github\.com/(.+?)(?:\.git)?$", RegexOptions.Compiled);
+
+        // Cache for git repository information (remote URL and branch per repo root)
+        private static readonly ConcurrentDictionary<string, (string RemoteUrl, string Branch, DateTime Timestamp)> _repoInfoCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(5);
+
         /// <summary>
         /// Gets the GitHub URL for a local file or folder path.
         /// </summary>
@@ -77,28 +86,39 @@ namespace GitHubNode.Services
 
         private static string GetGitRemoteUrl(string repoRoot)
         {
-            try
-            {
-                var result = RunGitCommand(repoRoot, "config --get remote.origin.url");
-                return result?.Trim();
-            }
-            catch
-            {
-                return null;
-            }
+            (var RemoteUrl, _) = GetCachedRepoInfo(repoRoot);
+            return RemoteUrl;
         }
 
         private static string GetGitBranch(string repoRoot)
         {
+            (_, var Branch) = GetCachedRepoInfo(repoRoot);
+            return Branch;
+        }
+
+        private static (string RemoteUrl, string Branch) GetCachedRepoInfo(string repoRoot)
+        {
+            if (_repoInfoCache.TryGetValue(repoRoot, out (string RemoteUrl, string Branch, DateTime Timestamp) cached) &&
+                DateTime.UtcNow - cached.Timestamp < _cacheExpiration)
+            {
+                return (cached.RemoteUrl, cached.Branch);
+            }
+
+            string remoteUrl = null;
+            string branch = null;
+
             try
             {
-                var result = RunGitCommand(repoRoot, "rev-parse --abbrev-ref HEAD");
-                return result?.Trim();
+                remoteUrl = RunGitCommand(repoRoot, "config --get remote.origin.url")?.Trim();
+                branch = RunGitCommand(repoRoot, "rev-parse --abbrev-ref HEAD")?.Trim();
             }
             catch
             {
-                return null;
+                // Ignore errors - will return null values
             }
+
+            _repoInfoCache[repoRoot] = (remoteUrl, branch, DateTime.UtcNow);
+            return (remoteUrl, branch);
         }
 
         private static string RunGitCommand(string workingDirectory, string arguments)
@@ -136,14 +156,14 @@ namespace GitHubNode.Services
             }
 
             // Handle SSH format: git@github.com:owner/repo.git
-            Match sshMatch = Regex.Match(remoteUrl, @"git@github\.com:(.+?)(?:\.git)?$");
+            Match sshMatch = _sshUrlRegex.Match(remoteUrl);
             if (sshMatch.Success)
             {
                 return $"https://github.com/{sshMatch.Groups[1].Value}";
             }
 
             // Handle HTTPS format: https://github.com/owner/repo.git
-            Match httpsMatch = Regex.Match(remoteUrl, @"https://github\.com/(.+?)(?:\.git)?$");
+            Match httpsMatch = _httpsUrlRegex.Match(remoteUrl);
             if (httpsMatch.Success)
             {
                 return $"https://github.com/{httpsMatch.Groups[1].Value}";
