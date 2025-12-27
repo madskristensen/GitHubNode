@@ -67,7 +67,9 @@ namespace GitHubNode.Commands
             string userInput = null;
             if (DialogTitle != null)
             {
-                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue);
+                // Create preview generator that uses the subclass's GetFileContent method
+                Func<string, string> previewGenerator = input => GetFileContent(input);
+                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator);
                 if (dialog.ShowModal() != true || string.IsNullOrWhiteSpace(dialog.InputText))
                 {
                     return;
