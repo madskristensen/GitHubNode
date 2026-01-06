@@ -64,6 +64,9 @@
     <Compile Include="Commands\OpenInFileExplorerCommand.cs" />
     <Compile Include="Commands\OpenOnGitHubCommand.cs" />
     <Compile Include="Commands\RenameCommand.cs" />
+    <Compile Include="Commands\AddMcpConfigCommand.cs" />
+    <Compile Include="Commands\McpLocationPickerDialog.cs" />
+    <Compile Include="Commands\RefreshMcpCommand.cs" />
     <Compile Include="FileTemplates.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="GitHubNodePackage.cs" />
@@ -77,11 +80,21 @@
     <Compile Include="MEF\GitHubSourceProvider.cs" />
     <Compile Include="MEF\NodeChildrenManager.cs" />
     <Compile Include="MEF\Relationships.cs" />
+    <Compile Include="MEF\McpConfigNode.cs" />
+    <Compile Include="MEF\McpContextMenuController.cs" />
+    <Compile Include="MEF\McpHintNode.cs" />
+    <Compile Include="MEF\McpInvocationController.cs" />
+    <Compile Include="MEF\McpNodeBase.cs" />
+    <Compile Include="MEF\McpRootNode.cs" />
+    <Compile Include="MEF\McpServerNode.cs" />
+    <Compile Include="MEF\McpSolutionCollectionSource.cs" />
+    <Compile Include="MEF\McpSourceProvider.cs" />
     <Compile Include="Services\AwesomeCopilotService.cs" />
     <Compile Include="Services\GitHubUrlService.cs" />
     <Compile Include="Services\GitStatusService.cs" />
     <Compile Include="Services\MarkdownSyntaxHighlighter.cs" />
     <Compile Include="Services\SyntaxColors.cs" />
+    <Compile Include="Services\McpConfigService.cs" />
     <Compile Include="source.extension.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
