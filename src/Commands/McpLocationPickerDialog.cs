@@ -109,9 +109,9 @@ namespace GitHubNode.Commands
                     var scText = new TextBlock
                     {
                         Text = " - Source Controlled",
-                        Margin = new Thickness(4, 0, 0, 0)
+                        Margin = new Thickness(4, 0, 0, 0),
+                        Foreground = System.Windows.Media.Brushes.Green
                     };
-                    scText.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.SystemGreenTextBrushKey);
                     headerPanel.Children.Add(scText);
                 }
 

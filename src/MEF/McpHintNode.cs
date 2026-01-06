@@ -30,7 +30,7 @@ namespace GitHubNode.SolutionExplorer
         // ITreeDisplayItem
         public override string Text => "(No configurations found)";
         public override string ToolTipText => "Right-click the MCP Servers node to add a configuration";
-        public override FontStyle FontStyle => FontStyles.Italic;
+        public override System.Windows.FontStyle FontStyle => System.Windows.FontStyles.Italic;
 
         // ITreeDisplayItemWithImages
         public ImageMoniker IconMoniker => KnownMonikers.StatusInformation;

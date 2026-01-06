@@ -59,8 +59,8 @@ namespace GitHubNode.SolutionExplorer
         public override string ToolTipText => $"{_location.FilePath}\n\n{_location.Description}";
 
         // ITreeDisplayItemWithImages
-        public ImageMoniker IconMoniker => KnownMonikers.JSONFile;
-        public ImageMoniker ExpandedIconMoniker => KnownMonikers.JSONFile;
+        public ImageMoniker IconMoniker => KnownMonikers.JSScript;
+        public ImageMoniker ExpandedIconMoniker => KnownMonikers.JSScript;
         public ImageMoniker OverlayIconMoniker => default;
         public ImageMoniker StateIconMoniker => _location.IsSourceControlled ? KnownMonikers.SourceControl : default;
 

@@ -33,8 +33,8 @@ namespace GitHubNode.SolutionExplorer
         public virtual string ToolTipText => Text;
         public virtual object ToolTipContent => null;
         public virtual string StateToolTipText => null;
-        public virtual FontStyle FontStyle => FontStyles.Normal;
-        public virtual FontWeight FontWeight => FontWeights.Normal;
+        public virtual System.Windows.FontStyle FontStyle => System.Windows.FontStyles.Normal;
+        public virtual System.Windows.FontWeight FontWeight => System.Windows.FontWeights.Normal;
         public virtual bool IsCut => false;
 
         // INotifyPropertyChanged

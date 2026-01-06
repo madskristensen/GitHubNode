@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace GitHubNode.Services
 {
@@ -140,18 +140,27 @@ namespace GitHubNode.Services
             try
             {
                 var json = File.ReadAllText(filePath);
-                using var document = JsonDocument.Parse(json, new JsonDocumentOptions
-                {
-                    AllowTrailingCommas = true,
-                    CommentHandling = JsonCommentHandling.Skip
-                });
 
-                if (document.RootElement.TryGetProperty("servers", out var serversElement) &&
-                    serversElement.ValueKind == JsonValueKind.Object)
+                // Find the "servers" object and extract its keys
+                // This is a simple regex-based approach that works for well-formed MCP configs
+                var serversMatch = Regex.Match(json, @"""servers""\s*:\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}", RegexOptions.Singleline);
+                if (serversMatch.Success)
                 {
-                    foreach (var server in serversElement.EnumerateObject())
+                    var serversContent = serversMatch.Groups[1].Value;
+
+                    // Extract server names (keys at the top level of the servers object)
+                    var keyMatches = Regex.Matches(serversContent, @"""([^""]+)""\s*:");
+                    foreach (Match keyMatch in keyMatches)
                     {
-                        serverNames.Add(server.Name);
+                        var key = keyMatch.Groups[1].Value;
+                        // Skip nested properties by checking if this is a top-level key
+                        var beforeKey = serversContent.Substring(0, keyMatch.Index);
+                        var openBraces = beforeKey.Split('{').Length - 1;
+                        var closeBraces = beforeKey.Split('}').Length - 1;
+                        if (openBraces == closeBraces)
+                        {
+                            serverNames.Add(key);
+                        }
                     }
                 }
             }
