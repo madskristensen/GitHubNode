@@ -53,6 +53,14 @@
           <CanonicalName>.GitHubNode.AddGitHubFile</CanonicalName>
         </Strings>
       </Menu>
+      
+      <!-- MCP Root Node Context Menu -->
+      <Menu guid="GitHubNode" id="McpRootContextMenu" priority="0x0100" type="Context">
+        <Strings>
+          <ButtonText>MCP Root Context Menu</ButtonText>
+          <CanonicalName>.GitHubNode.McpRootMenu</CanonicalName>
+        </Strings>
+      </Menu>
     </Menus>
     
     <Groups>
@@ -100,6 +108,14 @@
       <!-- GitHub submenu group -->
       <Group guid="GitHubNode" id="GitHubSubMenuGroup" priority="0x0100">
         <Parent guid="GitHubNode" id="AddGitHubSubMenu"/>
+      </Group>
+      
+      <!-- MCP root context menu groups -->
+      <Group guid="GitHubNode" id="McpRootAddGroup" priority="0x0100">
+        <Parent guid="GitHubNode" id="McpRootContextMenu"/>
+      </Group>
+      <Group guid="GitHubNode" id="McpRootActionsGroup" priority="0x0200">
+        <Parent guid="GitHubNode" id="McpRootContextMenu"/>
       </Group>
     </Groups>
 
@@ -350,6 +366,28 @@
             <CanonicalName>.GitHubNode.OpenOnGitHubFolder</CanonicalName>
           </Strings>
         </Button>
+      
+        <!-- Add MCP Configuration -->
+        <Button guid="GitHubNode" id="AddMcpConfig" priority="0x0100" type="Button">
+          <Parent guid="GitHubNode" id="McpRootAddGroup" />
+          <Icon guid="ImageCatalogGuid" id="AddDocument" />
+          <CommandFlag>IconIsMoniker</CommandFlag>
+          <Strings>
+            <ButtonText>Add MCP Configuration...</ButtonText>
+            <CanonicalName>.GitHubNode.AddMcpConfig</CanonicalName>
+          </Strings>
+        </Button>
+      
+        <!-- Refresh MCP -->
+        <Button guid="GitHubNode" id="RefreshMcp" priority="0x0100" type="Button">
+          <Parent guid="GitHubNode" id="McpRootActionsGroup" />
+          <Icon guid="ImageCatalogGuid" id="Refresh" />
+          <CommandFlag>IconIsMoniker</CommandFlag>
+          <Strings>
+            <ButtonText>Refresh</ButtonText>
+            <CanonicalName>.GitHubNode.RefreshMcp</CanonicalName>
+          </Strings>
+        </Button>
       </Buttons>
     </Commands>
 
@@ -396,6 +434,7 @@
       <!-- Submenus -->
       <IDSymbol name="AddCopilotSubMenu" value="0x0010" />
       <IDSymbol name="AddGitHubSubMenu" value="0x0011" />
+      <IDSymbol name="McpRootContextMenu" value="0x0012" />
       
       <!-- Groups -->
       <IDSymbol name="RootAddGroup" value="0x0020" />
@@ -410,6 +449,8 @@
       <IDSymbol name="FileGitHubGroup" value="0x0042" />
       <IDSymbol name="CopilotSubMenuGroup" value="0x0050" />
       <IDSymbol name="GitHubSubMenuGroup" value="0x0051" />
+      <IDSymbol name="McpRootAddGroup" value="0x0060" />
+      <IDSymbol name="McpRootActionsGroup" value="0x0061" />
       
       <!-- Commands -->
             <IDSymbol name="AddCopilotInstructions" value="0x0100" />
@@ -434,6 +475,8 @@
             <IDSymbol name="AddSecurity" value="0x0113" />
             <IDSymbol name="OpenOnGitHubFile" value="0x0114" />
             <IDSymbol name="OpenOnGitHubFolder" value="0x0115" />
+            <IDSymbol name="AddMcpConfig" value="0x0116" />
+            <IDSymbol name="RefreshMcp" value="0x0117" />
           </GuidSymbol>
         </Symbols>
       </CommandTable>

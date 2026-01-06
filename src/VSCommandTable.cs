@@ -27,6 +27,7 @@ namespace GitHubNode
         public const int GitHubFileContextMenu = 0x0003;
         public const int AddCopilotSubMenu = 0x0010;
         public const int AddGitHubSubMenu = 0x0011;
+        public const int McpRootContextMenu = 0x0012;
         public const int RootAddGroup = 0x0020;
         public const int RootActionsGroup = 0x0021;
         public const int RootGitHubGroup = 0x0022;
@@ -39,6 +40,8 @@ namespace GitHubNode
         public const int FileGitHubGroup = 0x0042;
         public const int CopilotSubMenuGroup = 0x0050;
         public const int GitHubSubMenuGroup = 0x0051;
+        public const int McpRootAddGroup = 0x0060;
+        public const int McpRootActionsGroup = 0x0061;
         public const int AddCopilotInstructions = 0x0100;
         public const int AddAgent = 0x0101;
         public const int AddPrompt = 0x0102;
@@ -61,5 +64,7 @@ namespace GitHubNode
         public const int AddSecurity = 0x0113;
         public const int OpenOnGitHubFile = 0x0114;
         public const int OpenOnGitHubFolder = 0x0115;
+        public const int AddMcpConfig = 0x0116;
+        public const int RefreshMcp = 0x0117;
     }
 }
