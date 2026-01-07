@@ -23,7 +23,10 @@ namespace GitHubNode.Commands
 
         public McpLocationPickerDialog(string solutionDirectory)
         {
-            _locations = McpConfigService.GetAllLocations(solutionDirectory);
+            var allLocations = McpConfigService.GetAllLocations(solutionDirectory);
+            
+            // Remove Cursor from picker but keep it discoverable in the tree
+            _locations = allLocations.FindAll(loc => !loc.FilePath.Contains("\\.cursor\\"));
 
             Title = "Add MCP Configuration";
             Width = 500;

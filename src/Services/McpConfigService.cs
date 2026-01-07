@@ -141,25 +141,99 @@ namespace GitHubNode.Services
             {
                 var json = File.ReadAllText(filePath);
 
-                // Find the "servers" object and extract its keys
-                // This is a simple regex-based approach that works for well-formed MCP configs
-                var serversMatch = Regex.Match(json, @"""servers""\s*:\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}", RegexOptions.Singleline);
-                if (serversMatch.Success)
+                // Find the "servers" object
+                var serversIndex = json.IndexOf("\"servers\"");
+                if (serversIndex == -1)
                 {
-                    var serversContent = serversMatch.Groups[1].Value;
+                    return serverNames;
+                }
 
-                    // Extract server names (keys at the top level of the servers object)
-                    var keyMatches = Regex.Matches(serversContent, @"""([^""]+)""\s*:");
-                    foreach (Match keyMatch in keyMatches)
+                // Find the opening brace of the servers object
+                var openBraceIndex = json.IndexOf('{', serversIndex);
+                if (openBraceIndex == -1)
+                {
+                    return serverNames;
+                }
+
+                // Parse the servers object to find top-level keys
+                var depth = 0;
+                var inString = false;
+                var escapeNext = false;
+                var currentKey = "";
+                var capturingKey = false;
+
+                for (var i = openBraceIndex; i < json.Length; i++)
+                {
+                    var c = json[i];
+
+                    if (escapeNext)
                     {
-                        var key = keyMatch.Groups[1].Value;
-                        // Skip nested properties by checking if this is a top-level key
-                        var beforeKey = serversContent.Substring(0, keyMatch.Index);
-                        var openBraces = beforeKey.Split('{').Length - 1;
-                        var closeBraces = beforeKey.Split('}').Length - 1;
-                        if (openBraces == closeBraces)
+                        if (capturingKey)
                         {
-                            serverNames.Add(key);
+                            currentKey += c;
+                        }
+                        escapeNext = false;
+                        continue;
+                    }
+
+                    if (c == '\\')
+                    {
+                        escapeNext = true;
+                        continue;
+                    }
+
+                    if (c == '"')
+                    {
+                        if (inString)
+                        {
+                            inString = false;
+                            if (capturingKey && depth == 1)
+                            {
+                                capturingKey = false;
+                            }
+                        }
+                        else
+                        {
+                            inString = true;
+                            if (depth == 1 && !capturingKey)
+                            {
+                                // Check if next non-whitespace is ':'
+                                var nextColonIndex = json.IndexOf(':', i);
+                                var nextBraceIndex = json.IndexOf('{', i);
+                                if (nextColonIndex != -1 && (nextBraceIndex == -1 || nextColonIndex < nextBraceIndex))
+                                {
+                                    capturingKey = true;
+                                    currentKey = "";
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (inString)
+                    {
+                        if (capturingKey)
+                        {
+                            currentKey += c;
+                        }
+                        continue;
+                    }
+
+                    if (c == '{')
+                    {
+                        depth++;
+                        if (depth == 2 && !string.IsNullOrEmpty(currentKey))
+                        {
+                            serverNames.Add(currentKey);
+                            currentKey = "";
+                        }
+                    }
+                    else if (c == '}')
+                    {
+                        depth--;
+                        if (depth == 0)
+                        {
+                            break;
                         }
                     }
                 }
