@@ -15,7 +15,6 @@ namespace GitHubNode
     [Guid(PackageGuids.GitHubNodeString)]
     [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionHasSingleProject_string, PackageAutoLoadFlags.BackgroundLoad)]
     [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionHasMultipleProjects_string, PackageAutoLoadFlags.BackgroundLoad)]
-    [ProvideBindingPath]
     public sealed class GitHubNodePackage : ToolkitPackage
     {
         /// <summary>

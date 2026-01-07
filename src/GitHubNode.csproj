@@ -67,7 +67,6 @@
     <Compile Include="Commands\AddMcpConfigCommand.cs" />
     <Compile Include="Commands\McpLocationPickerDialog.cs" />
     <Compile Include="Commands\RefreshMcpCommand.cs" />
-    <Compile Include="CustomMonikers.cs" />
     <Compile Include="FileTemplates.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="GitHubNodePackage.cs" />
@@ -108,11 +107,6 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Resources\mcp.16.16.png" />
-    <Resource Include="Resources\mcp.32.32.png" />
-    <Content Include="ImageCatalog.imagemanifest">
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
       <Generator>VsixManifestGenerator</Generator>
@@ -146,6 +140,9 @@
     <PackageReference Include="Community.VisualStudio.VSCT" Version="16.0.29.6" PrivateAssets="all" />
     <PackageReference Include="Community.VisualStudio.Toolkit.17" Version="17.0.545" ExcludeAssets="Runtime">
       <IncludeAssets>compile; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.VisualStudio.SDK">
+      <Version>17.14.40265</Version>
     </PackageReference>
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.14.2120">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

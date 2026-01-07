@@ -1,7 +1,6 @@
-﻿using GitHubNode;
-
 using System.Reflection;
 using System.Runtime.InteropServices;
+using GitHubNode;
 
 [assembly: AssemblyTitle(Vsix.Name)]
 [assembly: AssemblyDescription(Vsix.Description)]
@@ -16,6 +15,8 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyVersion(Vsix.Version)]
 [assembly: AssemblyFileVersion(Vsix.Version)]
+
+[assembly: ProvideCodeBase(AssemblyName = "GitHubNode")]
 
 namespace System.Runtime.CompilerServices
 {

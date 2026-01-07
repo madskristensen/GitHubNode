@@ -11,7 +11,7 @@ or get the [CI build][vsixgallery].
 
 ----------------------------------------
 
-Adds a **GitHub** node to Solution Explorer that displays the contents of your repository's `.github` folder. Quickly access and manage GitHub-specific files like workflows, Copilot instructions, agents, and more - all without leaving Visual Studio.
+Adds **GitHub** and **MCP Servers** nodes to Solution Explorer. Quickly access and manage GitHub-specific files like workflows, Copilot instructions, and agents, plus Model Context Protocol (MCP) server configurations - all without leaving Visual Studio.
 
 ![GitHub Node in Solution Explorer](art/github-node.png)
 
@@ -62,7 +62,7 @@ When you right-click on a specific folder (e.g., `agents`, `prompts`, `skills`, 
 
 ### Git Status Icons
 
-Files display Git status icons, similar to Solution Explorer:
+Files and folders display Git status icons, similar to Solution Explorer:
 
 - **Unchanged** - Files committed to the repository with no changes
 - **Modified** - Files with local changes
@@ -71,6 +71,23 @@ Files display Git status icons, similar to Solution Explorer:
 - **Deleted** - Files marked for deletion
 - **Conflict** - Files with merge conflicts
 - **Renamed** - Files that have been renamed
+
+Folders show an aggregate status based on their contents - for example, if any file in a folder is modified, the folder shows a modified icon.
+
+### MCP Servers Node in Solution Explorer
+
+The extension adds an **MCP Servers** node that provides centralized access to all Model Context Protocol (MCP) server configurations in your solution:
+
+- Automatically discovers MCP configuration files from all standard locations:
+  - `.github/mcp.json` - Repository-level configuration
+  - `%APPDATA%/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json` - Cline global settings
+  - Solution-local `.mcp/mcp.json` - Solution-specific configuration
+- Displays each configuration file with its servers organized hierarchically
+- Live updates when configuration files are added, modified, or removed
+- Click on a server entry to view its configuration details
+- Shows a helpful hint when no MCP configurations exist
+
+The MCP Servers node appears directly below the GitHub node, making it easy to manage both GitHub-specific files and MCP server configurations from one place.
 
 ### Community Templates from awesome-copilot
 

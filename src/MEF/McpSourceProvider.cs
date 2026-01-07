@@ -13,6 +13,7 @@ namespace GitHubNode.SolutionExplorer
     /// </summary>
     [Export(typeof(IAttachedCollectionSourceProvider))]
     [Name(nameof(McpSourceProvider))]
+    [Order(Before = HierarchyItemsProviderNames.Contains)]
     [Order(After = nameof(GitHubSourceProvider))]
     internal class McpSourceProvider : IAttachedCollectionSourceProvider
     {
