@@ -108,12 +108,9 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Resources\mcp.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
+    <Resource Include="Resources\mcp.16.16.png" />
+    <Resource Include="Resources\mcp.32.32.png" />
     <Content Include="ImageCatalog.imagemanifest">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <None Include="source.extension.vsixmanifest">
