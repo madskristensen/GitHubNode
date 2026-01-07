@@ -5,14 +5,13 @@ using System.IO;
 using System.Threading;
 using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
-using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Imaging.Interop;
 
 namespace GitHubNode.SolutionExplorer
 {
     /// <summary>
-    /// The root "MCP Servers" node shown as a child under the solution in Solution Explorer.
-    /// Discovers and displays MCP configuration files from all supported locations.
+    /// The root "MCP Servers" node shown as a child under the solution in Solution Explorer. Discovers and displays MCP
+    /// configuration files from all supported locations.
     /// </summary>
     internal sealed class McpRootNode :
         McpNodeBase,
@@ -48,6 +47,8 @@ namespace GitHubNode.SolutionExplorer
             SetupFileWatchers();
         }
 
+        private static ImageMoniker _mcpIcon => new() { Guid = new Guid("ae27a6b0-e345-4288-96df-5eaf394ee369"), Id = 4073 };
+
         /// <summary>
         /// Gets the solution directory path.
         /// </summary>
@@ -63,8 +64,8 @@ namespace GitHubNode.SolutionExplorer
         public override System.Windows.FontWeight FontWeight => System.Windows.FontWeights.SemiBold;
 
         // ITreeDisplayItemWithImages
-        public ImageMoniker IconMoniker => KnownMonikers.CloudService;
-        public ImageMoniker ExpandedIconMoniker => KnownMonikers.CloudService;
+        public ImageMoniker IconMoniker => _mcpIcon;
+        public ImageMoniker ExpandedIconMoniker => _mcpIcon;
         public ImageMoniker OverlayIconMoniker => default;
         public ImageMoniker StateIconMoniker => default;
 
