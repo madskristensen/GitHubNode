@@ -87,12 +87,12 @@ namespace GitHubNode.SolutionExplorer
             }
             _children.Clear();
 
-            // Re-parse the file to get current server names
-            var serverNames = McpConfigService.ParseServerNames(_location.FilePath);
+            // Re-parse the file to get current server names and their transport types
+            var serverInfo = McpConfigService.ParseServerInfo(_location.FilePath);
 
-            foreach (var serverName in serverNames)
+            foreach (var kvp in serverInfo)
             {
-                _children.Add(new McpServerNode(serverName, _location.FilePath, this));
+                _children.Add(new McpServerNode(kvp.Key, _location.FilePath, kvp.Value, this));
             }
 
             RaisePropertyChanged(nameof(HasItems));

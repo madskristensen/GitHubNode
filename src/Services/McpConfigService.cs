@@ -124,6 +124,141 @@ namespace GitHubNode.Services
         }
 
         /// <summary>
+        /// Parses server information from an MCP configuration file, including transport type.
+        /// </summary>
+        /// <param name="filePath">The path to the MCP configuration file.</param>
+        /// <returns>Dictionary mapping server names to transport types (stdio or http).</returns>
+        public static Dictionary<string, string> ParseServerInfo(string filePath)
+        {
+            var serverInfo = new Dictionary<string, string>();
+
+            if (!File.Exists(filePath))
+            {
+                return serverInfo;
+            }
+
+            try
+            {
+                var json = File.ReadAllText(filePath);
+
+                // Find the "servers" object
+                var serversIndex = json.IndexOf("\"servers\"");
+                if (serversIndex == -1)
+                {
+                    return serverInfo;
+                }
+
+                // Find the opening brace of the servers object
+                var openBraceIndex = json.IndexOf('{', serversIndex);
+                if (openBraceIndex == -1)
+                {
+                    return serverInfo;
+                }
+
+                // Parse each server and detect its transport type
+                var depth = 0;
+                var inString = false;
+                var escapeNext = false;
+                var currentKey = "";
+                var capturingKey = false;
+                var serverStartIndex = -1;
+
+                for (var i = openBraceIndex; i < json.Length; i++)
+                {
+                    var c = json[i];
+
+                    if (escapeNext)
+                    {
+                        if (capturingKey)
+                        {
+                            currentKey += c;
+                        }
+                        escapeNext = false;
+                        continue;
+                    }
+
+                    if (c == '\\')
+                    {
+                        escapeNext = true;
+                        continue;
+                    }
+
+                    if (c == '"')
+                    {
+                        if (inString)
+                        {
+                            inString = false;
+                            if (capturingKey && depth == 1)
+                            {
+                                capturingKey = false;
+                            }
+                        }
+                        else
+                        {
+                            inString = true;
+                            if (depth == 1 && !capturingKey)
+                            {
+                                var nextColonIndex = json.IndexOf(':', i);
+                                var nextBraceIndex = json.IndexOf('{', i);
+                                if (nextColonIndex != -1 && (nextBraceIndex == -1 || nextColonIndex < nextBraceIndex))
+                                {
+                                    capturingKey = true;
+                                    currentKey = "";
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (inString)
+                    {
+                        if (capturingKey)
+                        {
+                            currentKey += c;
+                        }
+                        continue;
+                    }
+
+                    if (c == '{')
+                    {
+                        depth++;
+                        if (depth == 2 && !string.IsNullOrEmpty(currentKey))
+                        {
+                            serverStartIndex = i;
+                        }
+                    }
+                    else if (c == '}')
+                    {
+                        if (depth == 2 && serverStartIndex != -1 && !string.IsNullOrEmpty(currentKey))
+                        {
+                            // Extract server config substring
+                            var serverConfig = json.Substring(serverStartIndex, i - serverStartIndex + 1);
+                            
+                            // Detect transport type: http if "url" is present, otherwise stdio
+                            var transportType = serverConfig.Contains("\"url\"") ? "http" : "stdio";
+
+                            serverInfo[currentKey] = transportType;
+                            currentKey = "";
+                            serverStartIndex = -1;
+                        }
+
+                        depth--;
+                        if (depth == 0)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Return partial results on parse errors
+            }
+
+            return serverInfo;
+        }
+
+        /// <summary>
         /// Parses server names from an MCP configuration file.
         /// </summary>
         /// <param name="filePath">The path to the MCP configuration file.</param>

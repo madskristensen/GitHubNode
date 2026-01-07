@@ -67,6 +67,7 @@
     <Compile Include="Commands\AddMcpConfigCommand.cs" />
     <Compile Include="Commands\McpLocationPickerDialog.cs" />
     <Compile Include="Commands\RefreshMcpCommand.cs" />
+    <Compile Include="CustomMonikers.cs" />
     <Compile Include="FileTemplates.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="GitHubNodePackage.cs" />
@@ -107,6 +108,14 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Resources\mcp.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\ImageCatalog.imagemanifest">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
       <Generator>VsixManifestGenerator</Generator>

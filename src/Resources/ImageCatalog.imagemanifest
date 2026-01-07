@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImageManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://schemas.microsoft.com/VisualStudio/ImageManifestSchema/2014">
+  <Symbols>
+    <String Name="Resources" Value="Resources" />
+    <Guid Name="ImageCatalogGuid" Value="{e08fd448-2a24-4e8b-883e-83e4a6ab1aa3}" />
+    <ID Name="McpIcon" Value="1" />
+  </Symbols>
+  <Images>
+    <Image Guid="$(ImageCatalogGuid)" ID="$(McpIcon)">
+      <Source Uri="$(Resources)/mcp.png">
+        <Size Value="16" />
+      </Source>
+    </Image>
+  </Images>
+  <ImageLists />
+</ImageManifest>
