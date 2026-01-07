@@ -64,8 +64,8 @@ namespace GitHubNode.SolutionExplorer
         public override System.Windows.FontWeight FontWeight => System.Windows.FontWeights.SemiBold;
 
         // ITreeDisplayItemWithImages
-        public ImageMoniker IconMoniker => CustomMonikers.McpIcon;
-        public ImageMoniker ExpandedIconMoniker => CustomMonikers.McpIcon;
+        public ImageMoniker IconMoniker => KnownMonikers.ConnectedServices;
+        public ImageMoniker ExpandedIconMoniker => KnownMonikers.ConnectedServices;
         public ImageMoniker OverlayIconMoniker => default;
         public ImageMoniker StateIconMoniker => default;
 
