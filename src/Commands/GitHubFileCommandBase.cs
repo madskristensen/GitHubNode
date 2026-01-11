@@ -93,10 +93,10 @@ namespace GitHubNode.Commands
             string targetFolder;
             if (RequiresGitHubFolder)
             {
-                var gitHubFolder = CommandHelpers.GetGitHubFolderPath(basePath);
+                var gitHubFolder = CommandHelpers.GetOrCreateGitHubFolder(basePath);
                 if (string.IsNullOrEmpty(gitHubFolder))
                 {
-                    await VS.MessageBox.ShowWarningAsync("Cannot find .github folder.");
+                    await VS.MessageBox.ShowWarningAsync("Cannot determine .github folder location.");
                     return;
                 }
                 targetFolder = gitHubFolder;
