@@ -10,6 +10,7 @@ namespace GitHubNode.Commands
     {
         /// <summary>
         /// Gets the .github folder path from any path within or below it.
+        /// Returns the path even if the folder doesn't exist yet.
         /// </summary>
         public static string GetGitHubFolderPath(string path)
         {
@@ -39,7 +40,24 @@ namespace GitHubNode.Commands
                 return gitHubPath;
             }
 
-            return null;
+            // .github doesn't exist - return the expected path based on the input
+            // The caller is expected to pass a path that represents where .github should be
+            return gitHubPath;
+        }
+
+        /// <summary>
+        /// Gets the .github folder path, creating it if it doesn't exist.
+        /// </summary>
+        public static string GetOrCreateGitHubFolder(string path)
+        {
+            var gitHubPath = GetGitHubFolderPath(path);
+            
+            if (!string.IsNullOrEmpty(gitHubPath) && !Directory.Exists(gitHubPath))
+            {
+                Directory.CreateDirectory(gitHubPath);
+            }
+
+            return gitHubPath;
         }
 
         /// <summary>
