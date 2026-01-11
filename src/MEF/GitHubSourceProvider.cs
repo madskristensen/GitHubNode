@@ -9,8 +9,8 @@ namespace GitHubNode.SolutionExplorer
 {
     /// <summary>
     /// Provides the GitHub node as a child of the solution node in Solution Explorer.
-    /// The GitHub node appears when a .github folder exists in the solution directory
-    /// or any parent directory of the solution.
+    /// The GitHub node appears when the solution is in a Git repository, even if
+    /// the .github folder doesn't exist yet.
     /// </summary>
     [Export(typeof(IAttachedCollectionSourceProvider))]
     [Name(nameof(GitHubSourceProvider))]
@@ -69,7 +69,7 @@ namespace GitHubNode.SolutionExplorer
                     var solutionPath = _dte?.Solution?.FullName;
                     if (!string.IsNullOrEmpty(solutionPath))
                     {
-                        var gitHubPath = FindGitHubFolder(solutionPath);
+                        var gitHubPath = GetGitHubFolderPath(solutionPath);
                         if (gitHubPath != null)
                         {
                             if (_rootNode == null || _cachedGitHubPath != gitHubPath)
@@ -101,22 +101,53 @@ namespace GitHubNode.SolutionExplorer
         }
 
         /// <summary>
-        /// Finds the .github folder in the solution directory or any parent directory.
+        /// Gets the .github folder path. If the folder doesn't exist but the solution
+        /// is in a Git repository, returns the expected path where .github should be created.
         /// </summary>
-        private static string FindGitHubFolder(string solutionPath)
+        private static string GetGitHubFolderPath(string solutionPath)
         {
             var directory = Path.GetDirectoryName(solutionPath);
 
-            while (!string.IsNullOrEmpty(directory))
+            // First, check if .github already exists anywhere up the tree
+            var current = directory;
+            while (!string.IsNullOrEmpty(current))
             {
-                var gitHubPath = Path.Combine(directory, ".github");
+                var gitHubPath = Path.Combine(current, ".github");
                 if (Directory.Exists(gitHubPath))
                 {
                     return gitHubPath;
                 }
 
-                DirectoryInfo parent = Directory.GetParent(directory);
-                directory = parent?.FullName;
+                DirectoryInfo parent = Directory.GetParent(current);
+                current = parent?.FullName;
+            }
+
+            // .github doesn't exist - find the Git root and return the expected path
+            var gitRoot = FindGitRoot(directory);
+            if (gitRoot != null)
+            {
+                return Path.Combine(gitRoot, ".github");
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Finds the Git repository root by looking for a .git folder.
+        /// </summary>
+        private static string FindGitRoot(string path)
+        {
+            var current = path;
+
+            while (!string.IsNullOrEmpty(current))
+            {
+                if (Directory.Exists(Path.Combine(current, ".git")))
+                {
+                    return current;
+                }
+
+                DirectoryInfo parent = Directory.GetParent(current);
+                current = parent?.FullName;
             }
 
             return null;
