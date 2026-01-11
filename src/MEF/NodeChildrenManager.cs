@@ -17,6 +17,7 @@ namespace GitHubNode.SolutionExplorer
         private readonly Action _onPropertyChanged;
         private readonly bool _includeSubdirectories;
         private FileSystemWatcher _watcher;
+        private FileSystemWatcher _parentWatcher;
         private bool _disposed;
         private CancellationTokenSource _debounceCts;
         private readonly object _debounceLock = new();
@@ -74,8 +75,12 @@ namespace GitHubNode.SolutionExplorer
             }
             _children.Clear();
 
+            // If folder doesn't exist, just return empty - the node will show as empty
             if (!Directory.Exists(_folderPath))
+            {
+                _onPropertyChanged?.Invoke();
                 return;
+            }
 
             // Add subdirectories first
             foreach (var dir in Directory.GetDirectories(_folderPath))
@@ -94,14 +99,29 @@ namespace GitHubNode.SolutionExplorer
 
         private void SetupFileWatcher()
         {
+            if (Directory.Exists(_folderPath))
+            {
+                // Folder exists - watch it directly
+                SetupDirectWatcher();
+            }
+            else
+            {
+                // Folder doesn't exist - watch parent for its creation
+                SetupParentWatcher();
+            }
+        }
+
+        private void SetupDirectWatcher()
+        {
+            // Clean up any existing watchers
+            DisposeWatchers();
+
             if (!Directory.Exists(_folderPath))
                 return;
 
             _watcher = new FileSystemWatcher(_folderPath)
             {
                 IncludeSubdirectories = _includeSubdirectories,
-                // Only watch for file/folder creation, deletion, and renames
-                // Do NOT include LastWrite - that triggers on every file save and causes tree refresh
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName
             };
 
@@ -109,6 +129,69 @@ namespace GitHubNode.SolutionExplorer
             _watcher.Deleted += OnFileSystemChanged;
             _watcher.Renamed += OnFileSystemRenamed;
             _watcher.EnableRaisingEvents = true;
+        }
+
+        private void SetupParentWatcher()
+        {
+            // Clean up any existing watchers
+            DisposeWatchers();
+
+            var parentDir = Path.GetDirectoryName(_folderPath);
+            if (string.IsNullOrEmpty(parentDir) || !Directory.Exists(parentDir))
+                return;
+
+            var folderName = Path.GetFileName(_folderPath);
+
+            _parentWatcher = new FileSystemWatcher(parentDir)
+            {
+                IncludeSubdirectories = false,
+                NotifyFilter = NotifyFilters.DirectoryName,
+                Filter = folderName
+            };
+
+            _parentWatcher.Created += OnTargetFolderCreated;
+            _parentWatcher.EnableRaisingEvents = true;
+        }
+
+        private void OnTargetFolderCreated(object sender, FileSystemEventArgs e)
+        {
+            // The .github folder was created - switch to direct watching
+#pragma warning disable VSSDK007
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+            {
+                // Small delay to ensure folder is fully created
+                await System.Threading.Tasks.Task.Delay(100);
+
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                if (_disposed)
+                    return;
+
+                // Switch from parent watcher to direct watcher
+                SetupDirectWatcher();
+
+                // Refresh to show new contents
+                GitStatusService.InvalidateCache();
+                RefreshChildren();
+            });
+#pragma warning restore VSSDK007
+        }
+
+        private void DisposeWatchers()
+        {
+            if (_watcher != null)
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Dispose();
+                _watcher = null;
+            }
+
+            if (_parentWatcher != null)
+            {
+                _parentWatcher.EnableRaisingEvents = false;
+                _parentWatcher.Dispose();
+                _parentWatcher = null;
+            }
         }
 
         private void OnFileSystemChanged(object sender, FileSystemEventArgs e)
@@ -139,8 +222,7 @@ namespace GitHubNode.SolutionExplorer
                 _debounceCts = new CancellationTokenSource();
                 CancellationToken token = _debounceCts.Token;
 
-                // FireAndForget is appropriate here since this is a fire-and-forget file system event
-#pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
+#pragma warning disable VSSDK007
                 _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
                 {
                     try
@@ -199,7 +281,7 @@ namespace GitHubNode.SolutionExplorer
             GitStatusService.InvalidateCache();
 
             // Handle renames by updating the node in-place instead of refreshing all children
-#pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
+#pragma warning disable VSSDK007
             _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -250,12 +332,7 @@ namespace GitHubNode.SolutionExplorer
                 _debounceCts = null;
             }
 
-            if (_watcher != null)
-            {
-                _watcher.EnableRaisingEvents = false;
-                _watcher.Dispose();
-                _watcher = null;
-            }
+            DisposeWatchers();
 
             foreach (var child in _children)
             {
