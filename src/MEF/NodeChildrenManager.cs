@@ -8,6 +8,8 @@ namespace GitHubNode.SolutionExplorer
     /// <summary>
     /// Manages file system watching and child collection refresh for GitHub nodes.
     /// Encapsulates common logic shared between GitHubRootNode and GitHubFolderNode.
+    /// When the folder does not exist, watches the parent directory for creation
+    /// of the target folder.
     /// </summary>
     internal sealed class NodeChildrenManager : IDisposable
     {
@@ -17,6 +19,7 @@ namespace GitHubNode.SolutionExplorer
         private readonly Action _onPropertyChanged;
         private readonly bool _includeSubdirectories;
         private FileSystemWatcher _watcher;
+        private FileSystemWatcher _parentWatcher;
         private bool _disposed;
         private CancellationTokenSource _debounceCts;
         private readonly object _debounceLock = new();
@@ -92,12 +95,88 @@ namespace GitHubNode.SolutionExplorer
             _onPropertyChanged?.Invoke();
         }
 
-        private void SetupFileWatcher()
-        {
-            if (!Directory.Exists(_folderPath))
-                return;
+                private void SetupFileWatcher()
+                {
+                    if (!Directory.Exists(_folderPath))
+                    {
+                        // Folder doesn't exist yet - watch the parent directory for its creation
+                        SetupParentWatcher();
+                        return;
+                    }
 
-            _watcher = new FileSystemWatcher(_folderPath)
+                    // Folder exists - set up the normal watcher
+                    SetupFolderWatcher();
+                }
+
+                private void SetupParentWatcher()
+                {
+                    var parentDir = Path.GetDirectoryName(_folderPath);
+                    if (string.IsNullOrEmpty(parentDir) || !Directory.Exists(parentDir))
+                    {
+                        return;
+                    }
+
+                    _parentWatcher = new FileSystemWatcher(parentDir)
+                    {
+                        IncludeSubdirectories = false,
+                        NotifyFilter = NotifyFilters.DirectoryName,
+                        Filter = Path.GetFileName(_folderPath)
+                    };
+
+                    _parentWatcher.Created += OnTargetFolderCreated;
+                    _parentWatcher.EnableRaisingEvents = true;
+                }
+
+                private void OnTargetFolderCreated(object sender, FileSystemEventArgs e)
+                {
+                    // The target folder was created - stop watching parent and set up folder watcher
+        #pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
+                    _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+                    {
+                        try
+                        {
+                            // Small delay to ensure folder is fully created
+                            await System.Threading.Tasks.Task.Delay(50);
+
+                            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                            if (_disposed)
+                            {
+                                return;
+                            }
+
+                            // Clean up parent watcher
+                            if (_parentWatcher != null)
+                            {
+                                _parentWatcher.EnableRaisingEvents = false;
+                                _parentWatcher.Dispose();
+                                _parentWatcher = null;
+                            }
+
+                            // Set up folder watcher and refresh children
+                            SetupFolderWatcher();
+
+                            // Invalidate Git status cache so new files show correct status
+                            GitStatusService.InvalidateCache();
+
+                            RefreshChildren();
+                        }
+                        catch
+                        {
+                            // Ignore errors during cleanup
+                        }
+                    });
+        #pragma warning restore VSSDK007
+                }
+
+                private void SetupFolderWatcher()
+                {
+                    if (_watcher != null || !Directory.Exists(_folderPath))
+                    {
+                        return;
+                    }
+
+                    _watcher = new FileSystemWatcher(_folderPath)
             {
                 IncludeSubdirectories = _includeSubdirectories,
                 // Only watch for file/folder creation, deletion, and renames
@@ -236,32 +315,39 @@ namespace GitHubNode.SolutionExplorer
 #pragma warning restore VSSDK007
         }
 
-        public void Dispose()
-        {
-            if (_disposed)
-                return;
+                public void Dispose()
+                {
+                    if (_disposed)
+                        return;
 
-            _disposed = true;
+                    _disposed = true;
 
-            lock (_debounceLock)
-            {
-                _debounceCts?.Cancel();
-                _debounceCts?.Dispose();
-                _debounceCts = null;
+                    lock (_debounceLock)
+                    {
+                        _debounceCts?.Cancel();
+                        _debounceCts?.Dispose();
+                        _debounceCts = null;
+                    }
+
+                    if (_parentWatcher != null)
+                    {
+                        _parentWatcher.EnableRaisingEvents = false;
+                        _parentWatcher.Dispose();
+                        _parentWatcher = null;
+                    }
+
+                    if (_watcher != null)
+                    {
+                        _watcher.EnableRaisingEvents = false;
+                        _watcher.Dispose();
+                        _watcher = null;
+                    }
+
+                    foreach (var child in _children)
+                    {
+                        (child as IDisposable)?.Dispose();
+                    }
+                    _children.Clear();
+                }
             }
-
-            if (_watcher != null)
-            {
-                _watcher.EnableRaisingEvents = false;
-                _watcher.Dispose();
-                _watcher = null;
-            }
-
-            foreach (var child in _children)
-            {
-                (child as IDisposable)?.Dispose();
-            }
-            _children.Clear();
         }
-    }
-}
