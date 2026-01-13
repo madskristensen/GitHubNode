@@ -9,7 +9,7 @@ namespace GitHubNode.SolutionExplorer
 {
     /// <summary>
     /// The root "GitHub" node shown as a child under the solution in Solution Explorer.
-    /// Represents the .github folder that exists in the repository.
+    /// Represents the .github folder (or potential .github folder) in the repository.
     /// </summary>
     internal sealed class GitHubRootNode :
         GitHubNodeBase,

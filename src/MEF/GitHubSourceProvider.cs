@@ -9,8 +9,10 @@ namespace GitHubNode.SolutionExplorer
 {
     /// <summary>
     /// Provides the GitHub node as a child of the solution node in Solution Explorer.
-    /// The GitHub node appears when a .github folder exists in the solution directory
-    /// or any parent directory of the solution.
+    /// The GitHub node always appears when a solution is open, even if the .github folder
+    /// does not exist yet. If a .github folder exists in the solution directory or any
+    /// parent directory, that folder is used; otherwise, the node represents a potential
+    /// .github folder in the solution directory.
     /// </summary>
     [Export(typeof(IAttachedCollectionSourceProvider))]
     [Name(nameof(GitHubSourceProvider))]
@@ -70,7 +72,7 @@ namespace GitHubNode.SolutionExplorer
                     var solutionPath = _dte?.Solution?.FullName;
                     if (!string.IsNullOrEmpty(solutionPath))
                     {
-                        var gitHubPath = FindGitHubFolder(solutionPath);
+                        var gitHubPath = GetGitHubFolderPath(solutionPath);
                         if (gitHubPath != null)
                         {
                             if (_rootNode == null || _cachedGitHubPath != gitHubPath)
@@ -101,26 +103,48 @@ namespace GitHubNode.SolutionExplorer
             return null;
         }
 
-        /// <summary>
-        /// Finds the .github folder in the solution directory or any parent directory.
-        /// </summary>
-        private static string FindGitHubFolder(string solutionPath)
-        {
-            var directory = Path.GetDirectoryName(solutionPath);
-
-            while (!string.IsNullOrEmpty(directory))
-            {
-                var gitHubPath = Path.Combine(directory, ".github");
-                if (Directory.Exists(gitHubPath))
+                /// <summary>
+                /// Gets the path to the .github folder. If an existing .github folder is found
+                /// in the solution directory or any parent directory, that path is returned.
+                /// Otherwise, returns the path where .github would be created in the solution directory.
+                /// </summary>
+                private static string GetGitHubFolderPath(string solutionPath)
                 {
-                    return gitHubPath;
+                    var solutionDirectory = Path.GetDirectoryName(solutionPath);
+                    if (string.IsNullOrEmpty(solutionDirectory))
+                    {
+                        return null;
+                    }
+
+                    // First, try to find an existing .github folder
+                    var existingPath = FindExistingGitHubFolder(solutionDirectory);
+                    if (existingPath != null)
+                    {
+                        return existingPath;
+                    }
+
+                    // No existing .github folder found - return the path where it would be created
+                    return Path.Combine(solutionDirectory, ".github");
                 }
 
-                DirectoryInfo parent = Directory.GetParent(directory);
-                directory = parent?.FullName;
-            }
+                /// <summary>
+                /// Finds an existing .github folder in the given directory or any parent directory.
+                /// </summary>
+                private static string FindExistingGitHubFolder(string directory)
+                {
+                    while (!string.IsNullOrEmpty(directory))
+                    {
+                        var gitHubPath = Path.Combine(directory, ".github");
+                        if (Directory.Exists(gitHubPath))
+                        {
+                            return gitHubPath;
+                        }
 
-            return null;
+                        DirectoryInfo parent = Directory.GetParent(directory);
+                        directory = parent?.FullName;
+                    }
+
+                    return null;
+                }
+            }
         }
-    }
-}

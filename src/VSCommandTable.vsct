@@ -127,8 +127,8 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
-          <ButtonText>Copilot Instructions</ButtonText>
-          <CanonicalName>.GitHubNode.AddCopilotInstructions</CanonicalName>
+          <ButtonText>Copilot Instructions...</ButtonText>
+          <LocCanonicalName>.GitHubNode.AddCopilotInstructions</LocCanonicalName>
         </Strings>
       </Button>
       
@@ -140,7 +140,7 @@
         <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Custom Agent...</ButtonText>
-          <CanonicalName>.GitHubNode.AddAgent</CanonicalName>
+          <LocCanonicalName>.GitHubNode.AddAgent</LocCanonicalName>
         </Strings>
       </Button>
       
@@ -152,7 +152,7 @@
         <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Prompt File...</ButtonText>
-          <CanonicalName>.GitHubNode.AddPrompt</CanonicalName>
+          <LocCanonicalName>.GitHubNode.AddPrompt</LocCanonicalName>
         </Strings>
       </Button>
       
@@ -164,7 +164,7 @@
         <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Agent Skill...</ButtonText>
-          <CanonicalName>.GitHubNode.AddSkill</CanonicalName>
+          <LocCanonicalName>.GitHubNode.AddSkill</LocCanonicalName>
         </Strings>
       </Button>
       
@@ -176,7 +176,7 @@
         <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>GitHub Actions Workflow...</ButtonText>
-          <CanonicalName>.GitHubNode.AddWorkflow</CanonicalName>
+          <LocCanonicalName>.GitHubNode.AddWorkflow</LocCanonicalName>
         </Strings>
       </Button>
       
@@ -187,7 +187,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Dependabot Configuration</ButtonText>
-          <CanonicalName>.GitHubNode.AddDependabot</CanonicalName>
+          <LocCanonicalName>.GitHubNode.AddDependabot</LocCanonicalName>
         </Strings>
       </Button>
       
@@ -198,7 +198,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Issue Template...</ButtonText>
-          <CanonicalName>.GitHubNode.AddIssueTemplate</CanonicalName>
+          <LocCanonicalName>.GitHubNode.AddIssueTemplate</LocCanonicalName>
         </Strings>
       </Button>
       
@@ -209,7 +209,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Pull Request Template</ButtonText>
-          <CanonicalName>.GitHubNode.AddPullRequestTemplate</CanonicalName>
+          <LocCanonicalName>.GitHubNode.AddPullRequestTemplate</LocCanonicalName>
         </Strings>
       </Button>
       
@@ -220,7 +220,7 @@
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>CODEOWNERS</ButtonText>
-          <CanonicalName>.GitHubNode.AddCodeOwners</CanonicalName>
+          <LocCanonicalName>.GitHubNode.AddCodeOwners</LocCanonicalName>
         </Strings>
       </Button>
       

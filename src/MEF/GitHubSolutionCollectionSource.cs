@@ -20,7 +20,7 @@ namespace GitHubNode.SolutionExplorer
             _rootNode = rootNode;
             _items = [];
 
-            // Add the root node immediately since we only create this when .github exists
+            // Add the root node immediately
             _items.Add(_rootNode);
         }
 
