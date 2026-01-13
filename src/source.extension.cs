@@ -9,12 +9,12 @@ namespace GitHubNode
     internal sealed partial class Vsix
     {
         public const string Id = "GitHubNode.24524560-9858-4489-a36e-945dea8eea44";
-        public const string Name = "GitHub Node";
+        public const string Name = ".github + MCP";
         public const string Description = @"Adds a GitHub node to Solution Explorer that displays the contents of your repository's `.github` folder. Quickly access and manage GitHub-specific files like workflows, Copilot instructions, agents, and more";
         public const string Language = "en-US";
         public const string Version = "1.0.901";
         public const string Author = "Mads Kristensen";
-        public const string Tags = "";
+        public const string Tags = "github, skills, agents, prompts, instructions";
         public const bool IsPreview = false;
     }
 }
