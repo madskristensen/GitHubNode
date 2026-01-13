@@ -15,6 +15,7 @@ namespace GitHubNode.SolutionExplorer
     [Export(typeof(IAttachedCollectionSourceProvider))]
     [Name(nameof(GitHubSourceProvider))]
     [Order(Before = HierarchyItemsProviderNames.Contains)]
+    [Order(After = "WorkspaceItemNode")] // as defined in https://github.com/madskristensen/WorkspaceFiles
     internal class GitHubSourceProvider : IAttachedCollectionSourceProvider
     {
         private GitHubRootNode _rootNode;
