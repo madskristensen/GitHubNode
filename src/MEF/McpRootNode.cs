@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
@@ -35,7 +36,7 @@ namespace GitHubNode.SolutionExplorer
         ];
 
         public McpRootNode(object sourceItem, string solutionDirectory)
-            : base(sourceItem)
+            : base(sourceItem, sourceItem)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -57,6 +58,14 @@ namespace GitHubNode.SolutionExplorer
         // IAttachedCollectionSource
         public bool HasItems => _children.Count > 0;
         public IEnumerable Items => _children;
+
+        /// <summary>
+        /// Gets the children for search enumeration without modifying the tree.
+        /// </summary>
+        public IEnumerable<McpNodeBase> GetChildrenForSearch()
+        {
+            return _children.OfType<McpNodeBase>();
+        }
 
         // ITreeDisplayItem
         public override string Text => "MCP Servers";

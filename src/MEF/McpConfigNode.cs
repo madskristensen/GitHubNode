@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Imaging;
@@ -32,7 +33,7 @@ namespace GitHubNode.SolutionExplorer
         ];
 
         public McpConfigNode(McpConfigLocation location, object parent)
-            : base(parent)
+            : base(parent, parent)
         {
             _location = location;
             _children = [];
@@ -53,6 +54,14 @@ namespace GitHubNode.SolutionExplorer
         // IAttachedCollectionSource
         public bool HasItems => _children.Count > 0;
         public IEnumerable Items => _children;
+
+        /// <summary>
+        /// Gets the children for search enumeration without modifying the tree.
+        /// </summary>
+        public IEnumerable<McpNodeBase> GetChildrenForSearch()
+        {
+            return _children.OfType<McpNodeBase>();
+        }
 
         // ITreeDisplayItem
         public override string Text => _location.DisplayName;

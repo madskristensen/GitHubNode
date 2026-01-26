@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Imaging.Interop;
@@ -33,25 +34,40 @@ namespace GitHubNode.SolutionExplorer
         ];
 
         public GitHubFolderNode(string folderPath, object parent)
+            : this(folderPath, parent, forSearchOnly: false)
+        {
+        }
+
+        /// <summary>
+        /// Creates a GitHubFolderNode, optionally as a lightweight search-only node.
+        /// </summary>
+        /// <param name="folderPath">The folder path.</param>
+        /// <param name="parent">The parent node.</param>
+        /// <param name="forSearchOnly">If true, skips creating FileSystemWatcher (for search-only nodes).</param>
+        internal GitHubFolderNode(string folderPath, object parent, bool forSearchOnly)
             : base(parent)
         {
-            ThreadHelper.ThrowIfNotOnUIThread();
-
             FolderPath = folderPath;
             _folderName = Path.GetFileName(folderPath);
             _children = [];
-            _childrenManager = new NodeChildrenManager(
-                folderPath,
-                this,
-                _children,
-                () =>
-                {
-                    RaisePropertyChanged(nameof(HasItems));
-                    RaisePropertyChanged(nameof(Items));
-                },
-                includeSubdirectories: false);
 
-            _childrenManager.Initialize();
+            // Skip heavy initialization for search-only nodes to avoid memory leaks
+            if (!forSearchOnly)
+            {
+                ThreadHelper.ThrowIfNotOnUIThread();
+                _childrenManager = new NodeChildrenManager(
+                    folderPath,
+                    this,
+                    _children,
+                    () =>
+                    {
+                        RaisePropertyChanged(nameof(HasItems));
+                        RaisePropertyChanged(nameof(Items));
+                    },
+                    includeSubdirectories: false);
+
+                _childrenManager.Initialize();
+            }
         }
 
         /// <summary>
@@ -71,8 +87,90 @@ namespace GitHubNode.SolutionExplorer
         }
 
         // IAttachedCollectionSource
-        public bool HasItems => _childrenManager.HasItems;
+        // For search-only nodes, assume folders have items (they won't be expanded anyway)
+        public bool HasItems => _childrenManager?.HasItems ?? true;
         public IEnumerable Items => _children;
+
+        /// <summary>
+        /// Gets the children for search enumeration without modifying the tree.
+        /// This enumerates the file system directly for unexpanded folders to allow
+        /// search to find items without requiring tree expansion.
+        /// </summary>
+        public IEnumerable<GitHubNodeBase> GetChildrenForSearch()
+        {
+            // If children have already been loaded (folder was expanded), return them
+            if (_children.Count > 0)
+            {
+                return _children.OfType<GitHubNodeBase>().ToList();
+            }
+
+            // For unexpanded folders, enumerate file system directly without modifying _children
+            if (!Directory.Exists(FolderPath))
+            {
+                return Enumerable.Empty<GitHubNodeBase>();
+            }
+
+            return EnumerateChildrenForSearch();
+        }
+
+        /// <summary>
+        /// Lazily enumerates children for search using yield return to avoid allocating a full list.
+        /// </summary>
+        private IEnumerable<GitHubNodeBase> EnumerateChildrenForSearch()
+        {
+            string[] directories;
+            string[] files;
+
+            try
+            {
+                directories = Directory.GetDirectories(FolderPath);
+                files = Directory.GetFiles(FolderPath);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                yield break;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                yield break;
+            }
+            catch (IOException)
+            {
+                yield break;
+            }
+
+            // Return folders first
+            foreach (var dir in directories)
+            {
+                GitHubFolderNode node;
+                try
+                {
+                    // Create lightweight node without FileSystemWatcher for search
+                    node = new GitHubFolderNode(dir, this, forSearchOnly: true);
+                }
+                catch
+                {
+                    continue;
+                }
+                yield return node;
+            }
+
+            // Then files
+            foreach (var file in files)
+            {
+                GitHubFileNode node;
+                try
+                {
+                    // Create lightweight node without git status loading for search
+                    node = new GitHubFileNode(file, this, forSearchOnly: true);
+                }
+                catch
+                {
+                    continue;
+                }
+                yield return node;
+            }
+        }
 
         // ITreeDisplayItem
         public override string Text => _folderName;
@@ -117,7 +215,7 @@ namespace GitHubNode.SolutionExplorer
 
         protected override void OnDisposing()
         {
-            _childrenManager.Dispose();
+            _childrenManager?.Dispose();
         }
     }
 }

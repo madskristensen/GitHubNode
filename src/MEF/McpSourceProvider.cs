@@ -12,8 +12,10 @@ namespace GitHubNode.SolutionExplorer
     /// The MCP Servers node appears as a sibling to the GitHub node.
     /// </summary>
     [Export(typeof(IAttachedCollectionSourceProvider))]
+    [Export(typeof(McpSourceProvider))]
     [Name(nameof(McpSourceProvider))]
     [Order(Before = HierarchyItemsProviderNames.Contains)]
+    [Order(Before = "GraphSearchProvider")]
     [Order(After = nameof(GitHubSourceProvider))]
     internal class McpSourceProvider : IAttachedCollectionSourceProvider
     {
@@ -21,6 +23,12 @@ namespace GitHubNode.SolutionExplorer
         private McpSolutionCollectionSource _solutionCollectionSource;
         private string _cachedSolutionDirectory;
         private readonly DTE _dte;
+
+        /// <summary>
+        /// Gets the root node for the MCP Servers tree.
+        /// Used by the search provider to enumerate items.
+        /// </summary>
+        public McpRootNode RootNode => _rootNode;
 
         public McpSourceProvider()
         {
@@ -45,15 +53,27 @@ namespace GitHubNode.SolutionExplorer
             {
                 yield return Relationships.Contains;
             }
-            // Attach to McpRootNode - provides its children (config files or hint)
+            // Attach to McpRootNode - provides its children and supports ContainedBy for search
             else if (item is McpRootNode)
             {
                 yield return Relationships.Contains;
+                yield return Relationships.ContainedBy;
             }
-            // Attach to McpConfigNode - provides its children (server entries)
+            // Attach to McpConfigNode - provides its children and supports ContainedBy for search
             else if (item is McpConfigNode)
             {
                 yield return Relationships.Contains;
+                yield return Relationships.ContainedBy;
+            }
+            // Attach to McpServerNode - supports ContainedBy for search
+            else if (item is McpServerNode)
+            {
+                yield return Relationships.ContainedBy;
+            }
+            // Attach to McpHintNode - supports ContainedBy for search
+            else if (item is McpHintNode)
+            {
+                yield return Relationships.ContainedBy;
             }
         }
 
@@ -79,8 +99,11 @@ namespace GitHubNode.SolutionExplorer
                                 _rootNode = new McpRootNode(hierarchyItem, solutionDirectory);
                             }
 
-                            _solutionCollectionSource?.Dispose();
-                            _solutionCollectionSource = new McpSolutionCollectionSource(hierarchyItem, _rootNode);
+                            // Reuse existing collection source if possible to avoid breaking tree binding
+                            if (_solutionCollectionSource == null)
+                            {
+                                _solutionCollectionSource = new McpSolutionCollectionSource(hierarchyItem, _rootNode);
+                            }
                             return _solutionCollectionSource;
                         }
                     }
@@ -94,6 +117,16 @@ namespace GitHubNode.SolutionExplorer
                 else if (item is McpConfigNode configNode)
                 {
                     return configNode;
+                }
+            }
+            else if (relationshipName == KnownRelationships.ContainedBy)
+            {
+                // ContainedBy is used during Solution Explorer search to trace items back to their parents.
+                // First check if the item already has a ContainedByCollection set (from search provider).
+                if (item is McpNodeBase node)
+                {
+                    // Return pre-set collection if available, otherwise create one
+                    return node.ContainedByCollection ?? new ContainedByCollection(node, node.ParentItem);
                 }
             }
 

@@ -15,8 +15,10 @@ namespace GitHubNode.SolutionExplorer
     /// .github folder in the solution directory.
     /// </summary>
     [Export(typeof(IAttachedCollectionSourceProvider))]
+    [Export(typeof(GitHubSourceProvider))]
     [Name(nameof(GitHubSourceProvider))]
     [Order(Before = HierarchyItemsProviderNames.Contains)]
+    [Order(Before = "GraphSearchProvider")]
     [Order(After = "WorkspaceItemNode")] // as defined in https://github.com/madskristensen/WorkspaceFiles
     internal class GitHubSourceProvider : IAttachedCollectionSourceProvider
     {
@@ -24,6 +26,12 @@ namespace GitHubNode.SolutionExplorer
         private GitHubSolutionCollectionSource _solutionCollectionSource;
         private string _cachedGitHubPath;
         private readonly DTE _dte;
+
+        /// <summary>
+        /// Gets the root node for the GitHub tree.
+        /// Used by the search provider to enumerate items.
+        /// </summary>
+        public GitHubRootNode RootNode => _rootNode;
 
         public GitHubSourceProvider()
         {
@@ -48,15 +56,22 @@ namespace GitHubNode.SolutionExplorer
             {
                 yield return Relationships.Contains;
             }
-            // Attach to GitHubRootNode - provides its children (files and folders)
+            // Attach to GitHubRootNode - provides its children and supports ContainedBy for search
             else if (item is GitHubRootNode)
             {
                 yield return Relationships.Contains;
+                yield return Relationships.ContainedBy;
             }
-            // Attach to GitHubFolderNode - provides its children (files and subfolders)
+            // Attach to GitHubFolderNode - provides its children and supports ContainedBy for search
             else if (item is GitHubFolderNode)
             {
                 yield return Relationships.Contains;
+                yield return Relationships.ContainedBy;
+            }
+            // Attach to GitHubFileNode - supports ContainedBy for search
+            else if (item is GitHubFileNode)
+            {
+                yield return Relationships.ContainedBy;
             }
         }
 
@@ -82,8 +97,11 @@ namespace GitHubNode.SolutionExplorer
                                 _rootNode = new GitHubRootNode(hierarchyItem, gitHubPath);
                             }
 
-                            _solutionCollectionSource?.Dispose();
-                            _solutionCollectionSource = new GitHubSolutionCollectionSource(hierarchyItem, _rootNode);
+                            // Reuse existing collection source if possible to avoid breaking tree binding
+                            if (_solutionCollectionSource == null)
+                            {
+                                _solutionCollectionSource = new GitHubSolutionCollectionSource(hierarchyItem, _rootNode);
+                            }
                             return _solutionCollectionSource;
                         }
                     }
@@ -97,6 +115,16 @@ namespace GitHubNode.SolutionExplorer
                 else if (item is GitHubFolderNode folderNode)
                 {
                     return folderNode;
+                }
+            }
+            else if (relationshipName == KnownRelationships.ContainedBy)
+            {
+                // ContainedBy is used during Solution Explorer search to trace items back to their parents.
+                // First check if the item already has a ContainedByCollection set (from search provider).
+                if (item is GitHubNodeBase node)
+                {
+                    // Return pre-set collection if available, otherwise create one
+                    return node.ContainedByCollection ?? new ContainedByCollection(node, node.ParentItem);
                 }
             }
 

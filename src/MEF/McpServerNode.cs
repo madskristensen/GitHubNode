@@ -29,7 +29,7 @@ namespace GitHubNode.SolutionExplorer
         ];
 
         public McpServerNode(string serverName, string configFilePath, string transportType, object parent)
-            : base(parent)
+            : base(parent, parent)
         {
             _serverName = serverName;
             _configFilePath = configFilePath;

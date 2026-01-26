@@ -23,7 +23,7 @@ namespace GitHubNode.SolutionExplorer
         ];
 
         public McpHintNode(object parent)
-            : base(parent)
+            : base(parent, parent)
         {
         }
 

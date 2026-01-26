@@ -12,16 +12,34 @@ namespace GitHubNode.SolutionExplorer
     internal abstract class McpNodeBase : ITreeDisplayItem, INotifyPropertyChanged, ISupportDisposalNotification, IInteractionPatternProvider
     {
         private bool _isDisposed;
+        private IAttachedCollectionSource _containedByCollection;
 
-        protected McpNodeBase(object sourceItem)
+        protected McpNodeBase(object sourceItem, object parentItem)
         {
             SourceItem = sourceItem;
+            ParentItem = parentItem;
         }
 
         /// <summary>
         /// The parent source item this node is attached to.
         /// </summary>
         public object SourceItem { get; }
+
+        /// <summary>
+        /// Gets the parent item for ContainedBy relationship support.
+        /// This is used during search to trace items back to their parents.
+        /// </summary>
+        public object ParentItem { get; }
+
+        /// <summary>
+        /// Gets or sets the ContainedBy collection for this item.
+        /// This is set during search to enable Solution Explorer to trace items back to their parents.
+        /// </summary>
+        public IAttachedCollectionSource ContainedByCollection
+        {
+            get => _containedByCollection;
+            set => _containedByCollection = value;
+        }
 
         /// <summary>
         /// Gets the types of patterns this node supports.

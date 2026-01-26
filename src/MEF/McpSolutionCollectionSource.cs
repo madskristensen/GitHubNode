@@ -11,17 +11,15 @@ namespace GitHubNode.SolutionExplorer
     internal sealed class McpSolutionCollectionSource : IAttachedCollectionSource, INotifyPropertyChanged, IDisposable
     {
         private readonly ObservableCollection<object> _items;
-        private readonly McpRootNode _rootNode;
         private bool _disposed;
 
         public McpSolutionCollectionSource(object sourceItem, McpRootNode rootNode)
         {
             SourceItem = sourceItem;
-            _rootNode = rootNode;
             _items = [];
 
             // Add the root node
-            _items.Add(_rootNode);
+            _items.Add(rootNode);
         }
 
         public object SourceItem { get; }
@@ -42,8 +40,8 @@ namespace GitHubNode.SolutionExplorer
             if (!_disposed)
             {
                 _disposed = true;
+                // Do NOT dispose the root node here - it's owned by the source provider
                 _items.Clear();
-                _rootNode?.Dispose();
             }
         }
     }

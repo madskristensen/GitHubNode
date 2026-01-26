@@ -35,13 +35,27 @@ namespace GitHubNode.SolutionExplorer
         ];
 
         public GitHubFileNode(string filePath, object parent)
+            : this(filePath, parent, forSearchOnly: false)
+        {
+        }
+
+        /// <summary>
+        /// Creates a GitHubFileNode, optionally as a lightweight search-only node.
+        /// </summary>
+        /// <param name="filePath">The file path.</param>
+        /// <param name="parent">The parent node.</param>
+        /// <param name="forSearchOnly">If true, skips loading git status (for search-only nodes).</param>
+        internal GitHubFileNode(string filePath, object parent, bool forSearchOnly)
             : base(parent)
         {
             FilePath = filePath;
             _fileName = Path.GetFileName(filePath);
 
-            // Load Git status asynchronously
-            LoadGitStatusAsync().FireAndForget();
+            // Skip git status loading for search-only nodes to avoid unnecessary work
+            if (!forSearchOnly)
+            {
+                LoadGitStatusAsync().FireAndForget();
+            }
         }
 
         /// <summary>

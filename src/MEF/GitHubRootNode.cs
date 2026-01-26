@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Imaging.Interop;
@@ -30,8 +32,8 @@ namespace GitHubNode.SolutionExplorer
             typeof(ISupportDisposalNotification),
         ];
 
-        public GitHubRootNode(object sourceItem, string gitHubFolderPath)
-            : base(sourceItem)
+        public GitHubRootNode(object parentItem, string gitHubFolderPath)
+            : base(parentItem)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -46,7 +48,7 @@ namespace GitHubNode.SolutionExplorer
                     RaisePropertyChanged(nameof(HasItems));
                     RaisePropertyChanged(nameof(Items));
                 },
-                includeSubdirectories: true);
+                includeSubdirectories: false);
 
             _childrenManager.Initialize();
         }
@@ -59,6 +61,87 @@ namespace GitHubNode.SolutionExplorer
         // IAttachedCollectionSource
         public bool HasItems => _childrenManager.HasItems;
         public IEnumerable Items => _children;
+
+        /// <summary>
+        /// Gets the children for search enumeration without modifying the tree.
+        /// This enumerates the file system directly for unexpanded folders to allow
+        /// search to find items without requiring tree expansion.
+        /// </summary>
+        public IEnumerable<GitHubNodeBase> GetChildrenForSearch()
+        {
+            // If children have already been loaded (tree was expanded), return them
+            if (_children.Count > 0)
+            {
+                return _children.OfType<GitHubNodeBase>().ToList();
+            }
+
+            // For unexpanded tree, enumerate file system directly without modifying _children
+            if (!Directory.Exists(_gitHubFolderPath))
+            {
+                return Enumerable.Empty<GitHubNodeBase>();
+            }
+
+            return EnumerateChildrenForSearch();
+        }
+
+        /// <summary>
+        /// Lazily enumerates children for search using yield return to avoid allocating a full list.
+        /// </summary>
+        private IEnumerable<GitHubNodeBase> EnumerateChildrenForSearch()
+        {
+            string[] directories;
+            string[] files;
+
+            try
+            {
+                directories = Directory.GetDirectories(_gitHubFolderPath);
+                files = Directory.GetFiles(_gitHubFolderPath);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                yield break;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                yield break;
+            }
+            catch (IOException)
+            {
+                yield break;
+            }
+
+            // Return folders first
+            foreach (var dir in directories)
+            {
+                GitHubFolderNode node;
+                try
+                {
+                    // Create lightweight node without FileSystemWatcher for search
+                    node = new GitHubFolderNode(dir, this, forSearchOnly: true);
+                }
+                catch
+                {
+                    continue;
+                }
+                yield return node;
+            }
+
+            // Then files
+            foreach (var file in files)
+            {
+                GitHubFileNode node;
+                try
+                {
+                    // Create lightweight node without git status loading for search
+                    node = new GitHubFileNode(file, this, forSearchOnly: true);
+                }
+                catch
+                {
+                    continue;
+                }
+                yield return node;
+            }
+        }
 
         // ITreeDisplayItem
         public override string Text => "GitHub";

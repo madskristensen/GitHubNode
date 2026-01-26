@@ -1,10 +1,11 @@
-[marketplace]: https://marketplace.visualstudio.com/items?itemName=MadsKristensen.GitHubNode
-[vsixgallery]: http://vsixgallery.com/extension/GitHubNode.9f81ec6e-5c91-4809-9dde-9b3166c327fd/
-[repo]: https://github.com/madskristensen/GitHubNode
+[marketplace]: <https://marketplace.visualstudio.com/items?itemName=MadsKristensen.GitHubNode>
+[vsixgallery]: <http://vsixgallery.com/extension/GitHubNode.9f81ec6e-5c91-4809-9dde-9b3166c327fd/>
+[repo]: <https://github.com/madskristensen/GitHubNode>
 
 # GitHub Node for Visual Studio
 
 [![Build](https://github.com/madskristensen/GitHubNode/actions/workflows/build.yaml/badge.svg)](https://github.com/madskristensen/GitHubNode/actions/workflows/build.yaml)
+![GitHub Sponsors](https://img.shields.io/github/sponsors/madskristensen)
 
 Download this extension from the [Visual Studio Marketplace][marketplace]
 or get the [CI build][vsixgallery].
@@ -33,12 +34,14 @@ Right-click on the GitHub node or any subfolder to quickly create new files:
 ![Context Menu](art/context-menu.png)
 
 #### Copilot Customization
+
 - **Add Copilot Instructions** - Create an instructions file (`.instructions.md`) in the `instructions` folder
 - **Add Agent** - Create a custom Copilot agent (`.agent.md`) in the `agents` folder
 - **Add Prompt** - Create a reusable prompt file (`.prompt.md`) in the `prompts` folder
 - **Add Skill** - Create an agent skill folder with `skill.md` in the `skills` folder
 
 #### GitHub Configuration
+
 - **Add Workflow** - Create a new GitHub Actions workflow (`.yml`) in the `workflows` folder
 - **Add Dependabot Config** - Create a `dependabot.yml` for automated dependency updates
 - **Add Issue Template** - Create an issue template in the `ISSUE_TEMPLATE` folder
@@ -48,14 +51,17 @@ Right-click on the GitHub node or any subfolder to quickly create new files:
 - **Add SECURITY.md** - Create a `SECURITY.md` file for security policy documentation
 
 #### Folder-Specific Commands
+
 When you right-click on a specific folder (e.g., `agents`, `prompts`, `skills`, `instructions`, or `workflows`), the relevant "Add" command appears directly in the context menu for quick access.
 
 #### File and Folder Management
+
 - **Copy Path** - Copy the full path to the clipboard
 - **Rename** - Rename files or folders directly from the context menu
 - **Delete** - Delete files or folders with confirmation
 
 #### Utilities
+
 - **Open in File Explorer** - Open the folder in Windows File Explorer
 - **Open Containing Folder** - Open the parent folder and select the file in File Explorer
 - **Open on GitHub** - Open the file or folder directly on GitHub.com in your browser
@@ -96,6 +102,7 @@ When creating Copilot agents, instructions, prompts, or skills, the dialog offer
 ![Template Selection Dialog](art/template-dialog.png)
 
 Features:
+
 - **Template dropdown** - Browse and select from community-contributed templates
 - **Live preview** - See the template content with syntax highlighting before creating the file
 - **Auto-fill filename** - Template names are automatically used as the filename
@@ -103,6 +110,7 @@ Features:
 - **Caching** - Templates are cached locally for 7 days for fast access
 
 The preview pane includes syntax highlighting for:
+
 - Markdown headers and formatting
 - YAML front matter (keys and values)
 - Code blocks and inline code
