@@ -67,6 +67,7 @@
     <Compile Include="Commands\AddMcpConfigCommand.cs" />
     <Compile Include="Commands\McpLocationPickerDialog.cs" />
     <Compile Include="Commands\RefreshMcpCommand.cs" />
+    <Compile Include="Commands\ToggleMcpServersCommand.cs" />
     <Compile Include="FileTemplates.cs" />
     <Compile Include="MEF\ContainedByCollection.cs" />
     <Compile Include="MEF\GitHubSearchProvider.cs" />
@@ -96,6 +97,7 @@
     <Compile Include="Services\GitHubUrlService.cs" />
     <Compile Include="Services\GitStatusService.cs" />
     <Compile Include="Services\MarkdownSyntaxHighlighter.cs" />
+    <Compile Include="Services\McpSettingsService.cs" />
     <Compile Include="Services\SyntaxColors.cs" />
     <Compile Include="Services\McpConfigService.cs" />
     <Compile Include="source.extension.cs">

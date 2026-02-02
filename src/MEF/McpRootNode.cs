@@ -107,7 +107,7 @@ namespace GitHubNode.SolutionExplorer
             }
             _children.Clear();
 
-            var existingLocations = McpConfigService.GetExistingLocations(_solutionDirectory);
+            List<McpConfigLocation> existingLocations = McpConfigService.GetExistingLocations(_solutionDirectory);
 
             if (existingLocations.Count == 0)
             {
@@ -117,7 +117,7 @@ namespace GitHubNode.SolutionExplorer
             else
             {
                 // Add a node for each existing configuration file
-                foreach (var location in existingLocations)
+                foreach (McpConfigLocation location in existingLocations)
                 {
                     _children.Add(new McpConfigNode(location, this));
                 }
@@ -129,9 +129,9 @@ namespace GitHubNode.SolutionExplorer
 
         private void SetupFileWatchers()
         {
-            var locations = McpConfigService.GetAllLocations(_solutionDirectory);
+            List<McpConfigLocation> locations = McpConfigService.GetAllLocations(_solutionDirectory);
 
-            foreach (var location in locations)
+            foreach (McpConfigLocation location in locations)
             {
                 var directory = Path.GetDirectoryName(location.FilePath);
                 var fileName = Path.GetFileName(location.FilePath);
@@ -207,7 +207,7 @@ namespace GitHubNode.SolutionExplorer
             {
                 _debounceCts?.Cancel();
                 _debounceCts = new CancellationTokenSource();
-                var token = _debounceCts.Token;
+                CancellationToken token = _debounceCts.Token;
 
                 _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
                 {
@@ -245,7 +245,7 @@ namespace GitHubNode.SolutionExplorer
                 _debounceCts = null;
             }
 
-            foreach (var watcher in _watchers)
+            foreach (FileSystemWatcher watcher in _watchers)
             {
                 watcher.EnableRaisingEvents = false;
                 watcher.Dispose();

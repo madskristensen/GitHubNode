@@ -97,9 +97,9 @@ namespace GitHubNode.SolutionExplorer
             _children.Clear();
 
             // Re-parse the file to get current server names and their transport types
-            var serverInfo = McpConfigService.ParseServerInfo(_location.FilePath);
+            Dictionary<string, string> serverInfo = McpConfigService.ParseServerInfo(_location.FilePath);
 
-            foreach (var kvp in serverInfo)
+            foreach (KeyValuePair<string, string> kvp in serverInfo)
             {
                 _children.Add(new McpServerNode(kvp.Key, _location.FilePath, kvp.Value, this));
             }

@@ -35,7 +35,7 @@ namespace GitHubNode.Commands
                 return;
             }
 
-            var location = dialog.SelectedLocation;
+            McpConfigLocation location = dialog.SelectedLocation;
 
             // Check if file already exists
             if (location.Exists)

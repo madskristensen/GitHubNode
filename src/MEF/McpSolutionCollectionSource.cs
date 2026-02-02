@@ -17,9 +17,7 @@ namespace GitHubNode.SolutionExplorer
         {
             SourceItem = sourceItem;
             _items = [];
-
-            // Add the root node
-            _items.Add(rootNode);
+            SetRootNode(rootNode);
         }
 
         public object SourceItem { get; }
@@ -27,6 +25,19 @@ namespace GitHubNode.SolutionExplorer
         public bool HasItems => _items.Count > 0;
 
         public IEnumerable Items => _items;
+
+        public void SetRootNode(McpRootNode rootNode)
+        {
+            _items.Clear();
+
+            if (rootNode != null)
+            {
+                _items.Add(rootNode);
+            }
+
+            RaisePropertyChanged(nameof(HasItems));
+            RaisePropertyChanged(nameof(Items));
+        }
 
         public event PropertyChangedEventHandler PropertyChanged;
 

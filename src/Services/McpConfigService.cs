@@ -109,10 +109,10 @@ namespace GitHubNode.Services
         /// <returns>List of existing MCP configuration locations.</returns>
         public static List<McpConfigLocation> GetExistingLocations(string solutionDirectory)
         {
-            var allLocations = GetAllLocations(solutionDirectory);
+            List<McpConfigLocation> allLocations = GetAllLocations(solutionDirectory);
             var existingLocations = new List<McpConfigLocation>();
 
-            foreach (var location in allLocations)
+            foreach (McpConfigLocation location in allLocations)
             {
                 if (location.Exists)
                 {

@@ -1,10 +1,9 @@
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Utilities;
 
@@ -27,20 +26,14 @@ namespace GitHubNode.SolutionExplorer
     [Export(typeof(ISearchProvider))]
     [Name(nameof(McpSearchProvider))]
     [Order(Before = "GraphSearchProvider")]
-    internal sealed class McpSearchProvider : ISearchProvider
+    [method: ImportingConstructor]
+    internal sealed class McpSearchProvider([Import] McpSourceProvider sourceProvider) : ISearchProvider
     {
-        private readonly McpSourceProvider _sourceProvider;
 
         /// <summary>
         /// Maximum number of search results to return. Prevents performance issues in very large trees.
         /// </summary>
         private const int _maxSearchResults = 200;
-
-        [ImportingConstructor]
-        public McpSearchProvider([Import] McpSourceProvider sourceProvider)
-        {
-            _sourceProvider = sourceProvider;
-        }
 
         public void Search(IRelationshipSearchParameters parameters, Action<ISearchResult> resultAccumulator)
         {
@@ -55,6 +48,11 @@ namespace GitHubNode.SolutionExplorer
                 return;
             }
 
+            if (!McpSettingsService.IsMcpServersEnabled())
+            {
+                return;
+            }
+
             // Get the cancellation token from parameters - VS will cancel when user clears search
             CancellationToken cancellationToken = parameters.CancellationToken;
             if (cancellationToken.IsCancellationRequested)
@@ -63,7 +61,7 @@ namespace GitHubNode.SolutionExplorer
             }
 
             // Ensure the root node exists - this is needed for ContainedBy relationship to work
-            McpRootNode rootNode = _sourceProvider.RootNode;
+            McpRootNode rootNode = sourceProvider.RootNode;
             if (rootNode == null)
             {
                 // Root node doesn't exist yet (tree not expanded)
@@ -185,7 +183,7 @@ namespace GitHubNode.SolutionExplorer
                 }
 
                 // Move to the next level
-                currentLevel = nextLevel.ToList();
+                currentLevel = [.. nextLevel];
             }
         }
 
@@ -203,7 +201,7 @@ namespace GitHubNode.SolutionExplorer
                 if (current is McpNodeBase nodeBase)
                 {
                     // Set the ContainedBy collection if not already set
-                    nodeBase.ContainedByCollection = nodeBase.ContainedByCollection ?? new ContainedByCollection(nodeBase, nodeBase.ParentItem);
+                    nodeBase.ContainedByCollection ??= new ContainedByCollection(nodeBase, nodeBase.ParentItem);
                     current = nodeBase.ParentItem;
                 }
                 else
@@ -229,19 +227,12 @@ namespace GitHubNode.SolutionExplorer
     /// <summary>
     /// Represents a search result for an MCP node.
     /// </summary>
-    internal sealed class McpSearchResult : ISearchResult
+    internal sealed class McpSearchResult(McpNodeBase node) : ISearchResult
     {
-        private readonly McpNodeBase _node;
-
-        public McpSearchResult(McpNodeBase node)
-        {
-            _node = node;
-        }
-
         public object GetDisplayItem()
         {
             // Return the node itself as the display item - it implements ITreeDisplayItem
-            return _node;
+            return node;
         }
     }
 }

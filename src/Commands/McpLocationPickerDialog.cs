@@ -23,7 +23,7 @@ namespace GitHubNode.Commands
 
         public McpLocationPickerDialog(string solutionDirectory)
         {
-            var allLocations = McpConfigService.GetAllLocations(solutionDirectory);
+            List<McpConfigLocation> allLocations = McpConfigService.GetAllLocations(solutionDirectory);
             
             // Remove Cursor from picker but keep it discoverable in the tree
             _locations = allLocations.FindAll(loc => !loc.FilePath.Contains("\\.cursor\\"));
@@ -81,7 +81,7 @@ namespace GitHubNode.Commands
             _locationListBox.SetResourceReference(ListBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
             _locationListBox.SetResourceReference(ListBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
 
-            foreach (var location in _locations)
+            foreach (McpConfigLocation location in _locations)
             {
                 var itemPanel = new StackPanel { Margin = new Thickness(4) };
 
@@ -168,12 +168,12 @@ namespace GitHubNode.Commands
                 HorizontalAlignment = HorizontalAlignment.Right
             };
 
-            var okButton = CreateThemedButton("OK", isDefault: true);
+            Button okButton = CreateThemedButton("OK", isDefault: true);
             okButton.Margin = new Thickness(0, 0, 8, 0);
             okButton.Click += (s, e) => OnOkClicked();
             buttonPanel.Children.Add(okButton);
 
-            var cancelButton = CreateThemedButton("Cancel", isCancel: true);
+            Button cancelButton = CreateThemedButton("Cancel", isCancel: true);
             cancelButton.Click += (s, e) =>
             {
                 DialogResult = false;

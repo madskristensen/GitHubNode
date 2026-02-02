@@ -256,6 +256,15 @@
           <CanonicalName>.GitHubNode.OpenInFileExplorer</CanonicalName>
         </Strings>
       </Button>
+
+      <!-- Toggle MCP Servers -->
+      <Button guid="GitHubNode" id="ToggleMcpServers" priority="0x0200" type="Button">
+        <Parent guid="GitHubNode" id="RootActionsGroup" />
+        <Strings>
+          <ButtonText>Show MCP Servers</ButtonText>
+          <CanonicalName>.GitHubNode.ToggleMcpServers</CanonicalName>
+        </Strings>
+      </Button>
       
       <!-- Open in File Explorer (Folder) -->
       <Button guid="GitHubNode" id="OpenInFileExplorerFolder" priority="0x0100" type="Button">
@@ -477,6 +486,7 @@
             <IDSymbol name="OpenOnGitHubFolder" value="0x0115" />
             <IDSymbol name="AddMcpConfig" value="0x0116" />
             <IDSymbol name="RefreshMcp" value="0x0117" />
+            <IDSymbol name="ToggleMcpServers" value="0x0118" />
           </GuidSymbol>
         </Symbols>
       </CommandTable>

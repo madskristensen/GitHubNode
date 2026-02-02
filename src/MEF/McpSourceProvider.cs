@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
 using EnvDTE;
+using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Utilities;
 
@@ -19,6 +20,7 @@ namespace GitHubNode.SolutionExplorer
     [Order(After = nameof(GitHubSourceProvider))]
     internal class McpSourceProvider : IAttachedCollectionSourceProvider
     {
+        public static McpSourceProvider Instance { get; private set; }
         private McpRootNode _rootNode;
         private McpSolutionCollectionSource _solutionCollectionSource;
         private string _cachedSolutionDirectory;
@@ -32,6 +34,7 @@ namespace GitHubNode.SolutionExplorer
 
         public McpSourceProvider()
         {
+            Instance = this;
             _dte = VS.GetRequiredService<DTE, DTE>();
             VS.Events.SolutionEvents.OnBeforeCloseSolution += OnBeforeCloseSolution;
         }
@@ -43,6 +46,23 @@ namespace GitHubNode.SolutionExplorer
             _rootNode?.Dispose();
             _rootNode = null;
             _cachedSolutionDirectory = null;
+        }
+
+        public void UpdateVisibility()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            if (_solutionCollectionSource == null)
+            {
+                return;
+            }
+
+            if (_solutionCollectionSource.SourceItem is not IVsHierarchyItem hierarchyItem)
+            {
+                return;
+            }
+
+            ApplyVisibility(hierarchyItem);
         }
 
         public IEnumerable<IAttachedRelationship> GetRelationships(object item)
@@ -92,18 +112,12 @@ namespace GitHubNode.SolutionExplorer
                         var solutionDirectory = Path.GetDirectoryName(solutionPath);
                         if (!string.IsNullOrEmpty(solutionDirectory))
                         {
-                            if (_rootNode == null || _cachedSolutionDirectory != solutionDirectory)
-                            {
-                                _rootNode?.Dispose();
-                                _cachedSolutionDirectory = solutionDirectory;
-                                _rootNode = new McpRootNode(hierarchyItem, solutionDirectory);
-                            }
+                            _cachedSolutionDirectory = solutionDirectory;
+
+                            ApplyVisibility(hierarchyItem);
 
                             // Reuse existing collection source if possible to avoid breaking tree binding
-                            if (_solutionCollectionSource == null)
-                            {
-                                _solutionCollectionSource = new McpSolutionCollectionSource(hierarchyItem, _rootNode);
-                            }
+                            _solutionCollectionSource ??= new McpSolutionCollectionSource(hierarchyItem, _rootNode);
                             return _solutionCollectionSource;
                         }
                     }
@@ -131,6 +145,30 @@ namespace GitHubNode.SolutionExplorer
             }
 
             return null;
+        }
+
+        private void ApplyVisibility(IVsHierarchyItem hierarchyItem)
+        {
+            if (!McpSettingsService.IsMcpServersEnabled())
+            {
+                _solutionCollectionSource?.SetRootNode(null);
+                _rootNode?.Dispose();
+                _rootNode = null;
+                return;
+            }
+
+            if (string.IsNullOrEmpty(_cachedSolutionDirectory))
+            {
+                return;
+            }
+
+            if (_rootNode == null || _cachedSolutionDirectory != _rootNode.SolutionDirectory)
+            {
+                _rootNode?.Dispose();
+                _rootNode = new McpRootNode(hierarchyItem, _cachedSolutionDirectory);
+            }
+
+            _solutionCollectionSource?.SetRootNode(_rootNode);
         }
     }
 }
