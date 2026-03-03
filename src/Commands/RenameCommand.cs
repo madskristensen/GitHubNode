@@ -77,6 +77,7 @@ namespace GitHubNode.Commands
                 }
                 catch (Exception ex)
                 {
+                    await ex.LogAsync();
                     await VS.MessageBox.ShowErrorAsync("Rename Failed", $"Could not rename the file: {ex.Message}");
                 }
             }
@@ -117,6 +118,7 @@ namespace GitHubNode.Commands
                 }
                 catch (Exception ex)
                 {
+                    await ex.LogAsync();
                     await VS.MessageBox.ShowErrorAsync("Rename Failed", $"Could not rename the folder: {ex.Message}");
                 }
             }

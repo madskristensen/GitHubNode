@@ -1,9 +1,7 @@
 using System.Collections.Generic;
-using System.Collections;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Reflection;
 using System.Threading.Tasks;
 
 namespace GitHubNode.Services
@@ -29,7 +27,7 @@ namespace GitHubNode.Services
 
         private static HttpClient CreateHttpClient()
         {
-            // Ensure TLS 1.2 is enabled for GitHub API (required for .NET Framework 4.8)
+            // Ensure TLS 1.2 is enabled for GitHub API requests in .NET Framework host processes.
             System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
 
             var client = new HttpClient
@@ -93,11 +91,13 @@ namespace GitHubNode.Services
             }
             catch (HttpRequestException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.GetTemplateContentAsync failed for '{template?.DownloadUrl}': {ex}");
                 return null;
             }
             catch (TaskCanceledException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.GetTemplateContentAsync timed out for '{template?.DownloadUrl}': {ex}");
                 return null;
             }
@@ -118,6 +118,7 @@ namespace GitHubNode.Services
             }
             catch (IOException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.ClearCache failed for '{templateType}': {ex}");
             }
         }
@@ -184,11 +185,13 @@ namespace GitHubNode.Services
             }
             catch (IOException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.LoadFromCache failed for '{cacheFile}': {ex}");
                 return null;
             }
             catch (InvalidOperationException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.LoadFromCache failed for '{cacheFile}': {ex}");
                 return null;
             }
@@ -215,10 +218,12 @@ namespace GitHubNode.Services
             }
             catch (IOException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.SaveToCache failed for '{cacheFile}': {ex}");
             }
             catch (UnauthorizedAccessException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.SaveToCache failed for '{cacheFile}': {ex}");
             }
         }
@@ -271,10 +276,12 @@ namespace GitHubNode.Services
                         }
                         catch (HttpRequestException ex)
                         {
+                            _ = ex.LogAsync();
                             Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync failed to fetch skill folder '{item.Name}': {ex}");
                         }
                         catch (TaskCanceledException ex)
                         {
+                            _ = ex.LogAsync();
                             Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync timed out for skill folder '{item.Name}': {ex}");
                         }
                     }
@@ -282,10 +289,12 @@ namespace GitHubNode.Services
             }
             catch (HttpRequestException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync failed for '{folderName}': {ex}");
             }
             catch (TaskCanceledException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync timed out for '{folderName}': {ex}");
             }
 
@@ -298,54 +307,7 @@ namespace GitHubNode.Services
         /// </summary>
         private static List<GitHubContentItem> ParseGitHubContentsJson(string json)
         {
-            var items = new List<GitHubContentItem>();
-
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                return items;
-            }
-
-            try
-            {
-                object deserialized = DeserializeJson(json);
-                if (deserialized is not IEnumerable entries)
-                {
-                    return items;
-                }
-
-                foreach (object entry in entries)
-                {
-                    if (entry is not IDictionary item)
-                    {
-                        continue;
-                    }
-
-                    var name = item.Contains("name") ? item["name"] as string : null;
-                    var type = item.Contains("type") ? item["type"] as string : null;
-                    if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(type))
-                    {
-                        items.Add(new GitHubContentItem
-                        {
-                            Name = name,
-                            Type = type
-                        });
-                    }
-                }
-            }
-            catch (InvalidOperationException ex)
-            {
-                Debug.WriteLine($"AwesomeCopilotService.ParseGitHubContentsJson failed: {ex}");
-            }
-            catch (ArgumentException ex)
-            {
-                Debug.WriteLine($"AwesomeCopilotService.ParseGitHubContentsJson failed: {ex}");
-            }
-            catch (TargetInvocationException ex)
-            {
-                Debug.WriteLine($"AwesomeCopilotService.ParseGitHubContentsJson failed: {ex}");
-            }
-
-            return items;
+            return ParseGitHubContentsByTokenScan(json);
         }
 
         private sealed class GitHubContentItem
@@ -355,22 +317,91 @@ namespace GitHubNode.Services
             public string Type { get; set; }
         }
 
-        private static object DeserializeJson(string json)
+        private static List<GitHubContentItem> ParseGitHubContentsByTokenScan(string json)
         {
-            Type serializerType = Type.GetType("System.Web.Script.Serialization.JavaScriptSerializer, System.Web.Extensions", throwOnError: false);
-            if (serializerType == null)
+            var items = new List<GitHubContentItem>();
+            if (string.IsNullOrWhiteSpace(json))
             {
-                throw new InvalidOperationException("System.Web.Extensions is required for JSON parsing.");
+                return items;
             }
 
-            object serializer = Activator.CreateInstance(serializerType);
-            MethodInfo deserializeMethod = serializerType.GetMethod("DeserializeObject", [typeof(string)]);
-            if (deserializeMethod == null)
+            var pos = 0;
+            while (pos < json.Length)
             {
-                throw new InvalidOperationException("JavaScriptSerializer.DeserializeObject method was not found.");
+                var nameKeyPos = json.IndexOf("\"name\"", pos, StringComparison.Ordinal);
+                if (nameKeyPos < 0)
+                {
+                    break;
+                }
+
+                var nameColonPos = json.IndexOf(':', nameKeyPos + 6);
+                if (nameColonPos < 0)
+                {
+                    break;
+                }
+
+                var nameValueStart = json.IndexOf('"', nameColonPos + 1);
+                if (nameValueStart < 0)
+                {
+                    break;
+                }
+
+                nameValueStart++;
+                var nameValueEnd = json.IndexOf('"', nameValueStart);
+                if (nameValueEnd < 0)
+                {
+                    break;
+                }
+
+                var name = json.Substring(nameValueStart, nameValueEnd - nameValueStart);
+
+                var typeKeyPos = json.IndexOf("\"type\"", nameValueEnd, StringComparison.Ordinal);
+                if (typeKeyPos < 0)
+                {
+                    break;
+                }
+
+                var nextNamePos = json.IndexOf("\"name\"", nameValueEnd, StringComparison.Ordinal);
+                if (nextNamePos > 0 && nextNamePos < typeKeyPos)
+                {
+                    pos = nextNamePos;
+                    continue;
+                }
+
+                var typeColonPos = json.IndexOf(':', typeKeyPos + 6);
+                if (typeColonPos < 0)
+                {
+                    break;
+                }
+
+                var typeValueStart = json.IndexOf('"', typeColonPos + 1);
+                if (typeValueStart < 0)
+                {
+                    break;
+                }
+
+                typeValueStart++;
+                var typeValueEnd = json.IndexOf('"', typeValueStart);
+                if (typeValueEnd < 0)
+                {
+                    break;
+                }
+
+                var type = json.Substring(typeValueStart, typeValueEnd - typeValueStart);
+
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(type))
+                {
+                    items.Add(new GitHubContentItem
+                    {
+                        Name = name,
+                        Type = type
+                    });
+                }
+
+                pos = typeValueEnd + 1;
             }
 
-            return deserializeMethod.Invoke(serializer, [json]);
+            return items;
         }
     }
 

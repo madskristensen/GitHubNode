@@ -233,8 +233,8 @@ namespace GitHubNode.Commands
 
                 _copyButton = new Button
                 {
-                    Content = "\uD83D\uDCCB", // Clipboard icon
-                    Width = 16,
+                    Content = "Copy",
+                    Width = 40,
                     Height = 20,
                     Padding = new Thickness(0),
                     FontSize = 10,
@@ -313,8 +313,9 @@ namespace GitHubNode.Commands
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                _ = ex.LogAsync();
                 // Ignore settings errors
             }
         }
@@ -330,8 +331,9 @@ namespace GitHubNode.Commands
                     settings[_settingsKey + "_Height"] = ActualHeight;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                _ = ex.LogAsync();
                 // Ignore settings errors
             }
         }
@@ -365,8 +367,9 @@ namespace GitHubNode.Commands
                 {
                     await LoadTemplatesAsync();
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _ = ex.LogAsync();
                     // Handled in LoadTemplatesAsync
                 }
             }
@@ -412,8 +415,9 @@ namespace GitHubNode.Commands
                     SetStatus("No templates available (offline?)");
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                _ = ex.LogAsync();
                 // Failed to load templates - remove loading indicator if present
                 while (_templateComboBox.Items.Count > 1)
                 {
@@ -435,8 +439,9 @@ namespace GitHubNode.Commands
             {
                 await LoadTemplatesAsync(forceRefresh: true);
             }
-            catch
+            catch (Exception ex)
             {
+                _ = ex.LogAsync();
                 // Handled in LoadTemplatesAsync
             }
         }
@@ -450,8 +455,9 @@ namespace GitHubNode.Commands
                     Clipboard.SetText(_currentPreviewContent);
                     SetStatus("Copied to clipboard");
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _ = ex.LogAsync();
                     SetStatus("Failed to copy");
                 }
             }
@@ -538,8 +544,9 @@ namespace GitHubNode.Commands
                     SetStatus(sizeKb >= 1.0 ? $"{sizeKb:F1} KB" : $"{template.Content?.Length ?? 0} bytes");
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                _ = ex.LogAsync();
                 SetStatus("Failed to load template content");
             }
         }
@@ -566,8 +573,9 @@ namespace GitHubNode.Commands
                 var preview = _previewGenerator(_textBox.Text);
                 UpdatePreviewWithContent(preview);
             }
-            catch
+            catch (Exception ex)
             {
+                _ = ex.LogAsync();
                 _previewBox.Document.Blocks.Clear();
                 _previewBox.Document.Blocks.Add(new Paragraph(new Run("(Preview unavailable)")));
                 _currentPreviewContent = null;

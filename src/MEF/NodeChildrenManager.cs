@@ -71,23 +71,23 @@ namespace GitHubNode.SolutionExplorer
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            // Dispose existing children
             foreach (var child in _children)
             {
                 (child as IDisposable)?.Dispose();
             }
+
             _children.Clear();
 
             if (!Directory.Exists(_folderPath))
+            {
                 return;
+            }
 
-            // Add subdirectories first
             foreach (var dir in Directory.GetDirectories(_folderPath))
             {
                 _children.Add(new GitHubFolderNode(dir, _parent));
             }
 
-            // Then add files
             foreach (var file in Directory.GetFiles(_folderPath))
             {
                 _children.Add(new GitHubFileNode(file, _parent));
@@ -96,92 +96,81 @@ namespace GitHubNode.SolutionExplorer
             _onPropertyChanged?.Invoke();
         }
 
-                private void SetupFileWatcher()
+        private void SetupFileWatcher()
+        {
+            if (!Directory.Exists(_folderPath))
+            {
+                SetupParentWatcher();
+                return;
+            }
+
+            SetupFolderWatcher();
+        }
+
+        private void SetupParentWatcher()
+        {
+            var parentDir = Path.GetDirectoryName(_folderPath);
+            if (string.IsNullOrEmpty(parentDir) || !Directory.Exists(parentDir))
+            {
+                return;
+            }
+
+            _parentWatcher = new FileSystemWatcher(parentDir)
+            {
+                IncludeSubdirectories = false,
+                NotifyFilter = NotifyFilters.DirectoryName,
+                Filter = Path.GetFileName(_folderPath)
+            };
+
+            _parentWatcher.Created += OnTargetFolderCreated;
+            _parentWatcher.EnableRaisingEvents = true;
+        }
+
+        private void OnTargetFolderCreated(object sender, FileSystemEventArgs e)
+        {
+#pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+            {
+                try
                 {
-                    if (!Directory.Exists(_folderPath))
+                    await System.Threading.Tasks.Task.Delay(50);
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                    if (_disposed)
                     {
-                        // Folder doesn't exist yet - watch the parent directory for its creation
-                        SetupParentWatcher();
                         return;
                     }
 
-                    // Folder exists - set up the normal watcher
+                    if (_parentWatcher != null)
+                    {
+                        _parentWatcher.EnableRaisingEvents = false;
+                        _parentWatcher.Dispose();
+                        _parentWatcher = null;
+                    }
+
                     SetupFolderWatcher();
+                    GitStatusService.InvalidateCache();
+                    RefreshChildren();
                 }
-
-                private void SetupParentWatcher()
+                catch (Exception ex)
                 {
-                    var parentDir = Path.GetDirectoryName(_folderPath);
-                    if (string.IsNullOrEmpty(parentDir) || !Directory.Exists(parentDir))
-                    {
-                        return;
-                    }
-
-                    _parentWatcher = new FileSystemWatcher(parentDir)
-                    {
-                        IncludeSubdirectories = false,
-                        NotifyFilter = NotifyFilters.DirectoryName,
-                        Filter = Path.GetFileName(_folderPath)
-                    };
-
-                    _parentWatcher.Created += OnTargetFolderCreated;
-                    _parentWatcher.EnableRaisingEvents = true;
+                    _ = ex.LogAsync();
+                    Debug.WriteLine($"NodeChildrenManager.OnTargetFolderCreated failed for '{_folderPath}': {ex}");
                 }
+            });
+#pragma warning restore VSSDK007
+        }
 
-                private void OnTargetFolderCreated(object sender, FileSystemEventArgs e)
-                {
-                    // The target folder was created - stop watching parent and set up folder watcher
-        #pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
-                    _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
-                    {
-                        try
-                        {
-                            // Small delay to ensure folder is fully created
-                            await System.Threading.Tasks.Task.Delay(50);
+        private void SetupFolderWatcher()
+        {
+            if (_watcher != null || !Directory.Exists(_folderPath))
+            {
+                return;
+            }
 
-                            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-                            if (_disposed)
-                            {
-                                return;
-                            }
-
-                            // Clean up parent watcher
-                            if (_parentWatcher != null)
-                            {
-                                _parentWatcher.EnableRaisingEvents = false;
-                                _parentWatcher.Dispose();
-                                _parentWatcher = null;
-                            }
-
-                            // Set up folder watcher and refresh children
-                            SetupFolderWatcher();
-
-                            // Invalidate Git status cache so new files show correct status
-                            GitStatusService.InvalidateCache();
-
-                            RefreshChildren();
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"NodeChildrenManager.OnTargetFolderCreated failed for '{_folderPath}': {ex}");
-                        }
-                    });
-        #pragma warning restore VSSDK007
-                }
-
-                private void SetupFolderWatcher()
-                {
-                    if (_watcher != null || !Directory.Exists(_folderPath))
-                    {
-                        return;
-                    }
-
-                    _watcher = new FileSystemWatcher(_folderPath)
+            _watcher = new FileSystemWatcher(_folderPath)
             {
                 IncludeSubdirectories = _includeSubdirectories,
-                // Only watch for file/folder creation, deletion, and renames
-                // Do NOT include LastWrite - that triggers on every file save and causes tree refresh
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName
             };
 
@@ -193,21 +182,17 @@ namespace GitHubNode.SolutionExplorer
 
         private void OnFileSystemChanged(object sender, FileSystemEventArgs e)
         {
-            // Ignore temp files that VS creates during save operations
             if (IsTempFile(e.FullPath))
             {
                 return;
             }
 
-            // Only handle changes to direct children of this folder
-            // Subdirectory changes are handled by their own NodeChildrenManager
             var parentDir = Path.GetDirectoryName(e.FullPath);
             if (!string.Equals(parentDir, _folderPath, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            // Debounce rapid file system changes (e.g., VS save operations)
             DebouncedRefresh();
         }
 
@@ -219,13 +204,11 @@ namespace GitHubNode.SolutionExplorer
                 _debounceCts = new CancellationTokenSource();
                 CancellationToken token = _debounceCts.Token;
 
-                // FireAndForget is appropriate here since this is a fire-and-forget file system event
 #pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
                 _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
                 {
                     try
                     {
-                        // Wait 100ms for additional changes before refreshing
                         await System.Threading.Tasks.Task.Delay(100, token);
 
                         if (token.IsCancellationRequested)
@@ -233,15 +216,13 @@ namespace GitHubNode.SolutionExplorer
                             return;
                         }
 
-                        // Invalidate Git status cache so new files show correct status
                         GitStatusService.InvalidateCache();
-
                         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(token);
                         RefreshChildren();
                     }
-                    catch (System.Threading.Tasks.TaskCanceledException)
+                    catch (System.Threading.Tasks.TaskCanceledException ex)
                     {
-                        // Debounce cancelled - another change came in
+                        _ = ex.LogAsync();
                     }
                 });
 #pragma warning restore VSSDK007
@@ -252,47 +233,34 @@ namespace GitHubNode.SolutionExplorer
         {
             var fileName = Path.GetFileName(path);
 
-            // VS creates temp files during save
             if (fileName.StartsWith("~") || fileName.EndsWith(".tmp") || fileName.EndsWith(".TMP"))
             {
                 return true;
             }
 
-            // Also ignore hidden/system temp patterns
-            if (fileName.StartsWith("."))
-            {
-                return true;
-            }
-
-            return false;
+            return fileName.StartsWith(".");
         }
 
         private void OnFileSystemRenamed(object sender, RenamedEventArgs e)
         {
-            // Ignore temp file renames that VS creates during save operations
             if (IsTempFile(e.OldFullPath) || IsTempFile(e.FullPath))
             {
                 return;
             }
 
-            // Invalidate Git status cache so renamed files show correct status
             GitStatusService.InvalidateCache();
 
-            // Handle renames by updating the node in-place instead of refreshing all children
 #pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
             _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-                // Only handle renames for direct children of this folder
                 var parentDir = Path.GetDirectoryName(e.OldFullPath);
                 if (!string.Equals(parentDir, _folderPath, StringComparison.OrdinalIgnoreCase))
                 {
-                    // This rename is in a subdirectory - let that folder's manager handle it
                     return;
                 }
 
-                // Try to find and update the renamed node
                 foreach (var child in _children)
                 {
                     if (child is GitHubFileNode fileNode &&
@@ -310,45 +278,47 @@ namespace GitHubNode.SolutionExplorer
                     }
                 }
 
-                // Node not found in our children - shouldn't happen for direct children
                 RefreshChildren();
             });
 #pragma warning restore VSSDK007
         }
 
-                public void Dispose()
-                {
-                    if (_disposed)
-                        return;
-
-                    _disposed = true;
-
-                    lock (_debounceLock)
-                    {
-                        _debounceCts?.Cancel();
-                        _debounceCts?.Dispose();
-                        _debounceCts = null;
-                    }
-
-                    if (_parentWatcher != null)
-                    {
-                        _parentWatcher.EnableRaisingEvents = false;
-                        _parentWatcher.Dispose();
-                        _parentWatcher = null;
-                    }
-
-                    if (_watcher != null)
-                    {
-                        _watcher.EnableRaisingEvents = false;
-                        _watcher.Dispose();
-                        _watcher = null;
-                    }
-
-                    foreach (var child in _children)
-                    {
-                        (child as IDisposable)?.Dispose();
-                    }
-                    _children.Clear();
-                }
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
             }
+
+            _disposed = true;
+
+            lock (_debounceLock)
+            {
+                _debounceCts?.Cancel();
+                _debounceCts?.Dispose();
+                _debounceCts = null;
+            }
+
+            if (_parentWatcher != null)
+            {
+                _parentWatcher.EnableRaisingEvents = false;
+                _parentWatcher.Dispose();
+                _parentWatcher = null;
+            }
+
+            if (_watcher != null)
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Dispose();
+                _watcher = null;
+            }
+
+            foreach (var child in _children)
+            {
+                (child as IDisposable)?.Dispose();
+            }
+
+            _children.Clear();
         }
+    }
+}

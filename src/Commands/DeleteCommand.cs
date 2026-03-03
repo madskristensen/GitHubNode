@@ -64,6 +64,7 @@ namespace GitHubNode.Commands
                 }
                 catch (Exception ex)
                 {
+                    await ex.LogAsync();
                     await VS.MessageBox.ShowErrorAsync("Delete Failed", $"Could not delete the file: {ex.Message}");
                 }
             }
@@ -82,8 +83,9 @@ namespace GitHubNode.Commands
             {
                 hasContent = Directory.EnumerateFileSystemEntries(folderPath).Any();
             }
-            catch
+            catch (Exception ex)
             {
+                _ = ex.LogAsync();
                 hasContent = true;
             }
 
@@ -101,6 +103,7 @@ namespace GitHubNode.Commands
                 }
                 catch (Exception ex)
                 {
+                    await ex.LogAsync();
                     await VS.MessageBox.ShowErrorAsync("Delete Failed", $"Could not delete the folder: {ex.Message}");
                 }
             }

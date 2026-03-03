@@ -26,11 +26,13 @@ namespace GitHubNode.Services
             }
             catch (InvalidOperationException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpSettingsService.IsMcpServersEnabled failed: {ex}");
                 return false;
             }
             catch (ArgumentException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpSettingsService.IsMcpServersEnabled failed: {ex}");
                 return false;
             }
@@ -52,10 +54,12 @@ namespace GitHubNode.Services
             }
             catch (InvalidOperationException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpSettingsService.SetMcpServersEnabled failed: {ex}");
             }
             catch (ArgumentException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpSettingsService.SetMcpServersEnabled failed: {ex}");
             }
         }

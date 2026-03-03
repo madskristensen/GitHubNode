@@ -161,18 +161,22 @@ namespace GitHubNode.Services
             }
             catch (InvalidOperationException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
             }
             catch (ArgumentException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
             }
             catch (TargetInvocationException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
             }
             catch (IOException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
             }
 
@@ -212,18 +216,22 @@ namespace GitHubNode.Services
             }
             catch (InvalidOperationException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
             }
             catch (ArgumentException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
             }
             catch (TargetInvocationException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
             }
             catch (IOException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
             }
 
@@ -263,16 +271,19 @@ namespace GitHubNode.Services
             }
             catch (ArgumentException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.CreateConfigFile failed for '{filePath}': {ex}");
                 return false;
             }
             catch (IOException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.CreateConfigFile failed for '{filePath}': {ex}");
                 return false;
             }
             catch (UnauthorizedAccessException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.CreateConfigFile failed for '{filePath}': {ex}");
                 return false;
             }

@@ -163,6 +163,7 @@ namespace GitHubNode.Commands
             }
             catch (Exception ex)
             {
+                await ex.LogAsync();
                 await VS.MessageBox.ShowErrorAsync("Error", $"{ErrorMessagePrefix}: {ex.Message}");
             }
         }

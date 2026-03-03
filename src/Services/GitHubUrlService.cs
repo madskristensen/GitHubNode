@@ -75,7 +75,8 @@ namespace GitHubNode.Services
 
             while (!string.IsNullOrEmpty(current))
             {
-                if (Directory.Exists(Path.Combine(current, ".git")))
+                var gitPath = Path.Combine(current, ".git");
+                if (Directory.Exists(gitPath) || File.Exists(gitPath))
                 {
                     return current;
                 }
@@ -115,10 +116,12 @@ namespace GitHubNode.Services
             }
             catch (InvalidOperationException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"GitHubUrlService.GetCachedRepoInfo failed for '{repoRoot}': {ex}");
             }
             catch (System.ComponentModel.Win32Exception ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"GitHubUrlService.GetCachedRepoInfo failed for '{repoRoot}': {ex}");
             }
 
@@ -169,11 +172,13 @@ namespace GitHubNode.Services
             }
             catch (InvalidOperationException ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"GitHubUrlService.RunGitCommand failed in '{workingDirectory}': {ex}");
                 return null;
             }
             catch (System.ComponentModel.Win32Exception ex)
             {
+                _ = ex.LogAsync();
                 Debug.WriteLine($"GitHubUrlService.RunGitCommand failed in '{workingDirectory}': {ex}");
                 return null;
             }
@@ -189,8 +194,9 @@ namespace GitHubNode.Services
                     process.WaitForExit(1000);
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                _ = ex.LogAsync();
                 // Best-effort cleanup only
             }
         }
