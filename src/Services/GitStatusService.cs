@@ -319,9 +319,13 @@ namespace GitHubNode.Services
                     };
                 }
             }
-            catch
+            catch (IOException ex)
             {
-                // Silently fail - Git status is a nice-to-have feature
+                Debug.WriteLine($"GitStatusService.RefreshStatusCache failed for '{repoRoot}': {ex}");
+            }
+            catch (InvalidOperationException ex)
+            {
+                Debug.WriteLine($"GitStatusService.RefreshStatusCache failed for '{repoRoot}': {ex}");
             }
         }
 
@@ -402,15 +406,50 @@ namespace GitHubNode.Services
                         return null;
                     }
 
-                    var output = process.StandardOutput.ReadToEnd();
-                    process.WaitForExit(5000);
+                    Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+                    Task<string> errorTask = process.StandardError.ReadToEndAsync();
 
-                    return process.ExitCode == 0 ? output : null;
+                    var exited = process.WaitForExit(5000);
+                    if (!exited)
+                    {
+                        TryTerminateProcess(process);
+                        return null;
+                    }
+
+                    Task.WaitAll([outputTask, errorTask], 1000);
+                    if (outputTask.Status != TaskStatus.RanToCompletion)
+                    {
+                        return null;
+                    }
+
+                    return process.ExitCode == 0 ? outputTask.Result : null;
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                Debug.WriteLine($"GitStatusService.RunGitCommand failed in '{workingDirectory}': {ex}");
+                return null;
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                Debug.WriteLine($"GitStatusService.RunGitCommand failed in '{workingDirectory}': {ex}");
+                return null;
+            }
+        }
+
+        private static void TryTerminateProcess(Process process)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill();
+                    process.WaitForExit(1000);
                 }
             }
             catch
             {
-                return null;
+                // Best-effort cleanup only
             }
         }
     }

@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
-using System.Text.RegularExpressions;
+using System.Collections;
+using System.Reflection;
 
 namespace GitHubNode.Services
 {
@@ -140,119 +142,38 @@ namespace GitHubNode.Services
             try
             {
                 var json = File.ReadAllText(filePath);
-
-                // Find the "servers" object
-                var serversIndex = json.IndexOf("\"servers\"");
-                if (serversIndex == -1)
+                IDictionary servers = GetServersObject(json);
+                if (servers == null)
                 {
                     return serverInfo;
                 }
 
-                // Find the opening brace of the servers object
-                var openBraceIndex = json.IndexOf('{', serversIndex);
-                if (openBraceIndex == -1)
+                foreach (DictionaryEntry serverEntry in servers)
                 {
-                    return serverInfo;
-                }
-
-                // Parse each server and detect its transport type
-                var depth = 0;
-                var inString = false;
-                var escapeNext = false;
-                var currentKey = "";
-                var capturingKey = false;
-                var serverStartIndex = -1;
-
-                for (var i = openBraceIndex; i < json.Length; i++)
-                {
-                    var c = json[i];
-
-                    if (escapeNext)
+                    if (serverEntry.Key is not string serverName)
                     {
-                        if (capturingKey)
-                        {
-                            currentKey += c;
-                        }
-                        escapeNext = false;
                         continue;
                     }
 
-                    if (c == '\\')
-                    {
-                        escapeNext = true;
-                        continue;
-                    }
-
-                    if (c == '"')
-                    {
-                        if (inString)
-                        {
-                            inString = false;
-                            if (capturingKey && depth == 1)
-                            {
-                                capturingKey = false;
-                            }
-                        }
-                        else
-                        {
-                            inString = true;
-                            if (depth == 1 && !capturingKey)
-                            {
-                                var nextColonIndex = json.IndexOf(':', i);
-                                var nextBraceIndex = json.IndexOf('{', i);
-                                if (nextColonIndex != -1 && (nextBraceIndex == -1 || nextColonIndex < nextBraceIndex))
-                                {
-                                    capturingKey = true;
-                                    currentKey = "";
-                                }
-                            }
-                        }
-                        continue;
-                    }
-
-                    if (inString)
-                    {
-                        if (capturingKey)
-                        {
-                            currentKey += c;
-                        }
-                        continue;
-                    }
-
-                    if (c == '{')
-                    {
-                        depth++;
-                        if (depth == 2 && !string.IsNullOrEmpty(currentKey))
-                        {
-                            serverStartIndex = i;
-                        }
-                    }
-                    else if (c == '}')
-                    {
-                        if (depth == 2 && serverStartIndex != -1 && !string.IsNullOrEmpty(currentKey))
-                        {
-                            // Extract server config substring
-                            var serverConfig = json.Substring(serverStartIndex, i - serverStartIndex + 1);
-                            
-                            // Detect transport type: http if "url" is present, otherwise stdio
-                            var transportType = serverConfig.Contains("\"url\"") ? "http" : "stdio";
-
-                            serverInfo[currentKey] = transportType;
-                            currentKey = "";
-                            serverStartIndex = -1;
-                        }
-
-                        depth--;
-                        if (depth == 0)
-                        {
-                            break;
-                        }
-                    }
+                    string transportType = GetTransportType(serverEntry.Value);
+                    serverInfo[serverName] = transportType;
                 }
             }
-            catch
+            catch (InvalidOperationException ex)
             {
-                // Return partial results on parse errors
+                Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
+            }
+            catch (TargetInvocationException ex)
+            {
+                Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
             }
 
             return serverInfo;
@@ -275,107 +196,35 @@ namespace GitHubNode.Services
             try
             {
                 var json = File.ReadAllText(filePath);
-
-                // Find the "servers" object
-                var serversIndex = json.IndexOf("\"servers\"");
-                if (serversIndex == -1)
+                IDictionary servers = GetServersObject(json);
+                if (servers == null)
                 {
                     return serverNames;
                 }
 
-                // Find the opening brace of the servers object
-                var openBraceIndex = json.IndexOf('{', serversIndex);
-                if (openBraceIndex == -1)
+                foreach (object serverName in servers.Keys)
                 {
-                    return serverNames;
-                }
-
-                // Parse the servers object to find top-level keys
-                var depth = 0;
-                var inString = false;
-                var escapeNext = false;
-                var currentKey = "";
-                var capturingKey = false;
-
-                for (var i = openBraceIndex; i < json.Length; i++)
-                {
-                    var c = json[i];
-
-                    if (escapeNext)
+                    if (serverName is string name)
                     {
-                        if (capturingKey)
-                        {
-                            currentKey += c;
-                        }
-                        escapeNext = false;
-                        continue;
-                    }
-
-                    if (c == '\\')
-                    {
-                        escapeNext = true;
-                        continue;
-                    }
-
-                    if (c == '"')
-                    {
-                        if (inString)
-                        {
-                            inString = false;
-                            if (capturingKey && depth == 1)
-                            {
-                                capturingKey = false;
-                            }
-                        }
-                        else
-                        {
-                            inString = true;
-                            if (depth == 1 && !capturingKey)
-                            {
-                                // Check if next non-whitespace is ':'
-                                var nextColonIndex = json.IndexOf(':', i);
-                                var nextBraceIndex = json.IndexOf('{', i);
-                                if (nextColonIndex != -1 && (nextBraceIndex == -1 || nextColonIndex < nextBraceIndex))
-                                {
-                                    capturingKey = true;
-                                    currentKey = "";
-                                }
-                            }
-                        }
-                        continue;
-                    }
-
-                    if (inString)
-                    {
-                        if (capturingKey)
-                        {
-                            currentKey += c;
-                        }
-                        continue;
-                    }
-
-                    if (c == '{')
-                    {
-                        depth++;
-                        if (depth == 2 && !string.IsNullOrEmpty(currentKey))
-                        {
-                            serverNames.Add(currentKey);
-                            currentKey = "";
-                        }
-                    }
-                    else if (c == '}')
-                    {
-                        depth--;
-                        if (depth == 0)
-                        {
-                            break;
-                        }
+                        serverNames.Add(name);
                     }
                 }
             }
-            catch
+            catch (InvalidOperationException ex)
             {
-                // Failed to parse - return empty list
+                Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
+            }
+            catch (TargetInvocationException ex)
+            {
+                Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
             }
 
             return serverNames;
@@ -412,10 +261,73 @@ namespace GitHubNode.Services
                 File.WriteAllText(filePath, GetDefaultContent());
                 return true;
             }
-            catch
+            catch (ArgumentException ex)
             {
+                Debug.WriteLine($"McpConfigService.CreateConfigFile failed for '{filePath}': {ex}");
                 return false;
             }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"McpConfigService.CreateConfigFile failed for '{filePath}': {ex}");
+                return false;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Debug.WriteLine($"McpConfigService.CreateConfigFile failed for '{filePath}': {ex}");
+                return false;
+            }
+        }
+
+        private static IDictionary GetServersObject(string json)
+        {
+            object deserialized = DeserializeJson(json);
+            if (deserialized is not IDictionary root)
+            {
+                return null;
+            }
+
+            if (!root.Contains("servers"))
+            {
+                return null;
+            }
+
+            return root["servers"] as IDictionary;
+        }
+
+        private static string GetTransportType(object serverConfig)
+        {
+            if (serverConfig is IDictionary config &&
+                config.Contains("url") &&
+                config["url"] is string url &&
+                !string.IsNullOrWhiteSpace(url))
+            {
+                return "http";
+            }
+
+            return "stdio";
+        }
+
+        private static object DeserializeJson(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
+            Type serializerType = Type.GetType("System.Web.Script.Serialization.JavaScriptSerializer, System.Web.Extensions", throwOnError: false);
+            if (serializerType == null)
+            {
+                throw new InvalidOperationException("System.Web.Extensions is required for JSON parsing.");
+            }
+
+            object serializer = Activator.CreateInstance(serializerType);
+            MethodInfo deserializeMethod = serializerType.GetMethod("DeserializeObject", [typeof(string)]);
+            if (deserializeMethod == null)
+            {
+                throw new InvalidOperationException("JavaScriptSerializer.DeserializeObject method was not found.");
+            }
+
+            return deserializeMethod.Invoke(serializer, [json]);
         }
 
         private static McpConfigLocation CreateLocation(string filePath, string displayName, string description, bool isSourceControlled)

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace GitHubNode.Services
 {
@@ -112,9 +113,13 @@ namespace GitHubNode.Services
                 remoteUrl = RunGitCommand(repoRoot, "config --get remote.origin.url")?.Trim();
                 branch = RunGitCommand(repoRoot, "rev-parse --abbrev-ref HEAD")?.Trim();
             }
-            catch
+            catch (InvalidOperationException ex)
             {
-                // Ignore errors - will return null values
+                Debug.WriteLine($"GitHubUrlService.GetCachedRepoInfo failed for '{repoRoot}': {ex}");
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                Debug.WriteLine($"GitHubUrlService.GetCachedRepoInfo failed for '{repoRoot}': {ex}");
             }
 
             _repoInfoCache[repoRoot] = (remoteUrl, branch, DateTime.UtcNow);
@@ -134,17 +139,59 @@ namespace GitHubNode.Services
                 CreateNoWindow = true
             };
 
-            using (var process = Process.Start(startInfo))
+            try
             {
-                if (process == null)
+                using (var process = Process.Start(startInfo))
                 {
-                    return null;
+                    if (process == null)
+                    {
+                        return null;
+                    }
+
+                    Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+                    Task<string> errorTask = process.StandardError.ReadToEndAsync();
+
+                    var exited = process.WaitForExit(5000);
+                    if (!exited)
+                    {
+                        TryTerminateProcess(process);
+                        return null;
+                    }
+
+                    Task.WaitAll([outputTask, errorTask], 1000);
+                    if (outputTask.Status != TaskStatus.RanToCompletion)
+                    {
+                        return null;
+                    }
+
+                    return process.ExitCode == 0 ? outputTask.Result : null;
                 }
+            }
+            catch (InvalidOperationException ex)
+            {
+                Debug.WriteLine($"GitHubUrlService.RunGitCommand failed in '{workingDirectory}': {ex}");
+                return null;
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                Debug.WriteLine($"GitHubUrlService.RunGitCommand failed in '{workingDirectory}': {ex}");
+                return null;
+            }
+        }
 
-                var output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit(5000);
-
-                return process.ExitCode == 0 ? output : null;
+        private static void TryTerminateProcess(Process process)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill();
+                    process.WaitForExit(1000);
+                }
+            }
+            catch
+            {
+                // Best-effort cleanup only
             }
         }
 

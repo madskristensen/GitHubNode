@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using GitHubNode.Services;
@@ -161,9 +162,9 @@ namespace GitHubNode.SolutionExplorer
 
                             RefreshChildren();
                         }
-                        catch
+                        catch (Exception ex)
                         {
-                            // Ignore errors during cleanup
+                            Debug.WriteLine($"NodeChildrenManager.OnTargetFolderCreated failed for '{_folderPath}': {ex}");
                         }
                     });
         #pragma warning restore VSSDK007

@@ -1,6 +1,9 @@
 using System.Collections.Generic;
+using System.Collections;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace GitHubNode.Services
@@ -88,8 +91,14 @@ namespace GitHubNode.Services
             {
                 return await _httpClient.GetStringAsync(template.DownloadUrl);
             }
-            catch
+            catch (HttpRequestException ex)
             {
+                Debug.WriteLine($"AwesomeCopilotService.GetTemplateContentAsync failed for '{template?.DownloadUrl}': {ex}");
+                return null;
+            }
+            catch (TaskCanceledException ex)
+            {
+                Debug.WriteLine($"AwesomeCopilotService.GetTemplateContentAsync timed out for '{template?.DownloadUrl}': {ex}");
                 return null;
             }
         }
@@ -107,9 +116,9 @@ namespace GitHubNode.Services
                     File.Delete(cacheFile);
                 }
             }
-            catch
+            catch (IOException ex)
             {
-                // Ignore cache deletion failures
+                Debug.WriteLine($"AwesomeCopilotService.ClearCache failed for '{templateType}': {ex}");
             }
         }
 
@@ -173,8 +182,14 @@ namespace GitHubNode.Services
 
                 return templates;
             }
-            catch
+            catch (IOException ex)
             {
+                Debug.WriteLine($"AwesomeCopilotService.LoadFromCache failed for '{cacheFile}': {ex}");
+                return null;
+            }
+            catch (InvalidOperationException ex)
+            {
+                Debug.WriteLine($"AwesomeCopilotService.LoadFromCache failed for '{cacheFile}': {ex}");
                 return null;
             }
         }
@@ -198,9 +213,13 @@ namespace GitHubNode.Services
 
                 File.WriteAllLines(cacheFile, lines);
             }
-            catch
+            catch (IOException ex)
             {
-                // Ignore cache write failures
+                Debug.WriteLine($"AwesomeCopilotService.SaveToCache failed for '{cacheFile}': {ex}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Debug.WriteLine($"AwesomeCopilotService.SaveToCache failed for '{cacheFile}': {ex}");
             }
         }
 
@@ -250,16 +269,24 @@ namespace GitHubNode.Services
                                 });
                             }
                         }
-                        catch
+                        catch (HttpRequestException ex)
                         {
-                            // Skip this skill folder on error
+                            Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync failed to fetch skill folder '{item.Name}': {ex}");
+                        }
+                        catch (TaskCanceledException ex)
+                        {
+                            Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync timed out for skill folder '{item.Name}': {ex}");
                         }
                     }
                 }
             }
-            catch
+            catch (HttpRequestException ex)
             {
-                // Return empty list on API failure
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync failed for '{folderName}': {ex}");
+            }
+            catch (TaskCanceledException ex)
+            {
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync timed out for '{folderName}': {ex}");
             }
 
             return templates;
@@ -267,77 +294,83 @@ namespace GitHubNode.Services
 
         /// <summary>
         /// Parses the GitHub contents API JSON response.
-        /// Uses simple string parsing to extract name and type values.
+        /// Uses JSON deserialization to extract name and type values.
         /// </summary>
         private static List<GitHubContentItem> ParseGitHubContentsJson(string json)
         {
             var items = new List<GitHubContentItem>();
 
-            // Find all "name" and "type" pairs in the JSON
-            var pos = 0;
-            while (pos < json.Length)
+            if (string.IsNullOrWhiteSpace(json))
             {
-                // Find the next "name" key
-                var nameKeyPos = json.IndexOf("\"name\"", pos, StringComparison.Ordinal);
-                if (nameKeyPos < 0) break;
+                return items;
+            }
 
-                // Find the colon after "name"
-                var colonPos = json.IndexOf(':', nameKeyPos + 6);
-                if (colonPos < 0) break;
-
-                // Find the opening quote of the value (skip whitespace)
-                var nameValueStart = json.IndexOf('"', colonPos + 1);
-                if (nameValueStart < 0) break;
-                nameValueStart++; // Skip opening quote
-
-                var nameValueEnd = json.IndexOf('"', nameValueStart);
-                if (nameValueEnd < 0) break;
-
-                var name = json.Substring(nameValueStart, nameValueEnd - nameValueStart);
-
-                // Find the "type" key after this name
-                var typeKeyPos = json.IndexOf("\"type\"", nameValueEnd, StringComparison.Ordinal);
-                if (typeKeyPos < 0) break;
-
-                // Make sure we're still in the same object
-                // If we hit another "name" before "type", skip this one
-                var nextNamePos = json.IndexOf("\"name\"", nameValueEnd, StringComparison.Ordinal);
-                if (nextNamePos > 0 && nextNamePos < typeKeyPos)
+            try
+            {
+                object deserialized = DeserializeJson(json);
+                if (deserialized is not IEnumerable entries)
                 {
-                    pos = nextNamePos;
-                    continue;
+                    return items;
                 }
 
-                // Find the colon after "type"
-                var typeColonPos = json.IndexOf(':', typeKeyPos + 6);
-                if (typeColonPos < 0) break;
-
-                // Find the opening quote of the type value
-                var typeValueStart = json.IndexOf('"', typeColonPos + 1);
-                if (typeValueStart < 0) break;
-                typeValueStart++; // Skip opening quote
-
-                var typeValueEnd = json.IndexOf('"', typeValueStart);
-                if (typeValueEnd < 0) break;
-
-                var type = json.Substring(typeValueStart, typeValueEnd - typeValueStart);
-
-                items.Add(new GitHubContentItem
+                foreach (object entry in entries)
                 {
-                    Name = name,
-                    Type = type
-                });
+                    if (entry is not IDictionary item)
+                    {
+                        continue;
+                    }
 
-                pos = typeValueEnd + 1;
+                    var name = item.Contains("name") ? item["name"] as string : null;
+                    var type = item.Contains("type") ? item["type"] as string : null;
+                    if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(type))
+                    {
+                        items.Add(new GitHubContentItem
+                        {
+                            Name = name,
+                            Type = type
+                        });
+                    }
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                Debug.WriteLine($"AwesomeCopilotService.ParseGitHubContentsJson failed: {ex}");
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine($"AwesomeCopilotService.ParseGitHubContentsJson failed: {ex}");
+            }
+            catch (TargetInvocationException ex)
+            {
+                Debug.WriteLine($"AwesomeCopilotService.ParseGitHubContentsJson failed: {ex}");
             }
 
             return items;
         }
 
-        private class GitHubContentItem
+        private sealed class GitHubContentItem
         {
             public string Name { get; set; }
+
             public string Type { get; set; }
+        }
+
+        private static object DeserializeJson(string json)
+        {
+            Type serializerType = Type.GetType("System.Web.Script.Serialization.JavaScriptSerializer, System.Web.Extensions", throwOnError: false);
+            if (serializerType == null)
+            {
+                throw new InvalidOperationException("System.Web.Extensions is required for JSON parsing.");
+            }
+
+            object serializer = Activator.CreateInstance(serializerType);
+            MethodInfo deserializeMethod = serializerType.GetMethod("DeserializeObject", [typeof(string)]);
+            if (deserializeMethod == null)
+            {
+                throw new InvalidOperationException("JavaScriptSerializer.DeserializeObject method was not found.");
+            }
+
+            return deserializeMethod.Invoke(serializer, [json]);
         }
     }
 

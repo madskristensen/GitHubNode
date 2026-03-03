@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.Settings;
 using Microsoft.VisualStudio.Shell.Settings;
+using System.Diagnostics;
 
 namespace GitHubNode.Services
 {
@@ -23,8 +24,14 @@ namespace GitHubNode.Services
 
                 return store.GetBoolean(_collectionPath, _showMcpServersProperty);
             }
-            catch
+            catch (InvalidOperationException ex)
             {
+                Debug.WriteLine($"McpSettingsService.IsMcpServersEnabled failed: {ex}");
+                return false;
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine($"McpSettingsService.IsMcpServersEnabled failed: {ex}");
                 return false;
             }
         }
@@ -43,9 +50,13 @@ namespace GitHubNode.Services
 
                 store.SetBoolean(_collectionPath, _showMcpServersProperty, enabled);
             }
-            catch
+            catch (InvalidOperationException ex)
             {
-                // Ignore settings failures
+                Debug.WriteLine($"McpSettingsService.SetMcpServersEnabled failed: {ex}");
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine($"McpSettingsService.SetMcpServersEnabled failed: {ex}");
             }
         }
     }

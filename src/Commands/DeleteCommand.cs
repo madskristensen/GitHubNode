@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using GitHubNode.SolutionExplorer;
 using Microsoft.VisualStudio.Shell.Interop;
 
@@ -76,9 +77,18 @@ namespace GitHubNode.Commands
             }
 
             var folderName = Path.GetFileName(folderPath);
-            var fileCount = Directory.GetFiles(folderPath, "*", SearchOption.AllDirectories).Length;
-            var message = fileCount > 0
-                ? $"Are you sure you want to delete '{folderName}' and its {fileCount} file(s)?\n\nThis action cannot be undone."
+            var hasContent = false;
+            try
+            {
+                hasContent = Directory.EnumerateFileSystemEntries(folderPath).Any();
+            }
+            catch
+            {
+                hasContent = true;
+            }
+
+            var message = hasContent
+                ? $"Are you sure you want to delete '{folderName}' and all of its contents?\n\nThis action cannot be undone."
                 : $"Are you sure you want to delete the empty folder '{folderName}'?\n\nThis action cannot be undone.";
 
             var result = await VS.MessageBox.ShowConfirmAsync("Delete Folder", message);
