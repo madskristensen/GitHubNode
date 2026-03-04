@@ -36,6 +36,8 @@ namespace GitHubNode.Commands
         private bool _userModifiedFileName;
         private List<TemplateInfo> _templates;
         private string _currentPreviewContent;
+        private int _templateListRequestVersion;
+        private int _templateContentRequestVersion;
 
         /// <summary>
         /// Gets the text entered by the user.
@@ -405,6 +407,8 @@ namespace GitHubNode.Commands
 
         private async Task LoadTemplatesAsync(bool forceRefresh = false)
         {
+            var requestVersion = ++_templateListRequestVersion;
+
             try
             {
                 TemplateProvider provider = GetSelectedProvider();
@@ -423,6 +427,10 @@ namespace GitHubNode.Commands
                 }
 
                 _templates = await AwesomeCopilotService.GetTemplatesAsync(_templateType.Value, provider);
+                if (requestVersion != _templateListRequestVersion)
+                {
+                    return;
+                }
 
                 while (_templateComboBox.Items.Count > 1)
                 {
@@ -457,7 +465,10 @@ namespace GitHubNode.Commands
             }
             finally
             {
-                SetRefreshEnabled(true);
+                if (requestVersion == _templateListRequestVersion)
+                {
+                    SetRefreshEnabled(true);
+                }
             }
         }
 
@@ -556,6 +567,7 @@ namespace GitHubNode.Commands
             {
                 if (_templateComboBox.SelectedIndex == 0)
                 {
+                    _templateContentRequestVersion++;
                     SelectedTemplateContent = null;
                     if (!_userModifiedFileName)
                     {
@@ -579,10 +591,17 @@ namespace GitHubNode.Commands
                     _textBox.Text = template.FileName;
                 }
 
+                var requestVersion = ++_templateContentRequestVersion;
+
                 if (string.IsNullOrEmpty(template.Content))
                 {
                     SetStatus("Loading template content...");
                     template.Content = await AwesomeCopilotService.GetTemplateContentAsync(template);
+                }
+
+                if (requestVersion != _templateContentRequestVersion)
+                {
+                    return;
                 }
 
                 SelectedTemplateContent = template.Content;

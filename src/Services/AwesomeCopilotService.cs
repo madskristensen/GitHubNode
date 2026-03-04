@@ -229,18 +229,41 @@ namespace GitHubNode.Services
                 foreach (var line in lines)
                 {
                     var parts = line.Split('\t');
-                    if (parts.Length >= 4)
+                    if (parts.Length < 4)
                     {
-                        templates.Add(new TemplateInfo
-                        {
-                            Name = parts[0],
-                            FileName = parts[1],
-                            DownloadUrl = parts[2],
-                            TemplateType = (TemplateType)int.Parse(parts[3]),
-                            ProviderId = parts.Length >= 5 ? parts[4] : AwesomeCopilotTemplateProvider.ProviderId,
-                            DisplayName = parts[0]
-                        });
+                        continue;
                     }
+
+                    if (!int.TryParse(parts[3], out var templateTypeValue) ||
+                        !Enum.IsDefined(typeof(TemplateType), templateTypeValue))
+                    {
+                        continue;
+                    }
+
+                    var name = parts[0];
+                    var fileName = parts[1];
+                    var downloadUrl = parts[2];
+
+                    if (string.IsNullOrWhiteSpace(name) ||
+                        string.IsNullOrWhiteSpace(fileName) ||
+                        string.IsNullOrWhiteSpace(downloadUrl))
+                    {
+                        continue;
+                    }
+
+                    templates.Add(new TemplateInfo
+                    {
+                        Name = name,
+                        FileName = fileName,
+                        DownloadUrl = downloadUrl,
+                        TemplateType = (TemplateType)templateTypeValue,
+                        ProviderId = parts.Length >= 5 && !string.IsNullOrWhiteSpace(parts[4])
+                            ? parts[4]
+                            : AwesomeCopilotTemplateProvider.ProviderId,
+                        DisplayName = parts.Length >= 6 && !string.IsNullOrWhiteSpace(parts[5])
+                            ? parts[5]
+                            : name
+                    });
                 }
 
                 return templates;
@@ -251,7 +274,7 @@ namespace GitHubNode.Services
                 Debug.WriteLine($"AwesomeCopilotService.LoadFromCache failed for '{cacheFile}': {ex}");
                 return null;
             }
-            catch (InvalidOperationException ex)
+            catch (UnauthorizedAccessException ex)
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.LoadFromCache failed for '{cacheFile}': {ex}");
@@ -273,7 +296,7 @@ namespace GitHubNode.Services
                 var lines = new List<string>();
                 foreach (TemplateInfo t in templates)
                 {
-                    lines.Add($"{t.Name}\t{t.FileName}\t{t.DownloadUrl}\t{(int)t.TemplateType}\t{t.ProviderId}");
+                    lines.Add($"{t.Name}\t{t.FileName}\t{t.DownloadUrl}\t{(int)t.TemplateType}\t{t.ProviderId}\t{t.DisplayName}");
                 }
 
                 File.WriteAllLines(cacheFile, lines);
@@ -461,7 +484,7 @@ namespace GitHubNode.Services
 
         /// <summary>
         /// Parses the GitHub contents API JSON response.
-        /// Uses JSON deserialization to extract name and type values.
+        /// Uses a lightweight token scan to extract name and type values.
         /// </summary>
         private static List<GitHubContentItem> ParseGitHubContentsJson(string json)
         {
