@@ -95,19 +95,27 @@ The extension adds an **MCP Servers** node that provides centralized access to a
 
 The MCP Servers node appears directly below the GitHub node, making it easy to manage both GitHub-specific files and MCP server configurations from one place.
 
-### Community Templates from awesome-copilot
+### Community Templates with Provider Selection
 
-When creating Copilot agents, instructions, prompts, or skills, the dialog offers a curated collection of community templates sourced from the [awesome-copilot](https://github.com/github/awesome-copilot) repository.
+When creating Copilot agents, instructions, prompts, or skills, the dialog supports multiple template providers.
+
+Currently included providers:
+
+- **GitHub Awesome Copilot** - Community templates from [awesome-copilot](https://github.com/github/awesome-copilot) for agents, prompts, instructions, and skills
+- **dotnet/skills plugins** - Templates from [dotnet/skills/plugins](https://github.com/dotnet/skills/tree/main/plugins) for agents and skills
 
 ![Template Selection Dialog](art/template-dialog.png)
 
 Features:
 
+- **Provider dropdown** - Choose the template source repository
 - **Template dropdown** - Browse and select from community-contributed templates
 - **Live preview** - See the template content with syntax highlighting before creating the file
 - **Auto-fill filename** - Template names are automatically used as the filename
 - **Refresh button** - Fetch the latest templates from GitHub
-- **Caching** - Templates are cached locally for 7 days for fast access
+- **Provider-aware caching** - Templates are cached locally for 7 days per provider for fast access
+
+The provider model is extensible, making it straightforward to add more template sources in future releases.
 
 The preview pane includes syntax highlighting for:
 
