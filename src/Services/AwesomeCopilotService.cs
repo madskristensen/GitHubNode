@@ -95,7 +95,7 @@ namespace GitHubNode.Services
         /// <summary>
         /// Gets templates for the specified type from the selected provider.
         /// </summary>
-        public static async Task<List<TemplateInfo>> GetTemplatesAsync(TemplateType templateType, TemplateProvider provider)
+        public static async Task<List<TemplateInfo>> GetTemplatesAsync(TemplateType templateType, TemplateProvider provider, bool forceRefresh = false)
         {
             if (provider == null)
             {
@@ -112,8 +112,8 @@ namespace GitHubNode.Services
 
             var cacheFile = GetCacheFilePath(templateType, provider.Id);
 
-            // Check cache first
-            List<TemplateInfo> cached = LoadFromCache(cacheFile, expiredOk: false);
+            // Check cache first unless caller requested a forced refresh.
+            List<TemplateInfo> cached = forceRefresh ? null : LoadFromCache(cacheFile, expiredOk: false);
             if (cached != null)
             {
                 return cached;

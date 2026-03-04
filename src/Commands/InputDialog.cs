@@ -480,12 +480,7 @@ namespace GitHubNode.Commands
                 SetStatus("Fetching templates from GitHub...");
                 SetRefreshEnabled(false);
 
-                if (forceRefresh)
-                {
-                    AwesomeCopilotService.ClearCache(_templateType.Value, provider);
-                }
-
-                _templates = await AwesomeCopilotService.GetTemplatesAsync(_templateType.Value, provider);
+                _templates = await AwesomeCopilotService.GetTemplatesAsync(_templateType.Value, provider, forceRefresh);
                 if (requestVersion != _templateListRequestVersion)
                 {
                     return;
