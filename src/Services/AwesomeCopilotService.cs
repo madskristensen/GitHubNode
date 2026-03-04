@@ -2,7 +2,9 @@ using System.Collections.Generic;
 using System.Collections;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Reflection;
 using System.Threading.Tasks;
 
@@ -354,7 +356,12 @@ namespace GitHubNode.Services
             {
                 // Get directory contents from GitHub API
                 var url = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/contents/{rule.RootPath}?ref={provider.Branch}";
-                var response = await _httpClient.GetStringAsync(url);
+                var response = await GetGitHubApiResponseContentAsync(url, templateType, provider);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    return templates;
+                }
+
                 List<GitHubContentItem> items = ParseGitHubContentsJson(response);
 
                 foreach (GitHubContentItem item in items)
@@ -381,7 +388,7 @@ namespace GitHubNode.Services
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromDirectoryAsync failed for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
-                SetLastFetchIssue(templateType, provider.Id, GetFriendlyHttpErrorMessage(ex) ?? "Failed to fetch templates from GitHub.");
+                SetLastFetchIssue(templateType, provider.Id, "Failed to fetch templates from GitHub.");
             }
             catch (TaskCanceledException ex)
             {
@@ -412,7 +419,12 @@ namespace GitHubNode.Services
             try
             {
                 var url = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/git/trees/{provider.Branch}?recursive=1";
-                var response = await _httpClient.GetStringAsync(url);
+                var response = await GetGitHubApiResponseContentAsync(url, templateType, provider);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    return templates;
+                }
+
                 List<GitHubTreeItem> treeItems = ParseGitHubTreeJson(response);
 
                 var rootPrefix = NormalizePath(rule.RootPath) + "/";
@@ -470,7 +482,7 @@ namespace GitHubNode.Services
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchFolderTemplatesFromTreeAsync failed for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
-                SetLastFetchIssue(templateType, provider.Id, GetFriendlyHttpErrorMessage(ex) ?? "Failed to fetch templates from GitHub.");
+                SetLastFetchIssue(templateType, provider.Id, "Failed to fetch templates from GitHub.");
             }
             catch (TaskCanceledException ex)
             {
@@ -501,7 +513,12 @@ namespace GitHubNode.Services
             try
             {
                 var url = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/git/trees/{provider.Branch}?recursive=1";
-                var response = await _httpClient.GetStringAsync(url);
+                var response = await GetGitHubApiResponseContentAsync(url, templateType, provider);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    return templates;
+                }
+
                 List<GitHubTreeItem> treeItems = ParseGitHubTreeJson(response);
 
                 var rootPrefix = NormalizePath(rule.RootPath) + "/";
@@ -546,7 +563,7 @@ namespace GitHubNode.Services
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromTreeAsync failed for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
-                SetLastFetchIssue(templateType, provider.Id, GetFriendlyHttpErrorMessage(ex) ?? "Failed to fetch templates from GitHub.");
+                SetLastFetchIssue(templateType, provider.Id, "Failed to fetch templates from GitHub.");
             }
             catch (TaskCanceledException ex)
             {
@@ -715,19 +732,78 @@ namespace GitHubNode.Services
             return dictionary[key] as string;
         }
 
-        private static string GetFriendlyHttpErrorMessage(HttpRequestException ex)
+        private static async Task<string> GetGitHubApiResponseContentAsync(string url, TemplateType templateType, TemplateProvider provider)
         {
-            if (ex == null || string.IsNullOrWhiteSpace(ex.Message))
+            using (HttpResponseMessage response = await _httpClient.GetAsync(url))
             {
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadAsStringAsync();
+                }
+
+                string message = GetFriendlyHttpErrorMessage(response.StatusCode, response.Headers) ?? "Failed to fetch templates from GitHub.";
+                SetLastFetchIssue(templateType, provider.Id, message);
+                Debug.WriteLine($"AwesomeCopilotService.GetGitHubApiResponseContentAsync returned {(int)response.StatusCode} ({response.ReasonPhrase}) for '{url}'.");
+
                 return null;
             }
+        }
 
-            if (ex.Message.IndexOf("rate limit", StringComparison.OrdinalIgnoreCase) >= 0)
+        private static string GetFriendlyHttpErrorMessage(HttpStatusCode statusCode, HttpResponseHeaders headers)
+        {
+            if (IsRateLimitResponse(statusCode, headers))
             {
                 return "GitHub API rate limit reached. Please wait and try again.";
             }
 
+            if (statusCode == HttpStatusCode.Unauthorized)
+            {
+                return "GitHub API authentication failed. Please check your GitHub credentials and try again.";
+            }
+
+            if ((int)statusCode >= 500)
+            {
+                return "GitHub API is temporarily unavailable. Please try again later.";
+            }
+
             return null;
+        }
+
+        private static bool IsRateLimitResponse(HttpStatusCode statusCode, HttpResponseHeaders headers)
+        {
+            if (statusCode != HttpStatusCode.Forbidden && (int)statusCode != 429)
+            {
+                return false;
+            }
+
+            if (TryGetHeaderValue(headers, "X-RateLimit-Remaining", out var remaining) &&
+                remaining == "0")
+            {
+                return true;
+            }
+
+            return TryGetHeaderValue(headers, "Retry-After", out _);
+        }
+
+        private static bool TryGetHeaderValue(HttpResponseHeaders headers, string name, out string value)
+        {
+            value = null;
+
+            if (headers == null || !headers.TryGetValues(name, out IEnumerable<string> values))
+            {
+                return false;
+            }
+
+            foreach (var headerValue in values)
+            {
+                if (!string.IsNullOrWhiteSpace(headerValue))
+                {
+                    value = headerValue;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void ClearLastFetchIssue(TemplateType templateType, string providerId)
