@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using GitHubNode.Services;
 using Microsoft.VisualStudio.PlatformUI;
+using System.Runtime.InteropServices;
 
 namespace GitHubNode.Commands
 {
@@ -17,6 +18,9 @@ namespace GitHubNode.Commands
     /// </summary>
     internal sealed class InputDialog : DialogWindow
     {
+        private const int _dwmwaUseImmersiveDarkMode = 20;
+        private const int _dwmwaCaptionColor = 35;
+        private const int _dwmwaTextColor = 36;
         private const string _customTemplateText = "<Custom>";
         private const string _settingsKey = "InputDialog";
 
@@ -328,11 +332,66 @@ namespace GitHubNode.Commands
             Content = grid;
 
             Loaded += OnDialogLoaded;
+            SourceInitialized += OnSourceInitialized;
             Closing += OnDialogClosing;
             KeyDown += OnKeyDown;
 
             RestoreDialogSize();
         }
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int attributeValue, int attributeSize);
+
+        private void OnSourceInitialized(object sender, EventArgs e)
+        {
+            try
+            {
+                ApplyTitleBarTheme();
+            }
+            catch (Exception ex)
+            {
+                _ = ex.LogAsync();
+            }
+        }
+
+        private void ApplyTitleBarTheme()
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            if (handle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            if (TryGetResourceColor(EnvironmentColors.ToolWindowBackgroundBrushKey, out var captionColor))
+            {
+                int captionColorRef = ToColorRef(captionColor);
+                _ = DwmSetWindowAttribute(handle, _dwmwaCaptionColor, ref captionColorRef, sizeof(int));
+            }
+
+            if (TryGetResourceColor(EnvironmentColors.ToolWindowTextBrushKey, out var textColor))
+            {
+                int textColorRef = ToColorRef(textColor);
+                _ = DwmSetWindowAttribute(handle, _dwmwaTextColor, ref textColorRef, sizeof(int));
+            }
+
+            var darkMode = 1;
+            _ = DwmSetWindowAttribute(handle, _dwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
+        }
+
+        private bool TryGetResourceColor(object key, out Color color)
+        {
+            if (TryFindResource(key) is SolidColorBrush brush)
+            {
+                color = brush.Color;
+                return true;
+            }
+
+            color = default(Color);
+            return false;
+        }
+
+        private static int ToColorRef(Color color)
+            => color.R | (color.G << 8) | (color.B << 16);
 
         private void RestoreDialogSize()
         {
