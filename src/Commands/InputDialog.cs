@@ -9,6 +9,8 @@ using System.Windows.Automation;
 using GitHubNode.Services;
 using Microsoft.VisualStudio.PlatformUI;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace GitHubNode.Commands
 {
@@ -41,8 +43,8 @@ namespace GitHubNode.Commands
         private bool _userModifiedFileName;
         private List<TemplateInfo> _templates;
         private string _currentPreviewContent;
-        private int _templateListRequestVersion;
-        private int _templateContentRequestVersion;
+        private CancellationTokenSource _templateListCancellationTokenSource;
+        private CancellationTokenSource _templateContentCancellationTokenSource;
 
         /// <summary>
         /// Gets the text entered by the user.
@@ -197,7 +199,7 @@ namespace GitHubNode.Commands
                 _templateComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
                 _templateComboBox.Items.Add(_customTemplateText);
                 _templateComboBox.SelectedIndex = 0;
-                _templateComboBox.SelectionChanged += (s, e) => OnTemplateSelectionChanged();
+                _templateComboBox.SelectionChanged += OnTemplateSelectionChanged;
                 AutomationProperties.SetName(_templateComboBox, "Template selection");
                 AutomationProperties.SetHelpText(_templateComboBox, "Use Alt + Up or Alt + Down to move between templates.");
 
@@ -263,12 +265,31 @@ namespace GitHubNode.Commands
 
             if (templateType != null)
             {
-                var statusPanel = new StackPanel
+                _statusText = new TextBlock
+                {
+                    VerticalAlignment = VerticalAlignment.Center,
+                    FontSize = 11,
+                    Margin = new Thickness(0, 0, 0, 8)
+                };
+                _statusText.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+                AutomationProperties.SetName(_statusText, "Template status");
+
+                Grid.SetRow(_statusText, currentRow++);
+                grid.Children.Add(_statusText);
+            }
+
+            var buttonRowGrid = new Grid();
+            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetRow(buttonRowGrid, currentRow);
+
+            if (templateType != null)
+            {
+                var actionPanel = new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
                     HorizontalAlignment = HorizontalAlignment.Left,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 0, 8)
+                    VerticalAlignment = VerticalAlignment.Center
                 };
 
                 _refreshButton = new Button
@@ -285,7 +306,7 @@ namespace GitHubNode.Commands
                 _refreshButton.Click += OnRefreshButtonClick;
                 AutomationProperties.SetName(_refreshButton, "Refresh templates");
                 AutomationProperties.SetHelpText(_refreshButton, "Fetch templates again from GitHub.");
-                statusPanel.Children.Add(_refreshButton);
+                actionPanel.Children.Add(_refreshButton);
 
                 _copyButton = new Button
                 {
@@ -301,25 +322,11 @@ namespace GitHubNode.Commands
                 _copyButton.Click += OnCopyButtonClick;
                 AutomationProperties.SetName(_copyButton, "Copy template preview");
                 AutomationProperties.SetHelpText(_copyButton, "Copy the full preview text to the clipboard.");
-                statusPanel.Children.Add(_copyButton);
+                actionPanel.Children.Add(_copyButton);
 
-                _statusText = new TextBlock
-                {
-                    VerticalAlignment = VerticalAlignment.Center,
-                    FontSize = 11
-                };
-                _statusText.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-                AutomationProperties.SetName(_statusText, "Template status");
-                statusPanel.Children.Add(_statusText);
-
-                Grid.SetRow(statusPanel, currentRow++);
-                grid.Children.Add(statusPanel);
+                Grid.SetColumn(actionPanel, 0);
+                buttonRowGrid.Children.Add(actionPanel);
             }
-
-            var buttonRowGrid = new Grid();
-            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetRow(buttonRowGrid, currentRow);
 
             var buttonPanel = new StackPanel
             {
@@ -454,7 +461,11 @@ namespace GitHubNode.Commands
         }
 
         private void OnDialogClosing(object sender, System.ComponentModel.CancelEventArgs e)
-            => SaveDialogSize();
+        {
+            CancelAndDispose(ref _templateListCancellationTokenSource);
+            CancelAndDispose(ref _templateContentCancellationTokenSource);
+            SaveDialogSize();
+        }
 
         private void OnKeyDown(object sender, KeyEventArgs e)
         {
@@ -518,9 +529,7 @@ namespace GitHubNode.Commands
             }
         }
 
-#pragma warning disable VSTHRD100
         private async void OnDialogLoaded(object sender, RoutedEventArgs e)
-#pragma warning restore VSTHRD100
         {
             _textBox.Focus();
             _textBox.SelectAll();
@@ -528,20 +537,15 @@ namespace GitHubNode.Commands
 
             if (_templateType != null && _templateComboBox != null)
             {
-                try
-                {
-                    await LoadTemplatesAsync();
-                }
-                catch (Exception ex)
-                {
-                    _ = ex.LogAsync();
-                }
+                await ExecuteUiActionAsync(() => LoadTemplatesAsync(), "Failed to load templates");
             }
         }
 
         private async Task LoadTemplatesAsync(bool forceRefresh = false)
         {
-            var requestVersion = ++_templateListRequestVersion;
+            CancellationTokenSource currentRequestCancellation = ReplaceCancellationTokenSource(ref _templateListCancellationTokenSource);
+            CancellationToken cancellationToken = currentRequestCancellation.Token;
+            CancelAndDispose(ref _templateContentCancellationTokenSource);
 
             try
             {
@@ -555,11 +559,8 @@ namespace GitHubNode.Commands
                 SetStatus("Fetching templates from GitHub...");
                 SetRefreshEnabled(false);
 
-                _templates = await AwesomeCopilotService.GetTemplatesAsync(_templateType.Value, provider, forceRefresh);
-                if (requestVersion != _templateListRequestVersion)
-                {
-                    return;
-                }
+                _templates = await AwesomeCopilotService.GetTemplatesAsync(_templateType.Value, provider, forceRefresh, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
 
                 while (_templateComboBox.Items.Count > 1)
                 {
@@ -584,57 +585,28 @@ namespace GitHubNode.Commands
                         : "No templates available (offline?)");
                 }
             }
-            catch (Exception ex)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _ = ex.LogAsync();
-
-                while (_templateComboBox.Items.Count > 1)
-                {
-                    _templateComboBox.Items.RemoveAt(1);
-                }
-
-                SetStatus("Failed to load templates");
             }
             finally
             {
-                if (requestVersion == _templateListRequestVersion)
+                if (ReferenceEquals(_templateListCancellationTokenSource, currentRequestCancellation))
                 {
+                    _templateListCancellationTokenSource = null;
                     SetRefreshEnabled(true);
+                    currentRequestCancellation.Dispose();
                 }
             }
         }
 
-#pragma warning disable VSTHRD100
         private async void OnProviderSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-#pragma warning restore VSTHRD100
         {
-            try
-            {
-                _userModifiedFileName = false;
-                _templateComboBox.SelectedIndex = 0;
-                SelectedTemplateContent = null;
-                UpdatePreview();
-                await LoadTemplatesAsync();
-            }
-            catch (Exception ex)
-            {
-                _ = ex.LogAsync();
-                SetStatus("Failed to load provider templates");
-            }
+            await ExecuteUiActionAsync(OnProviderSelectionChangedAsync, "Failed to load provider templates");
         }
 
-#pragma warning disable VSTHRD100
         private async void OnRefreshButtonClick(object sender, RoutedEventArgs e)
-#pragma warning restore VSTHRD100
         {
-            try
-            {
-                await LoadTemplatesAsync(forceRefresh: true);
-            }
-            catch (Exception ex)
-            {
-                _ = ex.LogAsync();
-            }
+            await ExecuteUiActionAsync(() => LoadTemplatesAsync(forceRefresh: true), "Failed to refresh templates");
         }
 
         private void OnCopyButtonClick(object sender, RoutedEventArgs e)
@@ -691,15 +663,29 @@ namespace GitHubNode.Commands
             }
         }
 
-#pragma warning disable VSTHRD100
-        private async void OnTemplateSelectionChanged()
-#pragma warning restore VSTHRD100
+        private async void OnTemplateSelectionChanged(object sender, RoutedEventArgs e)
         {
+            await ExecuteUiActionAsync(OnTemplateSelectionChangedAsync, "Failed to load template content");
+        }
+
+        private async Task OnProviderSelectionChangedAsync()
+        {
+            _userModifiedFileName = false;
+            _templateComboBox.SelectedIndex = 0;
+            SelectedTemplateContent = null;
+            UpdatePreview();
+            await LoadTemplatesAsync();
+        }
+
+        private async Task OnTemplateSelectionChangedAsync()
+        {
+            CancellationTokenSource currentRequestCancellation = ReplaceCancellationTokenSource(ref _templateContentCancellationTokenSource);
+            CancellationToken cancellationToken = currentRequestCancellation.Token;
+
             try
             {
                 if (_templateComboBox.SelectedIndex == 0)
                 {
-                    _templateContentRequestVersion++;
                     SelectedTemplateContent = null;
                     if (!_userModifiedFileName)
                     {
@@ -723,17 +709,21 @@ namespace GitHubNode.Commands
                     _textBox.Text = template.FileName;
                 }
 
-                var requestVersion = ++_templateContentRequestVersion;
-
                 if (string.IsNullOrEmpty(template.Content))
                 {
                     SetStatus("Loading template content...");
-                    template.Content = await AwesomeCopilotService.GetTemplateContentAsync(template);
-                }
+                    TemplateContentResult loadResult = await AwesomeCopilotService.GetTemplateContentResultAsync(template, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                if (requestVersion != _templateContentRequestVersion)
-                {
-                    return;
+                    if (loadResult.HasError)
+                    {
+                        SelectedTemplateContent = null;
+                        SetStatus(loadResult.ErrorMessage);
+                        ClearPreviewContent();
+                        return;
+                    }
+
+                    template.Content = loadResult.Content;
                 }
 
                 SelectedTemplateContent = template.Content;
@@ -743,11 +733,81 @@ namespace GitHubNode.Commands
                 var sizeText = sizeKb >= 1.0 ? $"{sizeKb:F1} KB" : $"{template.Content?.Length ?? 0} bytes";
                 SetStatus($"{GetTemplateSourceSummary(template)} - {sizeText}");
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            finally
+            {
+                if (ReferenceEquals(_templateContentCancellationTokenSource, currentRequestCancellation))
+                {
+                    _templateContentCancellationTokenSource = null;
+                    currentRequestCancellation.Dispose();
+                }
+            }
+        }
+
+        private async Task ExecuteUiActionAsync(Func<Task> action, string statusOnError = null)
+        {
+            try
+            {
+                await action();
+            }
+            catch (OperationCanceledException)
+            {
+            }
             catch (Exception ex)
             {
                 _ = ex.LogAsync();
-                SetStatus("Failed to load template content");
+                if (!string.IsNullOrWhiteSpace(statusOnError))
+                {
+                    SetStatus(statusOnError);
+                }
             }
+        }
+
+        private static CancellationTokenSource ReplaceCancellationTokenSource(ref CancellationTokenSource tokenSource)
+        {
+            CancelAndDispose(ref tokenSource);
+            tokenSource = new CancellationTokenSource();
+            return tokenSource;
+        }
+
+        private static void CancelAndDispose(ref CancellationTokenSource tokenSource)
+        {
+            if (tokenSource == null)
+            {
+                return;
+            }
+
+            try
+            {
+                tokenSource.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            try
+            {
+                tokenSource.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            tokenSource = null;
+        }
+
+        private void ClearPreviewContent()
+        {
+            if (_previewBox == null)
+            {
+                return;
+            }
+
+            _previewBox.Document.Blocks.Clear();
+            _currentPreviewContent = null;
+            SetCopyEnabled(false);
         }
 
         private void UpdatePreview()
@@ -764,9 +824,7 @@ namespace GitHubNode.Commands
 
             if (_previewGenerator == null)
             {
-                _previewBox.Document.Blocks.Clear();
-                _currentPreviewContent = null;
-                SetCopyEnabled(false);
+                ClearPreviewContent();
                 return;
             }
 

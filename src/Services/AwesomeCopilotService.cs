@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace GitHubNode.Services
@@ -81,7 +82,7 @@ namespace GitHubNode.Services
         /// <summary>
         /// Gets templates for the specified type from the default provider.
         /// </summary>
-        public static async Task<List<TemplateInfo>> GetTemplatesAsync(TemplateType templateType)
+        public static async Task<List<TemplateInfo>> GetTemplatesAsync(TemplateType templateType, CancellationToken cancellationToken = default)
         {
             TemplateProvider provider = GetDefaultProvider(templateType);
             if (provider == null)
@@ -89,13 +90,13 @@ namespace GitHubNode.Services
                 return new List<TemplateInfo>();
             }
 
-            return await GetTemplatesAsync(templateType, provider);
+            return await GetTemplatesAsync(templateType, provider, forceRefresh: false, cancellationToken);
         }
 
         /// <summary>
         /// Gets templates for the specified type from the selected provider.
         /// </summary>
-        public static async Task<List<TemplateInfo>> GetTemplatesAsync(TemplateType templateType, TemplateProvider provider, bool forceRefresh = false)
+        public static async Task<List<TemplateInfo>> GetTemplatesAsync(TemplateType templateType, TemplateProvider provider, bool forceRefresh = false, CancellationToken cancellationToken = default)
         {
             if (provider == null)
             {
@@ -120,7 +121,9 @@ namespace GitHubNode.Services
             }
 
             // Fetch from GitHub API
-            List<TemplateInfo> templates = await FetchTemplatesFromGitHubAsync(provider, rule, templateType);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            List<TemplateInfo> templates = await FetchTemplatesFromGitHubAsync(provider, rule, templateType, cancellationToken);
 
             if (templates.Count > 0)
             {
@@ -143,28 +146,54 @@ namespace GitHubNode.Services
         /// <summary>
         /// Gets the content of a template file from GitHub.
         /// </summary>
-        public static async Task<string> GetTemplateContentAsync(TemplateInfo template)
+        public static async Task<string> GetTemplateContentAsync(TemplateInfo template, CancellationToken cancellationToken = default)
+        {
+            TemplateContentResult result = await GetTemplateContentResultAsync(template, cancellationToken);
+            return result.Content;
+        }
+
+        /// <summary>
+        /// Gets the content of a template file from GitHub with status details.
+        /// </summary>
+        public static async Task<TemplateContentResult> GetTemplateContentResultAsync(TemplateInfo template, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(template?.DownloadUrl))
             {
-                return null;
+                return TemplateContentResult.Empty;
             }
 
             try
             {
-                return await _httpClient.GetStringAsync(template.DownloadUrl);
+                using HttpResponseMessage response = await _httpClient.GetAsync(template.DownloadUrl, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    string friendlyMessage = GetFriendlyHttpErrorMessage(response.StatusCode, response.Headers)
+                        ?? $"Failed to load template content from GitHub ({(int)response.StatusCode}).";
+
+                    return TemplateContentResult.FromError(friendlyMessage);
+                }
+
+                string content = await response.Content.ReadAsStringAsync();
+                return TemplateContentResult.FromContent(content);
             }
             catch (HttpRequestException ex)
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.GetTemplateContentAsync failed for '{template?.DownloadUrl}': {ex}");
-                return null;
+
+                return TemplateContentResult.FromError("Failed to fetch template content from GitHub.");
             }
             catch (TaskCanceledException ex)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.GetTemplateContentAsync timed out for '{template?.DownloadUrl}': {ex}");
-                return null;
+
+                return TemplateContentResult.FromError("GitHub request timed out while loading template content.");
             }
         }
 
@@ -338,17 +367,17 @@ namespace GitHubNode.Services
             }
         }
 
-        private static async Task<List<TemplateInfo>> FetchTemplatesFromGitHubAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType)
+        private static async Task<List<TemplateInfo>> FetchTemplatesFromGitHubAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType, CancellationToken cancellationToken)
         {
             if (rule.Recursive)
             {
-                return await FetchTemplatesFromTreeAsync(provider, rule, templateType);
+                return await FetchTemplatesFromTreeAsync(provider, rule, templateType, cancellationToken);
             }
 
-            return await FetchTemplatesFromDirectoryAsync(provider, rule, templateType);
+            return await FetchTemplatesFromDirectoryAsync(provider, rule, templateType, cancellationToken);
         }
 
-        private static async Task<List<TemplateInfo>> FetchTemplatesFromDirectoryAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType)
+        private static async Task<List<TemplateInfo>> FetchTemplatesFromDirectoryAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType, CancellationToken cancellationToken)
         {
             var templates = new List<TemplateInfo>();
 
@@ -356,7 +385,7 @@ namespace GitHubNode.Services
             {
                 // Get directory contents from GitHub API
                 var url = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/contents/{rule.RootPath}?ref={provider.Branch}";
-                var response = await GetGitHubApiResponseContentAsync(url, templateType, provider);
+                var response = await GetGitHubApiResponseContentAsync(url, templateType, provider, cancellationToken);
                 if (string.IsNullOrWhiteSpace(response))
                 {
                     return templates;
@@ -380,7 +409,7 @@ namespace GitHubNode.Services
                     }
                     else if (item.Type == "dir" && rule.UseFolderNameAsTemplateName)
                     {
-                        return await FetchFolderTemplatesFromTreeAsync(provider, rule, templateType);
+                        return await FetchFolderTemplatesFromTreeAsync(provider, rule, templateType, cancellationToken);
                     }
                 }
             }
@@ -412,14 +441,14 @@ namespace GitHubNode.Services
             return templates;
         }
 
-        private static async Task<List<TemplateInfo>> FetchFolderTemplatesFromTreeAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType)
+        private static async Task<List<TemplateInfo>> FetchFolderTemplatesFromTreeAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType, CancellationToken cancellationToken)
         {
             var templates = new List<TemplateInfo>();
 
             try
             {
                 var url = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/git/trees/{provider.Branch}?recursive=1";
-                var response = await GetGitHubApiResponseContentAsync(url, templateType, provider);
+                var response = await GetGitHubApiResponseContentAsync(url, templateType, provider, cancellationToken);
                 if (string.IsNullOrWhiteSpace(response))
                 {
                     return templates;
@@ -506,14 +535,14 @@ namespace GitHubNode.Services
             return templates;
         }
 
-        private static async Task<List<TemplateInfo>> FetchTemplatesFromTreeAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType)
+        private static async Task<List<TemplateInfo>> FetchTemplatesFromTreeAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType, CancellationToken cancellationToken)
         {
             var templates = new List<TemplateInfo>();
 
             try
             {
                 var url = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/git/trees/{provider.Branch}?recursive=1";
-                var response = await GetGitHubApiResponseContentAsync(url, templateType, provider);
+                var response = await GetGitHubApiResponseContentAsync(url, templateType, provider, cancellationToken);
                 if (string.IsNullOrWhiteSpace(response))
                 {
                     return templates;
@@ -732,9 +761,9 @@ namespace GitHubNode.Services
             return dictionary[key] as string;
         }
 
-        private static async Task<string> GetGitHubApiResponseContentAsync(string url, TemplateType templateType, TemplateProvider provider)
+        private static async Task<string> GetGitHubApiResponseContentAsync(string url, TemplateType templateType, TemplateProvider provider, CancellationToken cancellationToken)
         {
-            using (HttpResponseMessage response = await _httpClient.GetAsync(url))
+            using (HttpResponseMessage response = await _httpClient.GetAsync(url, cancellationToken))
             {
                 if (response.IsSuccessStatusCode)
                 {
@@ -860,5 +889,22 @@ namespace GitHubNode.Services
         /// Cached content of the template file.
         /// </summary>
         public string Content { get; set; }
+    }
+
+    internal sealed class TemplateContentResult
+    {
+        public static TemplateContentResult Empty { get; } = new TemplateContentResult();
+
+        public string Content { get; private set; }
+
+        public string ErrorMessage { get; private set; }
+
+        public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
+
+        public static TemplateContentResult FromContent(string content)
+            => new TemplateContentResult { Content = content };
+
+        public static TemplateContentResult FromError(string errorMessage)
+            => new TemplateContentResult { ErrorMessage = errorMessage };
     }
 }
