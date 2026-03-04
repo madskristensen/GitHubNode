@@ -14,3 +14,6 @@
 
 ## File Management
 - `source.extension.cs` and `VSCommandTable.cs` are generated files, but you can't generate them, so just edit them directly.
+
+## Template Loading
+- When template loading fails due to GitHub API rate limiting, show an explicit user-facing status message in the input dialog instead of a generic offline message.

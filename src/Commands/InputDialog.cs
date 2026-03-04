@@ -449,7 +449,10 @@ namespace GitHubNode.Commands
                 }
                 else
                 {
-                    SetStatus("No templates available (offline?)");
+                    string fetchIssue = AwesomeCopilotService.GetLastFetchIssue(_templateType.Value, provider);
+                    SetStatus(!string.IsNullOrWhiteSpace(fetchIssue)
+                        ? fetchIssue
+                        : "No templates available (offline?)");
                 }
             }
             catch (Exception ex)

@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Collections;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace GitHubNode.Services
@@ -18,6 +20,8 @@ namespace GitHubNode.Services
 
         private static readonly HttpClient _httpClient = CreateHttpClient();
         private static readonly List<TemplateProvider> _providers = TemplateProviderRegistry.CreateProviders();
+        private static readonly object _lastFetchIssueGate = new object();
+        private static readonly Dictionary<string, string> _lastFetchIssues = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly string _cacheDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "GitHubNode",
@@ -56,6 +60,23 @@ namespace GitHubNode.Services
         }
 
         /// <summary>
+        /// Gets the latest fetch issue message for the specified template type and provider.
+        /// </summary>
+        public static string GetLastFetchIssue(TemplateType templateType, TemplateProvider provider)
+        {
+            if (provider == null)
+            {
+                throw new ArgumentNullException(nameof(provider));
+            }
+
+            var key = GetFetchIssueKey(templateType, provider.Id);
+            lock (_lastFetchIssueGate)
+            {
+                return _lastFetchIssues.TryGetValue(key, out var message) ? message : null;
+            }
+        }
+
+        /// <summary>
         /// Gets templates for the specified type from the default provider.
         /// </summary>
         public static async Task<List<TemplateInfo>> GetTemplatesAsync(TemplateType templateType)
@@ -78,6 +99,8 @@ namespace GitHubNode.Services
             {
                 throw new ArgumentNullException(nameof(provider));
             }
+
+            ClearLastFetchIssue(templateType, provider.Id);
 
             TemplateSearchRule rule = provider.GetRule(templateType);
             if (rule == null)
@@ -358,11 +381,25 @@ namespace GitHubNode.Services
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromDirectoryAsync failed for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, GetFriendlyHttpErrorMessage(ex) ?? "Failed to fetch templates from GitHub.");
             }
             catch (TaskCanceledException ex)
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromDirectoryAsync timed out for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, "GitHub request timed out while fetching templates.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromDirectoryAsync failed to parse response for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, "Failed to parse template response from GitHub.");
+            }
+            catch (TargetInvocationException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromDirectoryAsync failed to parse response for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, "Failed to parse template response from GitHub.");
             }
 
             return templates;
@@ -433,11 +470,25 @@ namespace GitHubNode.Services
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchFolderTemplatesFromTreeAsync failed for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, GetFriendlyHttpErrorMessage(ex) ?? "Failed to fetch templates from GitHub.");
             }
             catch (TaskCanceledException ex)
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchFolderTemplatesFromTreeAsync timed out for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, "GitHub request timed out while fetching templates.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchFolderTemplatesFromTreeAsync failed to parse response for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, "Failed to parse template response from GitHub.");
+            }
+            catch (TargetInvocationException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchFolderTemplatesFromTreeAsync failed to parse response for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, "Failed to parse template response from GitHub.");
             }
 
             return templates;
@@ -495,11 +546,25 @@ namespace GitHubNode.Services
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromTreeAsync failed for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, GetFriendlyHttpErrorMessage(ex) ?? "Failed to fetch templates from GitHub.");
             }
             catch (TaskCanceledException ex)
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromTreeAsync timed out for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, "GitHub request timed out while fetching templates.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromTreeAsync failed to parse response for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, "Failed to parse template response from GitHub.");
+            }
+            catch (TargetInvocationException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromTreeAsync failed to parse response for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+                SetLastFetchIssue(templateType, provider.Id, "Failed to parse template response from GitHub.");
             }
 
             return templates;
@@ -531,7 +596,28 @@ namespace GitHubNode.Services
         /// </summary>
         private static List<GitHubContentItem> ParseGitHubContentsJson(string json)
         {
-            return ParseGitHubContentsByTokenScan(json);
+            var items = new List<GitHubContentItem>();
+            object deserialized = DeserializeJson(json);
+
+            if (deserialized is IEnumerable contentItems)
+            {
+                foreach (object contentItem in contentItems)
+                {
+                    if (contentItem is IDictionary contentObject)
+                    {
+                        AddContentItem(items, contentObject);
+                    }
+                }
+
+                return items;
+            }
+
+            if (deserialized is IDictionary singleItem)
+            {
+                AddContentItem(items, singleItem);
+            }
+
+            return items;
         }
 
         private sealed class GitHubContentItem
@@ -551,74 +637,21 @@ namespace GitHubNode.Services
         private static List<GitHubTreeItem> ParseGitHubTreeJson(string json)
         {
             var items = new List<GitHubTreeItem>();
-            if (string.IsNullOrWhiteSpace(json))
+            object deserialized = DeserializeJson(json);
+            if (deserialized is not IDictionary root || !root.Contains("tree") || root["tree"] is not IEnumerable treeItems)
             {
                 return items;
             }
 
-            var pos = 0;
-            while (pos < json.Length)
+            foreach (object treeItem in treeItems)
             {
-                var pathKeyPos = json.IndexOf("\"path\"", pos, StringComparison.Ordinal);
-                if (pathKeyPos < 0)
+                if (treeItem is not IDictionary treeObject)
                 {
-                    break;
-                }
-
-                var pathColonPos = json.IndexOf(':', pathKeyPos + 6);
-                if (pathColonPos < 0)
-                {
-                    break;
-                }
-
-                var pathValueStart = json.IndexOf('"', pathColonPos + 1);
-                if (pathValueStart < 0)
-                {
-                    break;
-                }
-
-                pathValueStart++;
-                var pathValueEnd = json.IndexOf('"', pathValueStart);
-                if (pathValueEnd < 0)
-                {
-                    break;
-                }
-
-                var path = json.Substring(pathValueStart, pathValueEnd - pathValueStart);
-
-                var typeKeyPos = json.IndexOf("\"type\"", pathValueEnd, StringComparison.Ordinal);
-                if (typeKeyPos < 0)
-                {
-                    break;
-                }
-
-                var nextPathPos = json.IndexOf("\"path\"", pathValueEnd, StringComparison.Ordinal);
-                if (nextPathPos > 0 && nextPathPos < typeKeyPos)
-                {
-                    pos = nextPathPos;
                     continue;
                 }
 
-                var typeColonPos = json.IndexOf(':', typeKeyPos + 6);
-                if (typeColonPos < 0)
-                {
-                    break;
-                }
-
-                var typeValueStart = json.IndexOf('"', typeColonPos + 1);
-                if (typeValueStart < 0)
-                {
-                    break;
-                }
-
-                typeValueStart++;
-                var typeValueEnd = json.IndexOf('"', typeValueStart);
-                if (typeValueEnd < 0)
-                {
-                    break;
-                }
-
-                var type = json.Substring(typeValueStart, typeValueEnd - typeValueStart);
+                var path = GetStringValue(treeObject, "path");
+                var type = GetStringValue(treeObject, "type");
 
                 if (!string.IsNullOrWhiteSpace(path) && !string.IsNullOrWhiteSpace(type))
                 {
@@ -628,99 +661,100 @@ namespace GitHubNode.Services
                         Type = type
                     });
                 }
-
-                pos = typeValueEnd + 1;
             }
 
             return items;
         }
 
-        private static List<GitHubContentItem> ParseGitHubContentsByTokenScan(string json)
+        private static object DeserializeJson(string json)
         {
-            var items = new List<GitHubContentItem>();
             if (string.IsNullOrWhiteSpace(json))
             {
-                return items;
+                return null;
             }
 
-            var pos = 0;
-            while (pos < json.Length)
+            Type serializerType = Type.GetType("System.Web.Script.Serialization.JavaScriptSerializer, System.Web.Extensions", throwOnError: false);
+            if (serializerType == null)
             {
-                var nameKeyPos = json.IndexOf("\"name\"", pos, StringComparison.Ordinal);
-                if (nameKeyPos < 0)
-                {
-                    break;
-                }
-
-                var nameColonPos = json.IndexOf(':', nameKeyPos + 6);
-                if (nameColonPos < 0)
-                {
-                    break;
-                }
-
-                var nameValueStart = json.IndexOf('"', nameColonPos + 1);
-                if (nameValueStart < 0)
-                {
-                    break;
-                }
-
-                nameValueStart++;
-                var nameValueEnd = json.IndexOf('"', nameValueStart);
-                if (nameValueEnd < 0)
-                {
-                    break;
-                }
-
-                var name = json.Substring(nameValueStart, nameValueEnd - nameValueStart);
-
-                var typeKeyPos = json.IndexOf("\"type\"", nameValueEnd, StringComparison.Ordinal);
-                if (typeKeyPos < 0)
-                {
-                    break;
-                }
-
-                var nextNamePos = json.IndexOf("\"name\"", nameValueEnd, StringComparison.Ordinal);
-                if (nextNamePos > 0 && nextNamePos < typeKeyPos)
-                {
-                    pos = nextNamePos;
-                    continue;
-                }
-
-                var typeColonPos = json.IndexOf(':', typeKeyPos + 6);
-                if (typeColonPos < 0)
-                {
-                    break;
-                }
-
-                var typeValueStart = json.IndexOf('"', typeColonPos + 1);
-                if (typeValueStart < 0)
-                {
-                    break;
-                }
-
-                typeValueStart++;
-                var typeValueEnd = json.IndexOf('"', typeValueStart);
-                if (typeValueEnd < 0)
-                {
-                    break;
-                }
-
-                var type = json.Substring(typeValueStart, typeValueEnd - typeValueStart);
-
-                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(type))
-                {
-                    items.Add(new GitHubContentItem
-                    {
-                        Name = name,
-                        Type = type
-                    });
-                }
-
-                pos = typeValueEnd + 1;
+                throw new InvalidOperationException("System.Web.Extensions is required for JSON parsing.");
             }
 
-            return items;
+            object serializer = Activator.CreateInstance(serializerType);
+            MethodInfo deserializeMethod = serializerType.GetMethod("DeserializeObject", [typeof(string)]);
+            if (deserializeMethod == null)
+            {
+                throw new InvalidOperationException("JavaScriptSerializer.DeserializeObject method was not found.");
+            }
+
+            return deserializeMethod.Invoke(serializer, [json]);
         }
+
+        private static void AddContentItem(List<GitHubContentItem> items, IDictionary contentObject)
+        {
+            var name = GetStringValue(contentObject, "name");
+            var type = GetStringValue(contentObject, "type");
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type))
+            {
+                return;
+            }
+
+            items.Add(new GitHubContentItem
+            {
+                Name = name,
+                Type = type
+            });
+        }
+
+        private static string GetStringValue(IDictionary dictionary, string key)
+        {
+            if (dictionary == null || !dictionary.Contains(key))
+            {
+                return null;
+            }
+
+            return dictionary[key] as string;
+        }
+
+        private static string GetFriendlyHttpErrorMessage(HttpRequestException ex)
+        {
+            if (ex == null || string.IsNullOrWhiteSpace(ex.Message))
+            {
+                return null;
+            }
+
+            if (ex.Message.IndexOf("rate limit", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "GitHub API rate limit reached. Please wait and try again.";
+            }
+
+            return null;
+        }
+
+        private static void ClearLastFetchIssue(TemplateType templateType, string providerId)
+        {
+            var key = GetFetchIssueKey(templateType, providerId);
+            lock (_lastFetchIssueGate)
+            {
+                _lastFetchIssues.Remove(key);
+            }
+        }
+
+        private static void SetLastFetchIssue(TemplateType templateType, string providerId, string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            var key = GetFetchIssueKey(templateType, providerId);
+            lock (_lastFetchIssueGate)
+            {
+                _lastFetchIssues[key] = message;
+            }
+        }
+
+        private static string GetFetchIssueKey(TemplateType templateType, string providerId)
+            => $"{providerId}_{templateType}";
     }
 
     /// <summary>
