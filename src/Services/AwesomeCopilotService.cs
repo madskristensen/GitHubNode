@@ -350,39 +350,7 @@ namespace GitHubNode.Services
                     }
                     else if (item.Type == "dir" && rule.UseFolderNameAsTemplateName)
                     {
-                        // Skills are folders - look for skill.md inside
-                        var skillUrl = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/contents/{rule.RootPath}/{item.Name}?ref={provider.Branch}";
-                        try
-                        {
-                            var skillResponse = await _httpClient.GetStringAsync(skillUrl);
-                            List<GitHubContentItem> skillItems = ParseGitHubContentsJson(skillResponse);
-                            GitHubContentItem skillFile = skillItems.Find(f =>
-                                IsRuleMatch(f.Name, rule) ||
-                                f.Name.EndsWith(".skill.md", StringComparison.OrdinalIgnoreCase));
-
-                            if (skillFile != null)
-                            {
-                                templates.Add(new TemplateInfo
-                                {
-                                    Name = item.Name,
-                                    FileName = item.Name,
-                                    DisplayName = item.Name,
-                                    DownloadUrl = $"{_gitHubRawBase}/{provider.RepoOwner}/{provider.RepoName}/{provider.Branch}/{rule.RootPath}/{item.Name}/{skillFile.Name}",
-                                    TemplateType = templateType,
-                                    ProviderId = provider.Id
-                                });
-                            }
-                        }
-                        catch (HttpRequestException ex)
-                        {
-                            _ = ex.LogAsync();
-                            Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync failed to fetch skill folder '{item.Name}': {ex}");
-                        }
-                        catch (TaskCanceledException ex)
-                        {
-                            _ = ex.LogAsync();
-                            Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync timed out for skill folder '{item.Name}': {ex}");
-                        }
+                        return await FetchFolderTemplatesFromTreeAsync(provider, rule, templateType);
                     }
                 }
             }
@@ -395,6 +363,81 @@ namespace GitHubNode.Services
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromDirectoryAsync timed out for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+            }
+
+            return templates;
+        }
+
+        private static async Task<List<TemplateInfo>> FetchFolderTemplatesFromTreeAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType)
+        {
+            var templates = new List<TemplateInfo>();
+
+            try
+            {
+                var url = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/git/trees/{provider.Branch}?recursive=1";
+                var response = await _httpClient.GetStringAsync(url);
+                List<GitHubTreeItem> treeItems = ParseGitHubTreeJson(response);
+
+                var rootPrefix = NormalizePath(rule.RootPath) + "/";
+                var selectedFileByFolder = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (GitHubTreeItem item in treeItems)
+                {
+                    if (!item.Type.Equals("blob", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var normalizedPath = NormalizePath(item.Path);
+                    if (!normalizedPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var relativePath = normalizedPath.Substring(rootPrefix.Length);
+                    var segments = relativePath.Split('/');
+                    if (segments.Length != 2)
+                    {
+                        continue;
+                    }
+
+                    var folderName = segments[0];
+                    var fileName = segments[1];
+                    if (!IsRuleMatch(fileName, rule) &&
+                        !fileName.EndsWith(".skill.md", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (!selectedFileByFolder.ContainsKey(folderName) ||
+                        fileName.Equals(rule.FileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        selectedFileByFolder[folderName] = fileName;
+                    }
+                }
+
+                foreach (KeyValuePair<string, string> entry in selectedFileByFolder)
+                {
+                    templates.Add(new TemplateInfo
+                    {
+                        Name = entry.Key,
+                        FileName = entry.Key,
+                        DisplayName = entry.Key,
+                        DownloadUrl = $"{_gitHubRawBase}/{provider.RepoOwner}/{provider.RepoName}/{provider.Branch}/{rule.RootPath}/{entry.Key}/{entry.Value}",
+                        TemplateType = templateType,
+                        ProviderId = provider.Id
+                    });
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchFolderTemplatesFromTreeAsync failed for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+            }
+            catch (TaskCanceledException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchFolderTemplatesFromTreeAsync timed out for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
             }
 
             return templates;
