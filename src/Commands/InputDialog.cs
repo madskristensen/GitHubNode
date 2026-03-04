@@ -13,7 +13,7 @@ namespace GitHubNode.Commands
     /// <summary>
     /// A simple input dialog for prompting the user for text input.
     /// Uses Visual Studio theming for consistent appearance.
-    /// Supports optional template dropdown loaded from awesome-copilot repository.
+    /// Supports optional template dropdown loaded from remote repositories.
     /// </summary>
     internal sealed class InputDialog : DialogWindow
     {
@@ -22,6 +22,7 @@ namespace GitHubNode.Commands
 
         private readonly TextBox _textBox;
         private readonly RichTextBox _previewBox;
+        private readonly ComboBox _providerComboBox;
         private readonly ComboBox _templateComboBox;
         private readonly TextBlock _templateLabel;
         private readonly TextBlock _statusText;
@@ -29,7 +30,9 @@ namespace GitHubNode.Commands
         private readonly Button _copyButton;
         private readonly Func<string, string> _previewGenerator;
         private readonly TemplateType? _templateType;
+        private readonly List<TemplateProvider> _templateProviders;
         private readonly string _defaultFileName;
+
         private bool _userModifiedFileName;
         private List<TemplateInfo> _templates;
         private string _currentPreviewContent;
@@ -48,17 +51,20 @@ namespace GitHubNode.Commands
         /// <summary>
         /// Creates a new input dialog.
         /// </summary>
-        /// <param name="title">The dialog title.</param>
-        /// <param name="prompt">The prompt text.</param>
-        /// <param name="defaultValue">The default value in the text box.</param>
-        /// <param name="previewGenerator">Optional function to generate preview content based on input.</param>
-        /// <param name="templateType">Optional template type to show template dropdown.</param>
-        public InputDialog(string title, string prompt, string defaultValue = "", Func<string, string> previewGenerator = null, TemplateType? templateType = null)
+        public InputDialog(
+            string title,
+            string prompt,
+            string defaultValue = "",
+            Func<string, string> previewGenerator = null,
+            TemplateType? templateType = null,
+            IReadOnlyList<TemplateProvider> templateProviders = null)
         {
             _previewGenerator = previewGenerator;
             _templateType = templateType;
+            _templateProviders = templateProviders == null
+                ? new List<TemplateProvider>()
+                : new List<TemplateProvider>(templateProviders);
             _defaultFileName = defaultValue;
-            _userModifiedFileName = false;
 
             Title = title;
             Width = 550;
@@ -72,7 +78,6 @@ namespace GitHubNode.Commands
             HasHelpButton = false;
             ShowInTaskbar = false;
 
-            // Set the owner to VS main window for proper centering
             ThreadHelper.ThrowIfNotOnUIThread();
             if (Package.GetGlobalService(typeof(Microsoft.VisualStudio.Shell.Interop.SDTE)) is EnvDTE.DTE dte)
             {
@@ -82,31 +87,43 @@ namespace GitHubNode.Commands
                     Owner = HwndSource.FromHwnd(hwnd)?.RootVisual as Window;
                 }
             }
-            WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-            // Apply VS theme colors
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
             SetResourceReference(BackgroundProperty, EnvironmentColors.ToolWindowBackgroundBrushKey);
 
-            var grid = new Grid();
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Prompt label
+            var grid = new Grid
+            {
+                Margin = new Thickness(12)
+            };
+
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var showProviderDropdown = templateType != null && _templateProviders.Count > 1;
+            if (showProviderDropdown)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+
             if (templateType != null)
             {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Template label
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Template combo
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             }
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Filename label
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Filename textbox
+
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
             if (previewGenerator != null || templateType != null)
             {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Preview label
-                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Preview textbox
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             }
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Buttons row
-            grid.Margin = new Thickness(12);
+
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var currentRow = 0;
 
-            // Main prompt label
             var label = new TextBlock
             {
                 Text = prompt,
@@ -117,7 +134,36 @@ namespace GitHubNode.Commands
             Grid.SetRow(label, currentRow++);
             grid.Children.Add(label);
 
-            // Template dropdown (if template type specified)
+            if (showProviderDropdown)
+            {
+                var providerLabel = new TextBlock
+                {
+                    Text = "Provider:",
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+                providerLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+                Grid.SetRow(providerLabel, currentRow++);
+                grid.Children.Add(providerLabel);
+
+                _providerComboBox = new ComboBox
+                {
+                    Margin = new Thickness(0, 0, 0, 8),
+                    IsEditable = false
+                };
+                _providerComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
+
+                foreach (TemplateProvider provider in _templateProviders)
+                {
+                    _providerComboBox.Items.Add(provider);
+                }
+
+                _providerComboBox.SelectedIndex = 0;
+                _providerComboBox.SelectionChanged += OnProviderSelectionChanged;
+
+                Grid.SetRow(_providerComboBox, currentRow++);
+                grid.Children.Add(_providerComboBox);
+            }
+
             if (templateType != null)
             {
                 _templateLabel = new TextBlock
@@ -134,20 +180,15 @@ namespace GitHubNode.Commands
                     Margin = new Thickness(0, 0, 0, 12),
                     IsEditable = false
                 };
-                // Use VS themed style for proper dark/light mode support
                 _templateComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
-
-                // Add default custom option
                 _templateComboBox.Items.Add(_customTemplateText);
                 _templateComboBox.SelectedIndex = 0;
-
-                _templateComboBox.SelectionChanged += (s, args) => OnTemplateSelectionChanged();
+                _templateComboBox.SelectionChanged += (s, e) => OnTemplateSelectionChanged();
 
                 Grid.SetRow(_templateComboBox, currentRow++);
                 grid.Children.Add(_templateComboBox);
             }
 
-            // Filename label
             var fileNameLabel = new TextBlock
             {
                 Text = "File name:",
@@ -157,7 +198,6 @@ namespace GitHubNode.Commands
             Grid.SetRow(fileNameLabel, currentRow++);
             grid.Children.Add(fileNameLabel);
 
-            // Filename textbox
             _textBox = new TextBox
             {
                 Text = defaultValue,
@@ -171,7 +211,6 @@ namespace GitHubNode.Commands
             Grid.SetRow(_textBox, currentRow++);
             grid.Children.Add(_textBox);
 
-            // Add preview section if generator provided or templates enabled
             if (previewGenerator != null || templateType != null)
             {
                 var previewLabel = new TextBlock
@@ -197,17 +236,16 @@ namespace GitHubNode.Commands
                 _previewBox.SetResourceReference(RichTextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
                 _previewBox.SetResourceReference(RichTextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
                 _previewBox.SetResourceReference(RichTextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+
                 Grid.SetRow(_previewBox, currentRow++);
                 grid.Children.Add(_previewBox);
             }
 
-            // Button row container - holds status on left, buttons on right
             var buttonRowGrid = new Grid();
-            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // Left side (status)
-            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Right side (buttons)
+            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             Grid.SetRow(buttonRowGrid, currentRow);
 
-            // Status panel on the left (if templates enabled)
             if (templateType != null)
             {
                 var statusPanel = new StackPanel
@@ -219,7 +257,7 @@ namespace GitHubNode.Commands
 
                 _refreshButton = new Button
                 {
-                    Content = "\u21BB", // Clockwise open circle arrow (refresh icon)
+                    Content = "\u21BB",
                     Width = 16,
                     Height = 20,
                     Padding = new Thickness(0),
@@ -247,7 +285,6 @@ namespace GitHubNode.Commands
 
                 _statusText = new TextBlock
                 {
-                    Text = "",
                     VerticalAlignment = VerticalAlignment.Center,
                     FontSize = 11
                 };
@@ -258,7 +295,6 @@ namespace GitHubNode.Commands
                 buttonRowGrid.Children.Add(statusPanel);
             }
 
-            // Button panel on the right
             var buttonPanel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -287,14 +323,12 @@ namespace GitHubNode.Commands
             buttonRowGrid.Children.Add(buttonPanel);
 
             grid.Children.Add(buttonRowGrid);
-
             Content = grid;
 
             Loaded += OnDialogLoaded;
             Closing += OnDialogClosing;
             KeyDown += OnKeyDown;
 
-            // Restore dialog size from settings
             RestoreDialogSize();
         }
 
@@ -303,20 +337,19 @@ namespace GitHubNode.Commands
             try
             {
                 Dictionary<string, double> settings = GitHubNodePackage.Instance?.DialogSettings;
-                if (settings != null && settings.TryGetValue(_settingsKey + "_Width", out var width) &&
-                    settings.TryGetValue(_settingsKey + "_Height", out var height))
+                if (settings != null
+                    && settings.TryGetValue(_settingsKey + "_Width", out var width)
+                    && settings.TryGetValue(_settingsKey + "_Height", out var height)
+                    && width >= MinWidth
+                    && height >= MinHeight)
                 {
-                    if (width >= MinWidth && height >= MinHeight)
-                    {
-                        Width = width;
-                        Height = height;
-                    }
+                    Width = width;
+                    Height = height;
                 }
             }
             catch (Exception ex)
             {
                 _ = ex.LogAsync();
-                // Ignore settings errors
             }
         }
 
@@ -334,14 +367,11 @@ namespace GitHubNode.Commands
             catch (Exception ex)
             {
                 _ = ex.LogAsync();
-                // Ignore settings errors
             }
         }
 
         private void OnDialogClosing(object sender, System.ComponentModel.CancelEventArgs e)
-        {
-            SaveDialogSize();
-        }
+            => SaveDialogSize();
 
         private void OnKeyDown(object sender, KeyEventArgs e)
         {
@@ -352,7 +382,7 @@ namespace GitHubNode.Commands
             }
         }
 
-#pragma warning disable VSTHRD100 // Avoid async void methods - this is an event handler with try-catch
+#pragma warning disable VSTHRD100
         private async void OnDialogLoaded(object sender, RoutedEventArgs e)
 #pragma warning restore VSTHRD100
         {
@@ -360,7 +390,6 @@ namespace GitHubNode.Commands
             _textBox.SelectAll();
             UpdatePreview();
 
-            // Load templates asynchronously
             if (_templateType != null && _templateComboBox != null)
             {
                 try
@@ -370,7 +399,6 @@ namespace GitHubNode.Commands
                 catch (Exception ex)
                 {
                     _ = ex.LogAsync();
-                    // Handled in LoadTemplatesAsync
                 }
             }
         }
@@ -379,36 +407,37 @@ namespace GitHubNode.Commands
         {
             try
             {
+                TemplateProvider provider = GetSelectedProvider();
+                if (provider == null)
+                {
+                    SetStatus("No providers available");
+                    return;
+                }
+
                 SetStatus("Fetching templates from GitHub...");
                 SetRefreshEnabled(false);
 
                 if (forceRefresh)
                 {
-                    AwesomeCopilotService.ClearCache(_templateType.Value);
+                    AwesomeCopilotService.ClearCache(_templateType.Value, provider);
                 }
 
-                _templates = await AwesomeCopilotService.GetTemplatesAsync(_templateType.Value);
+                _templates = await AwesomeCopilotService.GetTemplatesAsync(_templateType.Value, provider);
 
-                // Update combo box - we're on UI thread after await
-                // Remove all items except the first (Custom)
                 while (_templateComboBox.Items.Count > 1)
                 {
                     _templateComboBox.Items.RemoveAt(1);
                 }
 
-                // Add templates
                 foreach (TemplateInfo template in _templates)
                 {
-                    _templateComboBox.Items.Add(template.FileName);
+                    _templateComboBox.Items.Add(template.DisplayName ?? template.FileName);
                 }
 
                 if (_templates.Count > 0)
                 {
                     SetStatus($"Loaded {_templates.Count} templates");
-                    if (_templateLabel != null)
-                    {
-                        _templateLabel.Text = $"Template ({_templates.Count} available):";
-                    }
+                    _templateLabel.Text = $"Template ({_templates.Count} available):";
                 }
                 else
                 {
@@ -418,11 +447,12 @@ namespace GitHubNode.Commands
             catch (Exception ex)
             {
                 _ = ex.LogAsync();
-                // Failed to load templates - remove loading indicator if present
+
                 while (_templateComboBox.Items.Count > 1)
                 {
                     _templateComboBox.Items.RemoveAt(1);
                 }
+
                 SetStatus("Failed to load templates");
             }
             finally
@@ -431,7 +461,26 @@ namespace GitHubNode.Commands
             }
         }
 
-#pragma warning disable VSTHRD100 // Avoid async void methods - this is an event handler with try-catch
+#pragma warning disable VSTHRD100
+        private async void OnProviderSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+#pragma warning restore VSTHRD100
+        {
+            try
+            {
+                _userModifiedFileName = false;
+                _templateComboBox.SelectedIndex = 0;
+                SelectedTemplateContent = null;
+                UpdatePreview();
+                await LoadTemplatesAsync();
+            }
+            catch (Exception ex)
+            {
+                _ = ex.LogAsync();
+                SetStatus("Failed to load provider templates");
+            }
+        }
+
+#pragma warning disable VSTHRD100
         private async void OnRefreshButtonClick(object sender, RoutedEventArgs e)
 #pragma warning restore VSTHRD100
         {
@@ -442,7 +491,6 @@ namespace GitHubNode.Commands
             catch (Exception ex)
             {
                 _ = ex.LogAsync();
-                // Handled in LoadTemplatesAsync
             }
         }
 
@@ -481,7 +529,6 @@ namespace GitHubNode.Commands
 
         private void OnFileNameTextChanged(object sender, TextChangedEventArgs e)
         {
-            // Track if user manually modified the filename
             if (_templateComboBox != null && _templateComboBox.SelectedIndex > 0)
             {
                 TemplateInfo selectedTemplate = _templates?[_templateComboBox.SelectedIndex - 1];
@@ -495,14 +542,13 @@ namespace GitHubNode.Commands
                 _userModifiedFileName = true;
             }
 
-            // Only update preview if using custom template with a preview generator
             if (_templateComboBox == null || _templateComboBox.SelectedIndex == 0)
             {
                 UpdatePreview();
             }
         }
 
-#pragma warning disable VSTHRD100 // Avoid async void methods - this is an event handler with try-catch
+#pragma warning disable VSTHRD100
         private async void OnTemplateSelectionChanged()
 #pragma warning restore VSTHRD100
         {
@@ -510,39 +556,40 @@ namespace GitHubNode.Commands
             {
                 if (_templateComboBox.SelectedIndex == 0)
                 {
-                    // Custom template selected
                     SelectedTemplateContent = null;
                     if (!_userModifiedFileName)
                     {
                         _textBox.Text = _defaultFileName;
                     }
+
                     UpdatePreview();
                     SetStatus("");
+                    return;
                 }
-                else if (_templates != null && _templateComboBox.SelectedIndex > 0)
+
+                if (_templates == null || _templateComboBox.SelectedIndex <= 0)
                 {
-                    TemplateInfo template = _templates[_templateComboBox.SelectedIndex - 1];
-
-                    // Auto-fill filename unless user has manually edited it
-                    if (!_userModifiedFileName)
-                    {
-                        _textBox.Text = template.FileName;
-                    }
-
-                    // Load and show template content
-                    if (string.IsNullOrEmpty(template.Content))
-                    {
-                        SetStatus("Loading template content...");
-                        template.Content = await AwesomeCopilotService.GetTemplateContentAsync(template);
-                    }
-
-                    SelectedTemplateContent = template.Content;
-                    UpdatePreviewWithContent(template.Content);
-
-                    // Show file size in status
-                    var sizeKb = (template.Content?.Length ?? 0) / 1024.0;
-                    SetStatus(sizeKb >= 1.0 ? $"{sizeKb:F1} KB" : $"{template.Content?.Length ?? 0} bytes");
+                    return;
                 }
+
+                TemplateInfo template = _templates[_templateComboBox.SelectedIndex - 1];
+
+                if (!_userModifiedFileName)
+                {
+                    _textBox.Text = template.FileName;
+                }
+
+                if (string.IsNullOrEmpty(template.Content))
+                {
+                    SetStatus("Loading template content...");
+                    template.Content = await AwesomeCopilotService.GetTemplateContentAsync(template);
+                }
+
+                SelectedTemplateContent = template.Content;
+                UpdatePreviewWithContent(template.Content);
+
+                var sizeKb = (template.Content?.Length ?? 0) / 1024.0;
+                SetStatus(sizeKb >= 1.0 ? $"{sizeKb:F1} KB" : $"{template.Content?.Length ?? 0} bytes");
             }
             catch (Exception ex)
             {
@@ -554,11 +601,14 @@ namespace GitHubNode.Commands
         private void UpdatePreview()
         {
             if (_previewBox == null)
+            {
                 return;
+            }
 
-            // If a template is selected, don't update based on filename
             if (_templateComboBox != null && _templateComboBox.SelectedIndex > 0)
+            {
                 return;
+            }
 
             if (_previewGenerator == null)
             {
@@ -570,7 +620,7 @@ namespace GitHubNode.Commands
 
             try
             {
-                var preview = _previewGenerator(_textBox.Text);
+                string preview = _previewGenerator(_textBox.Text);
                 UpdatePreviewWithContent(preview);
             }
             catch (Exception ex)
@@ -586,16 +636,17 @@ namespace GitHubNode.Commands
         private void UpdatePreviewWithContent(string content)
         {
             if (_previewBox == null || content == null)
+            {
                 return;
+            }
 
-            // Track content for copy button
             _currentPreviewContent = content;
             SetCopyEnabled(true);
 
-            // Limit preview to first ~50 lines for performance
-            var lines = content.Split('\n');
+            string[] lines = content.Split('\n');
             string displayContent;
             var truncated = false;
+
             if (lines.Length > 50)
             {
                 displayContent = string.Join("\n", lines, 0, 50);
@@ -606,7 +657,6 @@ namespace GitHubNode.Commands
                 displayContent = content;
             }
 
-            // Apply syntax highlighting
             _previewBox.Document = MarkdownSyntaxHighlighter.CreateHighlightedDocument(displayContent, truncated);
         }
 
@@ -629,8 +679,25 @@ namespace GitHubNode.Commands
                 IsDefault = isDefault,
                 IsCancel = isCancel
             };
+
             button.SetResourceReference(Button.StyleProperty, VsResourceKeys.ButtonStyleKey);
             return button;
         }
+
+        private TemplateProvider GetSelectedProvider()
+        {
+            if (_providerComboBox?.SelectedItem is TemplateProvider provider)
+            {
+                return provider;
+            }
+
+            if (_templateProviders.Count > 0)
+            {
+                return _templateProviders[0];
+            }
+
+            return null;
+        }
     }
 }
+

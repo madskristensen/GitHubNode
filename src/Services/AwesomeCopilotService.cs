@@ -7,19 +7,17 @@ using System.Threading.Tasks;
 namespace GitHubNode.Services
 {
     /// <summary>
-    /// Service for fetching templates from github/awesome-copilot repository.
+    /// Service for fetching templates from GitHub repositories.
     /// Caches results to disk with weekly expiration.
     /// </summary>
     internal static class AwesomeCopilotService
     {
-        private const string _repoOwner = "github";
-        private const string _repoName = "awesome-copilot";
-        private const string _branch = "main";
         private const string _gitHubApiBase = "https://api.github.com";
         private const string _gitHubRawBase = "https://raw.githubusercontent.com";
         private const int _cacheExpirationDays = 7;
 
         private static readonly HttpClient _httpClient = CreateHttpClient();
+        private static readonly List<TemplateProvider> _providers = TemplateProviderRegistry.CreateProviders();
         private static readonly string _cacheDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "GitHubNode",
@@ -40,12 +38,54 @@ namespace GitHubNode.Services
         }
 
         /// <summary>
-        /// Gets templates for the specified type (agents, prompts, skills, instructions).
+        /// Gets providers that support a specific template type.
+        /// </summary>
+        public static IReadOnlyList<TemplateProvider> GetProvidersForTemplateType(TemplateType templateType)
+        {
+            var providers = new List<TemplateProvider>();
+
+            foreach (TemplateProvider provider in _providers)
+            {
+                if (provider.GetRule(templateType) != null)
+                {
+                    providers.Add(provider);
+                }
+            }
+
+            return providers;
+        }
+
+        /// <summary>
+        /// Gets templates for the specified type from the default provider.
         /// </summary>
         public static async Task<List<TemplateInfo>> GetTemplatesAsync(TemplateType templateType)
         {
-            var folderName = GetFolderName(templateType);
-            var cacheFile = GetCacheFilePath(templateType);
+            TemplateProvider provider = GetDefaultProvider(templateType);
+            if (provider == null)
+            {
+                return new List<TemplateInfo>();
+            }
+
+            return await GetTemplatesAsync(templateType, provider);
+        }
+
+        /// <summary>
+        /// Gets templates for the specified type from the selected provider.
+        /// </summary>
+        public static async Task<List<TemplateInfo>> GetTemplatesAsync(TemplateType templateType, TemplateProvider provider)
+        {
+            if (provider == null)
+            {
+                throw new ArgumentNullException(nameof(provider));
+            }
+
+            TemplateSearchRule rule = provider.GetRule(templateType);
+            if (rule == null)
+            {
+                return new List<TemplateInfo>();
+            }
+
+            var cacheFile = GetCacheFilePath(templateType, provider.Id);
 
             // Check cache first
             List<TemplateInfo> cached = LoadFromCache(cacheFile, expiredOk: false);
@@ -55,7 +95,7 @@ namespace GitHubNode.Services
             }
 
             // Fetch from GitHub API
-            List<TemplateInfo> templates = await FetchTemplatesFromGitHubAsync(folderName, templateType);
+            List<TemplateInfo> templates = await FetchTemplatesFromGitHubAsync(provider, rule, templateType);
 
             if (templates.Count > 0)
             {
@@ -104,13 +144,32 @@ namespace GitHubNode.Services
         }
 
         /// <summary>
-        /// Clears the cache for the specified template type.
+        /// Clears the cache for the specified template type and default provider.
         /// </summary>
         public static void ClearCache(TemplateType templateType)
         {
+            TemplateProvider provider = GetDefaultProvider(templateType);
+            if (provider == null)
+            {
+                return;
+            }
+
+            ClearCache(templateType, provider);
+        }
+
+        /// <summary>
+        /// Clears the cache for the specified template type and provider.
+        /// </summary>
+        public static void ClearCache(TemplateType templateType, TemplateProvider provider)
+        {
             try
             {
-                var cacheFile = GetCacheFilePath(templateType);
+                if (provider == null)
+                {
+                    throw new ArgumentNullException(nameof(provider));
+                }
+
+                var cacheFile = GetCacheFilePath(templateType, provider.Id);
                 if (File.Exists(cacheFile))
                 {
                     File.Delete(cacheFile);
@@ -123,21 +182,22 @@ namespace GitHubNode.Services
             }
         }
 
-        private static string GetFolderName(TemplateType templateType)
+        private static TemplateProvider GetDefaultProvider(TemplateType templateType)
         {
-            return templateType switch
+            foreach (TemplateProvider provider in _providers)
             {
-                TemplateType.Agent => "agents",
-                TemplateType.Prompt => "prompts",
-                TemplateType.Skill => "skills",
-                TemplateType.Instructions => "instructions",
-                _ => throw new ArgumentException($"Unknown template type: {templateType}"),
-            };
+                if (provider.GetRule(templateType) != null)
+                {
+                    return provider;
+                }
+            }
+
+            return null;
         }
 
-        private static string GetCacheFilePath(TemplateType templateType)
+        private static string GetCacheFilePath(TemplateType templateType, string providerId)
         {
-            return Path.Combine(_cacheDirectory, $"{templateType}.cache");
+            return Path.Combine(_cacheDirectory, $"{providerId}_{templateType}.cache");
         }
 
         private static List<TemplateInfo> LoadFromCache(string cacheFile, bool expiredOk)
@@ -176,7 +236,9 @@ namespace GitHubNode.Services
                             Name = parts[0],
                             FileName = parts[1],
                             DownloadUrl = parts[2],
-                            TemplateType = (TemplateType)int.Parse(parts[3])
+                            TemplateType = (TemplateType)int.Parse(parts[3]),
+                            ProviderId = parts.Length >= 5 ? parts[4] : AwesomeCopilotTemplateProvider.ProviderId,
+                            DisplayName = parts[0]
                         });
                     }
                 }
@@ -211,7 +273,7 @@ namespace GitHubNode.Services
                 var lines = new List<string>();
                 foreach (TemplateInfo t in templates)
                 {
-                    lines.Add($"{t.Name}\t{t.FileName}\t{t.DownloadUrl}\t{(int)t.TemplateType}");
+                    lines.Add($"{t.Name}\t{t.FileName}\t{t.DownloadUrl}\t{(int)t.TemplateType}\t{t.ProviderId}");
                 }
 
                 File.WriteAllLines(cacheFile, lines);
@@ -228,39 +290,51 @@ namespace GitHubNode.Services
             }
         }
 
-        private static async Task<List<TemplateInfo>> FetchTemplatesFromGitHubAsync(string folderName, TemplateType templateType)
+        private static async Task<List<TemplateInfo>> FetchTemplatesFromGitHubAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType)
+        {
+            if (rule.Recursive)
+            {
+                return await FetchTemplatesFromTreeAsync(provider, rule, templateType);
+            }
+
+            return await FetchTemplatesFromDirectoryAsync(provider, rule, templateType);
+        }
+
+        private static async Task<List<TemplateInfo>> FetchTemplatesFromDirectoryAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType)
         {
             var templates = new List<TemplateInfo>();
 
             try
             {
                 // Get directory contents from GitHub API
-                var url = $"{_gitHubApiBase}/repos/{_repoOwner}/{_repoName}/contents/{folderName}?ref={_branch}";
+                var url = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/contents/{rule.RootPath}?ref={provider.Branch}";
                 var response = await _httpClient.GetStringAsync(url);
                 List<GitHubContentItem> items = ParseGitHubContentsJson(response);
 
                 foreach (GitHubContentItem item in items)
                 {
-                    if (item.Type == "file" && item.Name.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+                    if (item.Type == "file" && IsRuleMatch(item.Name, rule))
                     {
                         templates.Add(new TemplateInfo
                         {
                             Name = Path.GetFileNameWithoutExtension(item.Name),
                             FileName = item.Name,
-                            DownloadUrl = $"{_gitHubRawBase}/{_repoOwner}/{_repoName}/{_branch}/{folderName}/{item.Name}",
-                            TemplateType = templateType
+                            DisplayName = item.Name,
+                            DownloadUrl = $"{_gitHubRawBase}/{provider.RepoOwner}/{provider.RepoName}/{provider.Branch}/{rule.RootPath}/{item.Name}",
+                            TemplateType = templateType,
+                            ProviderId = provider.Id
                         });
                     }
-                    else if (item.Type == "dir" && templateType == TemplateType.Skill)
+                    else if (item.Type == "dir" && rule.UseFolderNameAsTemplateName)
                     {
                         // Skills are folders - look for skill.md inside
-                        var skillUrl = $"{_gitHubApiBase}/repos/{_repoOwner}/{_repoName}/contents/{folderName}/{item.Name}?ref={_branch}";
+                        var skillUrl = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/contents/{rule.RootPath}/{item.Name}?ref={provider.Branch}";
                         try
                         {
                             var skillResponse = await _httpClient.GetStringAsync(skillUrl);
                             List<GitHubContentItem> skillItems = ParseGitHubContentsJson(skillResponse);
                             GitHubContentItem skillFile = skillItems.Find(f =>
-                                f.Name.Equals("skill.md", StringComparison.OrdinalIgnoreCase) ||
+                                IsRuleMatch(f.Name, rule) ||
                                 f.Name.EndsWith(".skill.md", StringComparison.OrdinalIgnoreCase));
 
                             if (skillFile != null)
@@ -269,8 +343,10 @@ namespace GitHubNode.Services
                                 {
                                     Name = item.Name,
                                     FileName = item.Name,
-                                    DownloadUrl = $"{_gitHubRawBase}/{_repoOwner}/{_repoName}/{_branch}/{folderName}/{item.Name}/{skillFile.Name}",
-                                    TemplateType = templateType
+                                    DisplayName = item.Name,
+                                    DownloadUrl = $"{_gitHubRawBase}/{provider.RepoOwner}/{provider.RepoName}/{provider.Branch}/{rule.RootPath}/{item.Name}/{skillFile.Name}",
+                                    TemplateType = templateType,
+                                    ProviderId = provider.Id
                                 });
                             }
                         }
@@ -290,16 +366,98 @@ namespace GitHubNode.Services
             catch (HttpRequestException ex)
             {
                 _ = ex.LogAsync();
-                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync failed for '{folderName}': {ex}");
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromDirectoryAsync failed for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
             }
             catch (TaskCanceledException ex)
             {
                 _ = ex.LogAsync();
-                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromGitHubAsync timed out for '{folderName}': {ex}");
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromDirectoryAsync timed out for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
             }
 
             return templates;
         }
+
+        private static async Task<List<TemplateInfo>> FetchTemplatesFromTreeAsync(TemplateProvider provider, TemplateSearchRule rule, TemplateType templateType)
+        {
+            var templates = new List<TemplateInfo>();
+
+            try
+            {
+                var url = $"{_gitHubApiBase}/repos/{provider.RepoOwner}/{provider.RepoName}/git/trees/{provider.Branch}?recursive=1";
+                var response = await _httpClient.GetStringAsync(url);
+                List<GitHubTreeItem> treeItems = ParseGitHubTreeJson(response);
+
+                var rootPrefix = NormalizePath(rule.RootPath) + "/";
+
+                foreach (GitHubTreeItem item in treeItems)
+                {
+                    if (!item.Type.Equals("blob", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var normalizedPath = NormalizePath(item.Path);
+                    if (!normalizedPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var fileName = Path.GetFileName(normalizedPath);
+                    if (!IsRuleMatch(fileName, rule))
+                    {
+                        continue;
+                    }
+
+                    var suggestedFileName = templateType == TemplateType.Skill
+                        ? Path.GetFileName(Path.GetDirectoryName(normalizedPath))
+                        : fileName;
+
+                    var displayName = normalizedPath.Substring(rootPrefix.Length);
+
+                    templates.Add(new TemplateInfo
+                    {
+                        Name = Path.GetFileNameWithoutExtension(suggestedFileName),
+                        FileName = suggestedFileName,
+                        DisplayName = displayName,
+                        DownloadUrl = $"{_gitHubRawBase}/{provider.RepoOwner}/{provider.RepoName}/{provider.Branch}/{normalizedPath}",
+                        TemplateType = templateType,
+                        ProviderId = provider.Id
+                    });
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromTreeAsync failed for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+            }
+            catch (TaskCanceledException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"AwesomeCopilotService.FetchTemplatesFromTreeAsync timed out for '{provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}': {ex}");
+            }
+
+            return templates;
+        }
+
+        private static bool IsRuleMatch(string fileName, TemplateSearchRule rule)
+        {
+            if (!string.IsNullOrWhiteSpace(rule.FileName) &&
+                fileName.Equals(rule.FileName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(rule.FileSuffix) &&
+                fileName.EndsWith(rule.FileSuffix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string NormalizePath(string path)
+            => path?.Replace('\\', '/').Trim('/') ?? string.Empty;
 
         /// <summary>
         /// Parses the GitHub contents API JSON response.
@@ -315,6 +473,100 @@ namespace GitHubNode.Services
             public string Name { get; set; }
 
             public string Type { get; set; }
+        }
+
+        private sealed class GitHubTreeItem
+        {
+            public string Path { get; set; }
+
+            public string Type { get; set; }
+        }
+
+        private static List<GitHubTreeItem> ParseGitHubTreeJson(string json)
+        {
+            var items = new List<GitHubTreeItem>();
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return items;
+            }
+
+            var pos = 0;
+            while (pos < json.Length)
+            {
+                var pathKeyPos = json.IndexOf("\"path\"", pos, StringComparison.Ordinal);
+                if (pathKeyPos < 0)
+                {
+                    break;
+                }
+
+                var pathColonPos = json.IndexOf(':', pathKeyPos + 6);
+                if (pathColonPos < 0)
+                {
+                    break;
+                }
+
+                var pathValueStart = json.IndexOf('"', pathColonPos + 1);
+                if (pathValueStart < 0)
+                {
+                    break;
+                }
+
+                pathValueStart++;
+                var pathValueEnd = json.IndexOf('"', pathValueStart);
+                if (pathValueEnd < 0)
+                {
+                    break;
+                }
+
+                var path = json.Substring(pathValueStart, pathValueEnd - pathValueStart);
+
+                var typeKeyPos = json.IndexOf("\"type\"", pathValueEnd, StringComparison.Ordinal);
+                if (typeKeyPos < 0)
+                {
+                    break;
+                }
+
+                var nextPathPos = json.IndexOf("\"path\"", pathValueEnd, StringComparison.Ordinal);
+                if (nextPathPos > 0 && nextPathPos < typeKeyPos)
+                {
+                    pos = nextPathPos;
+                    continue;
+                }
+
+                var typeColonPos = json.IndexOf(':', typeKeyPos + 6);
+                if (typeColonPos < 0)
+                {
+                    break;
+                }
+
+                var typeValueStart = json.IndexOf('"', typeColonPos + 1);
+                if (typeValueStart < 0)
+                {
+                    break;
+                }
+
+                typeValueStart++;
+                var typeValueEnd = json.IndexOf('"', typeValueStart);
+                if (typeValueEnd < 0)
+                {
+                    break;
+                }
+
+                var type = json.Substring(typeValueStart, typeValueEnd - typeValueStart);
+
+                if (!string.IsNullOrWhiteSpace(path) && !string.IsNullOrWhiteSpace(type))
+                {
+                    items.Add(new GitHubTreeItem
+                    {
+                        Path = path,
+                        Type = type
+                    });
+                }
+
+                pos = typeValueEnd + 1;
+            }
+
+            return items;
         }
 
         private static List<GitHubContentItem> ParseGitHubContentsByTokenScan(string json)
@@ -423,8 +675,10 @@ namespace GitHubNode.Services
     {
         public string Name { get; set; }
         public string FileName { get; set; }
+        public string DisplayName { get; set; }
         public string DownloadUrl { get; set; }
         public TemplateType TemplateType { get; set; }
+        public string ProviderId { get; set; }
 
         /// <summary>
         /// Cached content of the template file.

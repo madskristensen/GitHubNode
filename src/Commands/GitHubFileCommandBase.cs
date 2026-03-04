@@ -113,7 +113,11 @@ namespace GitHubNode.Commands
             {
                 // Create preview generator that uses the subclass's GetFileContent method
                 Func<string, string> previewGenerator = GetFileContent;
-                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator, TemplateType);
+                var templateProviders = TemplateType.HasValue
+                    ? AwesomeCopilotService.GetProvidersForTemplateType(TemplateType.Value)
+                    : null;
+
+                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator, TemplateType, templateProviders);
                 if (dialog.ShowModal() != true || string.IsNullOrWhiteSpace(dialog.InputText))
                 {
                     return;
