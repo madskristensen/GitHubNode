@@ -582,7 +582,7 @@ namespace GitHubNode.Commands
                     string fetchIssue = AwesomeCopilotService.GetLastFetchIssue(_templateType.Value, provider);
                     SetStatus(!string.IsNullOrWhiteSpace(fetchIssue)
                         ? fetchIssue
-                        : "No templates available (offline?)");
+                        : "No templates available from GitHub for this provider.");
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

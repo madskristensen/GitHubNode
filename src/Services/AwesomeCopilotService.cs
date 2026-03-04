@@ -19,12 +19,14 @@ namespace GitHubNode.Services
     {
         private const string _gitHubApiBase = "https://api.github.com";
         private const string _gitHubRawBase = "https://raw.githubusercontent.com";
+        private const string _emptyCacheMarker = "__EMPTY__";
         private const int _cacheExpirationDays = 7;
 
         private static readonly HttpClient _httpClient = CreateHttpClient();
         private static readonly List<TemplateProvider> _providers = TemplateProviderRegistry.CreateProviders();
         private static readonly object _lastFetchIssueGate = new object();
         private static readonly Dictionary<string, string> _lastFetchIssues = new Dictionary<string, string>(StringComparer.Ordinal);
+        private static bool _serializerUnavailableLogged;
         private static readonly string _cacheDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "GitHubNode",
@@ -137,6 +139,11 @@ namespace GitHubNode.Services
                 if (expiredCache != null && expiredCache.Count > 0)
                 {
                     return expiredCache;
+                }
+
+                if (string.IsNullOrWhiteSpace(GetLastFetchIssue(templateType, provider)))
+                {
+                    SetLastFetchIssue(templateType, provider.Id, "No templates found in the provider response. This can happen due to API limits or provider changes.");
                 }
             }
 
@@ -278,6 +285,11 @@ namespace GitHubNode.Services
                     return null;
                 }
 
+                if (lines.Length == 1 && string.Equals(lines[0], _emptyCacheMarker, StringComparison.Ordinal))
+                {
+                    return new List<TemplateInfo>();
+                }
+
                 var templates = new List<TemplateInfo>();
 
                 foreach (var line in lines)
@@ -338,7 +350,7 @@ namespace GitHubNode.Services
 
         private static void SaveToCache(string cacheFile, List<TemplateInfo> templates)
         {
-            if (templates == null || templates.Count == 0)
+            if (templates == null)
             {
                 return;
             }
@@ -348,6 +360,11 @@ namespace GitHubNode.Services
                 Directory.CreateDirectory(Path.GetDirectoryName(cacheFile));
 
                 var lines = new List<string>();
+                if (templates.Count == 0)
+                {
+                    lines.Add(_emptyCacheMarker);
+                }
+
                 foreach (TemplateInfo t in templates)
                 {
                     lines.Add($"{t.Name}\t{t.FileName}\t{t.DownloadUrl}\t{(int)t.TemplateType}\t{t.ProviderId}\t{t.DisplayName}");
@@ -392,6 +409,10 @@ namespace GitHubNode.Services
                 }
 
                 List<GitHubContentItem> items = ParseGitHubContentsJson(response);
+                if (items.Count == 0)
+                {
+                    _ = new InvalidOperationException($"GitHub template response could not be parsed for contents endpoint: {provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}").LogAsync();
+                }
 
                 foreach (GitHubContentItem item in items)
                 {
@@ -455,6 +476,10 @@ namespace GitHubNode.Services
                 }
 
                 List<GitHubTreeItem> treeItems = ParseGitHubTreeJson(response);
+                if (treeItems.Count == 0)
+                {
+                    _ = new InvalidOperationException($"GitHub template response could not be parsed for tree endpoint: {provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}").LogAsync();
+                }
 
                 var rootPrefix = NormalizePath(rule.RootPath) + "/";
                 var selectedFileByFolder = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -549,6 +574,10 @@ namespace GitHubNode.Services
                 }
 
                 List<GitHubTreeItem> treeItems = ParseGitHubTreeJson(response);
+                if (treeItems.Count == 0)
+                {
+                    _ = new InvalidOperationException($"GitHub template response could not be parsed for recursive tree endpoint: {provider.RepoOwner}/{provider.RepoName}/{rule.RootPath}").LogAsync();
+                }
 
                 var rootPrefix = NormalizePath(rule.RootPath) + "/";
 
@@ -644,6 +673,10 @@ namespace GitHubNode.Services
         {
             var items = new List<GitHubContentItem>();
             object deserialized = DeserializeJson(json);
+            if (deserialized == null)
+            {
+                return ParseGitHubContentsJsonFallback(json);
+            }
 
             if (deserialized is IEnumerable contentItems)
             {
@@ -684,6 +717,11 @@ namespace GitHubNode.Services
         {
             var items = new List<GitHubTreeItem>();
             object deserialized = DeserializeJson(json);
+            if (deserialized == null)
+            {
+                return ParseGitHubTreeJsonFallback(json);
+            }
+
             if (deserialized is not IDictionary root || !root.Contains("tree") || root["tree"] is not IEnumerable treeItems)
             {
                 return items;
@@ -712,6 +750,471 @@ namespace GitHubNode.Services
             return items;
         }
 
+        private static List<GitHubTreeItem> ParseGitHubTreeJsonFallback(string json)
+        {
+            var items = new List<GitHubTreeItem>();
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return items;
+            }
+
+            string treeArray = TryGetNamedArray(json, "tree");
+            if (string.IsNullOrWhiteSpace(treeArray))
+            {
+                return items;
+            }
+
+            foreach (string entryObject in EnumerateArrayObjectEntries(treeArray))
+            {
+                string path = TryGetTopLevelStringProperty(entryObject, "path");
+                string type = TryGetTopLevelStringProperty(entryObject, "type");
+
+                if (!string.IsNullOrWhiteSpace(path) && !string.IsNullOrWhiteSpace(type))
+                {
+                    items.Add(new GitHubTreeItem
+                    {
+                        Path = path,
+                        Type = type
+                    });
+                }
+            }
+
+            return items;
+        }
+
+        private static List<GitHubContentItem> ParseGitHubContentsJsonFallback(string json)
+        {
+            var items = new List<GitHubContentItem>();
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return items;
+            }
+
+            string trimmed = json.TrimStart();
+            if (trimmed.Length == 0)
+            {
+                return items;
+            }
+
+            if (trimmed[0] == '{')
+            {
+                TryAddContentItem(items, trimmed);
+                return items;
+            }
+
+            foreach (string entryObject in EnumerateArrayObjectEntries(trimmed))
+            {
+                TryAddContentItem(items, entryObject);
+            }
+
+            return items;
+        }
+
+        private static void TryAddContentItem(List<GitHubContentItem> items, string entryObject)
+        {
+            string name = TryGetTopLevelStringProperty(entryObject, "name");
+            string type = TryGetTopLevelStringProperty(entryObject, "type");
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(type))
+                {
+                    items.Add(new GitHubContentItem
+                    {
+                        Name = name,
+                        Type = type
+                    });
+                }
+        }
+
+        private static IEnumerable<string> EnumerateArrayObjectEntries(string arrayJson)
+        {
+            if (string.IsNullOrWhiteSpace(arrayJson))
+            {
+                yield break;
+            }
+
+            int start = arrayJson.IndexOf('[');
+            if (start < 0)
+            {
+                yield break;
+            }
+
+            bool inString = false;
+            bool escape = false;
+            int depth = 0;
+            int objectStart = -1;
+
+            for (int i = start; i < arrayJson.Length; i++)
+            {
+                char ch = arrayJson[i];
+
+                if (inString)
+                {
+                    if (escape)
+                    {
+                        escape = false;
+                        continue;
+                    }
+
+                    if (ch == '\\')
+                    {
+                        escape = true;
+                        continue;
+                    }
+
+                    if (ch == '"')
+                    {
+                        inString = false;
+                    }
+
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+
+                if (ch == '{')
+                {
+                    if (depth == 0)
+                    {
+                        objectStart = i;
+                    }
+
+                    depth++;
+                }
+                else if (ch == '}')
+                {
+                    if (depth > 0)
+                    {
+                        depth--;
+                        if (depth == 0 && objectStart >= 0)
+                        {
+                            yield return arrayJson.Substring(objectStart, i - objectStart + 1);
+                            objectStart = -1;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static string TryGetNamedArray(string json, string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            string token = $"\"{propertyName}\"";
+            int tokenIndex = json.IndexOf(token, StringComparison.Ordinal);
+            if (tokenIndex < 0)
+            {
+                return null;
+            }
+
+            int colonIndex = json.IndexOf(':', tokenIndex + token.Length);
+            if (colonIndex < 0)
+            {
+                return null;
+            }
+
+            int arrayStart = json.IndexOf('[', colonIndex + 1);
+            if (arrayStart < 0)
+            {
+                return null;
+            }
+
+            int arrayEnd = FindMatchingBracket(json, arrayStart, '[', ']');
+            if (arrayEnd < 0)
+            {
+                return null;
+            }
+
+            return json.Substring(arrayStart, arrayEnd - arrayStart + 1);
+        }
+
+        private static int FindMatchingBracket(string text, int startIndex, char openChar, char closeChar)
+        {
+            bool inString = false;
+            bool escape = false;
+            int depth = 0;
+
+            for (int i = startIndex; i < text.Length; i++)
+            {
+                char ch = text[i];
+
+                if (inString)
+                {
+                    if (escape)
+                    {
+                        escape = false;
+                        continue;
+                    }
+
+                    if (ch == '\\')
+                    {
+                        escape = true;
+                        continue;
+                    }
+
+                    if (ch == '"')
+                    {
+                        inString = false;
+                    }
+
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+
+                if (ch == openChar)
+                {
+                    depth++;
+                }
+                else if (ch == closeChar)
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            return -1;
+        }
+
+        private static string TryGetTopLevelStringProperty(string objectJson, string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(objectJson) || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            int index = 0;
+            bool inString = false;
+            bool escape = false;
+            int objectDepth = 0;
+            int arrayDepth = 0;
+
+            while (index < objectJson.Length)
+            {
+                char ch = objectJson[index];
+
+                if (inString)
+                {
+                    if (escape)
+                    {
+                        escape = false;
+                    }
+                    else if (ch == '\\')
+                    {
+                        escape = true;
+                    }
+                    else if (ch == '"')
+                    {
+                        inString = false;
+                    }
+
+                    index++;
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    if (objectDepth == 1 && arrayDepth == 0)
+                    {
+                        if (!TryReadJsonString(objectJson, index, out string key, out int nextIndex))
+                        {
+                            return null;
+                        }
+
+                        int valueStart = SkipWhitespace(objectJson, nextIndex);
+                        if (valueStart >= objectJson.Length || objectJson[valueStart] != ':')
+                        {
+                            index = nextIndex;
+                            continue;
+                        }
+
+                        valueStart = SkipWhitespace(objectJson, valueStart + 1);
+                        if (valueStart >= objectJson.Length)
+                        {
+                            return null;
+                        }
+
+                        if (key.Equals(propertyName, StringComparison.Ordinal))
+                        {
+                            if (objectJson[valueStart] != '"')
+                            {
+                                return null;
+                            }
+
+                            if (!TryReadJsonString(objectJson, valueStart, out string propertyValue, out _))
+                            {
+                                return null;
+                            }
+
+                            return propertyValue;
+                        }
+
+                        index = SkipJsonValue(objectJson, valueStart);
+                        continue;
+                    }
+
+                    inString = true;
+                    index++;
+                    continue;
+                }
+
+                if (ch == '{')
+                {
+                    objectDepth++;
+                }
+                else if (ch == '}')
+                {
+                    objectDepth--;
+                }
+                else if (ch == '[')
+                {
+                    arrayDepth++;
+                }
+                else if (ch == ']')
+                {
+                    arrayDepth--;
+                }
+
+                index++;
+            }
+
+            return null;
+        }
+
+        private static bool TryReadJsonString(string text, int quoteIndex, out string value, out int nextIndex)
+        {
+            value = null;
+            nextIndex = quoteIndex;
+
+            if (quoteIndex < 0 || quoteIndex >= text.Length || text[quoteIndex] != '"')
+            {
+                return false;
+            }
+
+            var builder = new System.Text.StringBuilder();
+
+            for (int i = quoteIndex + 1; i < text.Length; i++)
+            {
+                char ch = text[i];
+                if (ch == '"')
+                {
+                    value = builder.ToString();
+                    nextIndex = i + 1;
+                    return true;
+                }
+
+                if (ch != '\\')
+                {
+                    builder.Append(ch);
+                    continue;
+                }
+
+                if (i + 1 >= text.Length)
+                {
+                    return false;
+                }
+
+                char escaped = text[++i];
+                switch (escaped)
+                {
+                    case '"':
+                    case '\\':
+                    case '/':
+                        builder.Append(escaped);
+                        break;
+                    case 'b':
+                        builder.Append('\b');
+                        break;
+                    case 'f':
+                        builder.Append('\f');
+                        break;
+                    case 'n':
+                        builder.Append('\n');
+                        break;
+                    case 'r':
+                        builder.Append('\r');
+                        break;
+                    case 't':
+                        builder.Append('\t');
+                        break;
+                    case 'u':
+                        if (i + 4 >= text.Length)
+                        {
+                            return false;
+                        }
+
+                        string hex = text.Substring(i + 1, 4);
+                        if (!ushort.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out ushort codePoint))
+                        {
+                            return false;
+                        }
+
+                        builder.Append((char)codePoint);
+                        i += 4;
+                        break;
+                    default:
+                        builder.Append(escaped);
+                        break;
+                }
+            }
+
+            return false;
+        }
+
+        private static int SkipWhitespace(string text, int index)
+        {
+            while (index < text.Length && char.IsWhiteSpace(text[index]))
+            {
+                index++;
+            }
+
+            return index;
+        }
+
+        private static int SkipJsonValue(string text, int index)
+        {
+            if (index >= text.Length)
+            {
+                return index;
+            }
+
+            if (text[index] == '"')
+            {
+                return TryReadJsonString(text, index, out _, out int nextIndex) ? nextIndex : text.Length;
+            }
+
+            if (text[index] == '{')
+            {
+                int end = FindMatchingBracket(text, index, '{', '}');
+                return end >= 0 ? end + 1 : text.Length;
+            }
+
+            if (text[index] == '[')
+            {
+                int end = FindMatchingBracket(text, index, '[', ']');
+                return end >= 0 ? end + 1 : text.Length;
+            }
+
+            while (index < text.Length && text[index] != ',' && text[index] != '}' && text[index] != ']')
+            {
+                index++;
+            }
+
+            return index;
+        }
+
         private static object DeserializeJson(string json)
         {
             if (string.IsNullOrWhiteSpace(json))
@@ -719,20 +1222,87 @@ namespace GitHubNode.Services
                 return null;
             }
 
-            Type serializerType = Type.GetType("System.Web.Script.Serialization.JavaScriptSerializer, System.Web.Extensions", throwOnError: false);
+            Type serializerType = GetJavaScriptSerializerType();
             if (serializerType == null)
             {
-                throw new InvalidOperationException("System.Web.Extensions is required for JSON parsing.");
+                LogSerializerUnavailableOnce();
+                return null;
             }
 
             object serializer = Activator.CreateInstance(serializerType);
+            SetSerializerLimit(serializerType, serializer, "MaxJsonLength", int.MaxValue);
+            SetSerializerLimit(serializerType, serializer, "RecursionLimit", 512);
+
             MethodInfo deserializeMethod = serializerType.GetMethod("DeserializeObject", [typeof(string)]);
             if (deserializeMethod == null)
             {
-                throw new InvalidOperationException("JavaScriptSerializer.DeserializeObject method was not found.");
+                return null;
             }
 
-            return deserializeMethod.Invoke(serializer, [json]);
+            try
+            {
+                return deserializeMethod.Invoke(serializer, [json]);
+            }
+            catch (TargetInvocationException)
+            {
+                return null;
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+        }
+
+        private static void LogSerializerUnavailableOnce()
+        {
+            lock (_lastFetchIssueGate)
+            {
+                if (_serializerUnavailableLogged)
+                {
+                    return;
+                }
+
+                _serializerUnavailableLogged = true;
+            }
+
+            _ = new InvalidOperationException("System.Web.Extensions JavaScriptSerializer is unavailable. Falling back to lightweight response parsing.").LogAsync();
+        }
+
+        private static Type GetJavaScriptSerializerType()
+        {
+            const string serializerTypeName = "System.Web.Script.Serialization.JavaScriptSerializer";
+            Type serializerType = Type.GetType($"{serializerTypeName}, System.Web.Extensions", throwOnError: false);
+            if (serializerType != null)
+            {
+                return serializerType;
+            }
+
+            try
+            {
+                Assembly assembly = Assembly.Load("System.Web.Extensions");
+                return assembly?.GetType(serializerTypeName, throwOnError: false);
+            }
+            catch (System.IO.FileNotFoundException)
+            {
+                return null;
+            }
+            catch (System.IO.FileLoadException)
+            {
+                return null;
+            }
+            catch (System.BadImageFormatException)
+            {
+                return null;
+            }
+        }
+
+        private static void SetSerializerLimit(Type serializerType, object serializer, string propertyName, int value)
+        {
+            PropertyInfo property = serializerType.GetProperty(propertyName);
+            if (property != null && property.CanWrite)
+            {
+                property.SetValue(serializer, value, index: null);
+            }
         }
 
         private static void AddContentItem(List<GitHubContentItem> items, IDictionary contentObject)

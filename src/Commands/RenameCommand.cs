@@ -42,6 +42,25 @@ namespace GitHubNode.Commands
     /// </summary>
     internal static class RenameHelper
     {
+        internal static string BuildRenamedPath(string existingPath, string requestedName)
+        {
+            if (string.IsNullOrWhiteSpace(existingPath) || string.IsNullOrWhiteSpace(requestedName))
+            {
+                return null;
+            }
+
+            var sanitizedName = CommandHelpers.SanitizeFileName(requestedName.Trim());
+            if (string.IsNullOrWhiteSpace(sanitizedName))
+            {
+                return null;
+            }
+
+            var parentDirectory = Path.GetDirectoryName(existingPath);
+            return string.IsNullOrWhiteSpace(parentDirectory)
+                ? sanitizedName
+                : Path.Combine(parentDirectory, sanitizedName);
+        }
+
         public static async Task RenameFileAsync(string filePath)
         {
             if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
@@ -60,10 +79,13 @@ namespace GitHubNode.Commands
                     return;
                 }
 
-                // Sanitize the new name
-                newName = CommandHelpers.SanitizeFileName(newName);
-                var directory = Path.GetDirectoryName(filePath);
-                var newPath = Path.Combine(directory, newName);
+                var newPath = BuildRenamedPath(filePath, newName);
+                if (string.IsNullOrWhiteSpace(newPath))
+                {
+                    return;
+                }
+
+                newName = Path.GetFileName(newPath);
 
                 if (File.Exists(newPath))
                 {
@@ -101,10 +123,13 @@ namespace GitHubNode.Commands
                     return;
                 }
 
-                // Sanitize the new name
-                newName = CommandHelpers.SanitizeFileName(newName);
-                var parentDirectory = Path.GetDirectoryName(folderPath);
-                var newPath = Path.Combine(parentDirectory, newName);
+                var newPath = BuildRenamedPath(folderPath, newName);
+                if (string.IsNullOrWhiteSpace(newPath))
+                {
+                    return;
+                }
+
+                newName = Path.GetFileName(newPath);
 
                 if (Directory.Exists(newPath))
                 {

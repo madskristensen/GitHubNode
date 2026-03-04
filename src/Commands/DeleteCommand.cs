@@ -44,6 +44,18 @@ namespace GitHubNode.Commands
     /// </summary>
     internal static class DeleteHelper
     {
+        internal static string CreateFolderDeleteMessage(string folderName, bool hasContent)
+        {
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                folderName = "folder";
+            }
+
+            return hasContent
+                ? $"Are you sure you want to delete '{folderName}' and all of its contents?\n\nThis action cannot be undone."
+                : $"Are you sure you want to delete the empty folder '{folderName}'?\n\nThis action cannot be undone.";
+        }
+
         public static async Task DeleteFileAsync(string filePath)
         {
             if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
@@ -89,9 +101,7 @@ namespace GitHubNode.Commands
                 hasContent = true;
             }
 
-            var message = hasContent
-                ? $"Are you sure you want to delete '{folderName}' and all of its contents?\n\nThis action cannot be undone."
-                : $"Are you sure you want to delete the empty folder '{folderName}'?\n\nThis action cannot be undone.";
+            var message = CreateFolderDeleteMessage(folderName, hasContent);
 
             var result = await VS.MessageBox.ShowConfirmAsync("Delete Folder", message);
 

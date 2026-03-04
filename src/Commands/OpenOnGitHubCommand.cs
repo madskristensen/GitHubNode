@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using GitHubNode.Services;
 using GitHubNode.SolutionExplorer;
 
@@ -26,7 +27,7 @@ namespace GitHubNode.Commands
                 var url = GitHubUrlService.GetGitHubUrl(path);
                 if (!string.IsNullOrEmpty(url))
                 {
-                    Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                    await OpenOnGitHubHelper.OpenUrlAsync(url);
                 }
                 else
                 {
@@ -62,12 +63,38 @@ namespace GitHubNode.Commands
                 var url = GitHubUrlService.GetGitHubUrl(path);
                 if (!string.IsNullOrEmpty(url))
                 {
-                    Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                    await OpenOnGitHubHelper.OpenUrlAsync(url);
                 }
                 else
                 {
                     await VS.MessageBox.ShowWarningAsync("Could not determine GitHub URL for this folder.");
                 }
+            }
+        }
+    }
+
+    internal static class OpenOnGitHubHelper
+    {
+        public static async Task OpenUrlAsync(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return;
+            }
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Win32Exception ex)
+            {
+                await ex.LogAsync();
+                await VS.MessageBox.ShowWarningAsync("Could not open the GitHub URL.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                await ex.LogAsync();
+                await VS.MessageBox.ShowWarningAsync("Could not open the GitHub URL.");
             }
         }
     }

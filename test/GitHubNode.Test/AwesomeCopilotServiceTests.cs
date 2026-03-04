@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.IO;
+using System.Collections;
 using GitHubNode.Services;
 
 namespace GitHubNode.Test;
@@ -74,6 +76,105 @@ public class AwesomeCopilotServiceTests
         }
     }
 
+    [TestMethod]
+    public void ParseGitHubTreeJson_HandlesLargeValidPayload()
+    {
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("ParseGitHubTreeJson", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        string largePadding = new('x', 2_200_000);
+        string json = "{\"tree\":[{\"path\":\"skills/demo/skill.md\",\"type\":\"blob\"}],\"padding\":\"" + largePadding + "\"}";
+
+        object result = method.Invoke(null, [json]);
+
+        Assert.IsNotNull(result);
+        Assert.IsInstanceOfType<IList>(result);
+        Assert.AreEqual(1, ((IList)result).Count);
+    }
+
+    [TestMethod]
+    public void ParseGitHubContentsJsonFallback_ParsesEntriesWithNestedLinksObject()
+    {
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("ParseGitHubContentsJsonFallback", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        string json = "[{\"type\":\"file\",\"name\":\"skill.md\",\"_links\":{\"self\":\"x\",\"git\":\"y\"}}]";
+
+        object result = method.Invoke(null, [json]);
+
+        Assert.IsNotNull(result);
+        Assert.IsInstanceOfType<IList>(result);
+        Assert.AreEqual(1, ((IList)result).Count);
+    }
+
+    [TestMethod]
+    public void ParseGitHubContentsJson_ParsesWhenTypeAppearsBeforeName()
+    {
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("ParseGitHubContentsJson", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        string json = "[{\"type\":\"file\",\"name\":\"template.prompt.md\"}]";
+
+        object result = method.Invoke(null, [json]);
+
+        Assert.IsNotNull(result);
+        Assert.IsInstanceOfType<IList>(result);
+        Assert.AreEqual(1, ((IList)result).Count);
+    }
+
+    [TestMethod]
+    public void ParseGitHubTreeJson_ParsesWhenTypeAppearsBeforePath()
+    {
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("ParseGitHubTreeJson", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        string json = "{\"tree\":[{\"type\":\"blob\",\"path\":\"skills/demo/skill.md\"}]}";
+
+        object result = method.Invoke(null, [json]);
+
+        Assert.IsNotNull(result);
+        Assert.IsInstanceOfType<IList>(result);
+        Assert.AreEqual(1, ((IList)result).Count);
+    }
+
+    [TestMethod]
+    public void ParseGitHubContentsJson_ParsesValidArrayResponse()
+    {
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("ParseGitHubContentsJson", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        string json = "[{\"name\":\"template.prompt.md\",\"type\":\"file\"}]";
+
+        object result = method.Invoke(null, [json]);
+
+        Assert.IsNotNull(result);
+        Assert.IsInstanceOfType<IList>(result);
+        Assert.AreEqual(1, ((IList)result).Count);
+    }
+
+    [TestMethod]
+    public void SaveToCache_PersistsEmptyMarker_AndLoadFromCacheReturnsEmptyList()
+    {
+        string cacheFile = Path.Combine(Path.GetTempPath(), $"githubnode-{Guid.NewGuid():N}.cache");
+
+        try
+        {
+            InvokeSaveToCache(cacheFile, new List<TemplateInfo>());
+
+            List<TemplateInfo> templates = InvokeLoadFromCache(cacheFile, expiredOk: false);
+
+            Assert.IsNotNull(templates);
+            Assert.AreEqual(0, templates.Count);
+        }
+        finally
+        {
+            if (File.Exists(cacheFile))
+            {
+                File.Delete(cacheFile);
+            }
+        }
+    }
+
     private static string InvokeGetFriendlyHttpErrorMessage(HttpStatusCode statusCode, HttpResponseHeaders headers)
     {
         MethodInfo method = typeof(AwesomeCopilotService).GetMethod("GetFriendlyHttpErrorMessage", BindingFlags.NonPublic | BindingFlags.Static);
@@ -88,5 +189,21 @@ public class AwesomeCopilotServiceTests
         Assert.IsNotNull(method);
 
         return (bool)method.Invoke(null, [statusCode, headers]);
+    }
+
+    private static void InvokeSaveToCache(string cacheFile, List<TemplateInfo> templates)
+    {
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("SaveToCache", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        method.Invoke(null, [cacheFile, templates]);
+    }
+
+    private static List<TemplateInfo> InvokeLoadFromCache(string cacheFile, bool expiredOk)
+    {
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("LoadFromCache", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        return (List<TemplateInfo>)method.Invoke(null, [cacheFile, expiredOk]);
     }
 }
