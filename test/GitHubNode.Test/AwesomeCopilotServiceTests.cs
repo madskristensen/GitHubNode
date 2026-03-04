@@ -93,9 +93,9 @@ public class AwesomeCopilotServiceTests
     }
 
     [TestMethod]
-    public void ParseGitHubContentsJsonFallback_ParsesEntriesWithNestedLinksObject()
+    public void ParseGitHubContentsJson_ParsesEntriesWithNestedLinksObject()
     {
-        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("ParseGitHubContentsJsonFallback", BindingFlags.NonPublic | BindingFlags.Static);
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("ParseGitHubContentsJson", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.IsNotNull(method);
 
         string json = "[{\"type\":\"file\",\"name\":\"skill.md\",\"_links\":{\"self\":\"x\",\"git\":\"y\"}}]";

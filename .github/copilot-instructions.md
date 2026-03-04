@@ -17,3 +17,6 @@
 
 ## Template Loading
 - When template loading fails due to GitHub API rate limiting, show an explicit user-facing status message in the input dialog instead of a generic offline message.
+
+## JSON Parsing
+- Use System.Text.Json for JSON parsing instead of legacy serializers in this codebase.
