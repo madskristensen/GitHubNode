@@ -602,7 +602,8 @@ namespace GitHubNode.Services
                         ? Path.GetFileName(Path.GetDirectoryName(normalizedPath))
                         : fileName;
 
-                    var displayName = normalizedPath.Substring(rootPrefix.Length);
+                    var relativePath = normalizedPath.Substring(rootPrefix.Length);
+                    var displayName = GetTemplateDisplayName(provider, templateType, relativePath, fileName);
 
                     templates.Add(new TemplateInfo
                     {
@@ -641,6 +642,18 @@ namespace GitHubNode.Services
             }
 
             return templates;
+        }
+
+        private static string GetTemplateDisplayName(TemplateProvider provider, TemplateType templateType, string relativePath, string fileName)
+        {
+            if (provider != null &&
+                templateType == TemplateType.Agent &&
+                string.Equals(provider.Id, DotNetSkillsTemplateProvider.ProviderId, StringComparison.OrdinalIgnoreCase))
+            {
+                return fileName;
+            }
+
+            return relativePath;
         }
 
         private static bool IsRuleMatch(string fileName, TemplateSearchRule rule)

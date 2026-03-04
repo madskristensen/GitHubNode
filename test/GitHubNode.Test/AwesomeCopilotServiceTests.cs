@@ -175,6 +175,26 @@ public class AwesomeCopilotServiceTests
         }
     }
 
+    [TestMethod]
+    public void GetTemplateDisplayName_ReturnsFileName_ForDotNetSkillsAgents()
+    {
+        TemplateProvider provider = DotNetSkillsTemplateProvider.Create();
+
+        string displayName = InvokeGetTemplateDisplayName(provider, TemplateType.Agent, "dotnet-msbuild/agents/build-perf.agent.md", "build-perf.agent.md");
+
+        Assert.AreEqual("build-perf.agent.md", displayName);
+    }
+
+    [TestMethod]
+    public void GetTemplateDisplayName_ReturnsRelativePath_ForAwesomeCopilotAgents()
+    {
+        TemplateProvider provider = AwesomeCopilotTemplateProvider.Create();
+
+        string displayName = InvokeGetTemplateDisplayName(provider, TemplateType.Agent, "dotnet/build-perf.agent.md", "build-perf.agent.md");
+
+        Assert.AreEqual("dotnet/build-perf.agent.md", displayName);
+    }
+
     private static string InvokeGetFriendlyHttpErrorMessage(HttpStatusCode statusCode, HttpResponseHeaders headers)
     {
         MethodInfo method = typeof(AwesomeCopilotService).GetMethod("GetFriendlyHttpErrorMessage", BindingFlags.NonPublic | BindingFlags.Static);
@@ -205,5 +225,13 @@ public class AwesomeCopilotServiceTests
         Assert.IsNotNull(method);
 
         return (List<TemplateInfo>)method.Invoke(null, [cacheFile, expiredOk]);
+    }
+
+    private static string InvokeGetTemplateDisplayName(TemplateProvider provider, TemplateType templateType, string relativePath, string fileName)
+    {
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("GetTemplateDisplayName", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        return (string)method.Invoke(null, [provider, templateType, relativePath, fileName]);
     }
 }
