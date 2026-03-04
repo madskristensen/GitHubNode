@@ -5,6 +5,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Automation;
 using GitHubNode.Services;
 using Microsoft.VisualStudio.PlatformUI;
 using System.Runtime.InteropServices;
@@ -126,6 +127,11 @@ namespace GitHubNode.Commands
                 grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             }
 
+            if (templateType != null)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var currentRow = 0;
@@ -165,6 +171,8 @@ namespace GitHubNode.Commands
 
                 _providerComboBox.SelectedIndex = 0;
                 _providerComboBox.SelectionChanged += OnProviderSelectionChanged;
+                AutomationProperties.SetName(_providerComboBox, "Template provider");
+                AutomationProperties.SetHelpText(_providerComboBox, "Select the source repository for community templates.");
 
                 Grid.SetRow(_providerComboBox, currentRow++);
                 grid.Children.Add(_providerComboBox);
@@ -190,6 +198,8 @@ namespace GitHubNode.Commands
                 _templateComboBox.Items.Add(_customTemplateText);
                 _templateComboBox.SelectedIndex = 0;
                 _templateComboBox.SelectionChanged += (s, e) => OnTemplateSelectionChanged();
+                AutomationProperties.SetName(_templateComboBox, "Template selection");
+                AutomationProperties.SetHelpText(_templateComboBox, "Use Alt + Up or Alt + Down to move between templates.");
 
                 Grid.SetRow(_templateComboBox, currentRow++);
                 grid.Children.Add(_templateComboBox);
@@ -214,6 +224,8 @@ namespace GitHubNode.Commands
             _textBox.SetResourceReference(TextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
             _textBox.SetResourceReference(TextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
             _textBox.TextChanged += OnFileNameTextChanged;
+            AutomationProperties.SetName(_textBox, "File name");
+            AutomationProperties.SetHelpText(_textBox, "Enter the name of the file to create.");
             Grid.SetRow(_textBox, currentRow++);
             grid.Children.Add(_textBox);
 
@@ -242,15 +254,12 @@ namespace GitHubNode.Commands
                 _previewBox.SetResourceReference(RichTextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
                 _previewBox.SetResourceReference(RichTextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
                 _previewBox.SetResourceReference(RichTextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+                AutomationProperties.SetName(_previewBox, "Template preview");
+                AutomationProperties.SetHelpText(_previewBox, "Read-only preview of the selected template content.");
 
                 Grid.SetRow(_previewBox, currentRow++);
                 grid.Children.Add(_previewBox);
             }
-
-            var buttonRowGrid = new Grid();
-            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetRow(buttonRowGrid, currentRow);
 
             if (templateType != null)
             {
@@ -258,7 +267,8 @@ namespace GitHubNode.Commands
                 {
                     Orientation = Orientation.Horizontal,
                     HorizontalAlignment = HorizontalAlignment.Left,
-                    VerticalAlignment = VerticalAlignment.Center
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 8)
                 };
 
                 _refreshButton = new Button
@@ -273,6 +283,8 @@ namespace GitHubNode.Commands
                 };
                 _refreshButton.SetResourceReference(StyleProperty, VsResourceKeys.ButtonStyleKey);
                 _refreshButton.Click += OnRefreshButtonClick;
+                AutomationProperties.SetName(_refreshButton, "Refresh templates");
+                AutomationProperties.SetHelpText(_refreshButton, "Fetch templates again from GitHub.");
                 statusPanel.Children.Add(_refreshButton);
 
                 _copyButton = new Button
@@ -282,11 +294,13 @@ namespace GitHubNode.Commands
                     Height = 20,
                     Padding = new Thickness(0),
                     FontSize = 10,
-                    ToolTip = "Copy preview content to clipboard",
+                    ToolTip = "Copy preview content to clipboard (Ctrl+Shift+C)",
                     Margin = new Thickness(0, 0, 8, 0)
                 };
                 _copyButton.SetResourceReference(StyleProperty, VsResourceKeys.ButtonStyleKey);
                 _copyButton.Click += OnCopyButtonClick;
+                AutomationProperties.SetName(_copyButton, "Copy template preview");
+                AutomationProperties.SetHelpText(_copyButton, "Copy the full preview text to the clipboard.");
                 statusPanel.Children.Add(_copyButton);
 
                 _statusText = new TextBlock
@@ -295,11 +309,17 @@ namespace GitHubNode.Commands
                     FontSize = 11
                 };
                 _statusText.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+                AutomationProperties.SetName(_statusText, "Template status");
                 statusPanel.Children.Add(_statusText);
 
-                Grid.SetColumn(statusPanel, 0);
-                buttonRowGrid.Children.Add(statusPanel);
+                Grid.SetRow(statusPanel, currentRow++);
+                grid.Children.Add(statusPanel);
             }
+
+            var buttonRowGrid = new Grid();
+            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetRow(buttonRowGrid, currentRow);
 
             var buttonPanel = new StackPanel
             {
@@ -310,6 +330,7 @@ namespace GitHubNode.Commands
 
             Button okButton = CreateThemedButton("OK", isDefault: true);
             okButton.Margin = new Thickness(0, 0, 8, 0);
+            AutomationProperties.SetName(okButton, "OK");
             okButton.Click += (s, e) =>
             {
                 DialogResult = true;
@@ -318,6 +339,7 @@ namespace GitHubNode.Commands
             buttonPanel.Children.Add(okButton);
 
             Button cancelButton = CreateThemedButton("Cancel", isCancel: true);
+            AutomationProperties.SetName(cancelButton, "Cancel");
             cancelButton.Click += (s, e) =>
             {
                 DialogResult = false;
@@ -440,6 +462,59 @@ namespace GitHubNode.Commands
             {
                 OnRefreshButtonClick(_refreshButton, new RoutedEventArgs());
                 e.Handled = true;
+                return;
+            }
+
+            if (_templateComboBox != null && _templateComboBox.Items.Count > 0)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
+                {
+                    if (e.Key == Key.Up)
+                    {
+                        MoveTemplateSelection(-1);
+                        e.Handled = true;
+                        return;
+                    }
+
+                    if (e.Key == Key.Down)
+                    {
+                        MoveTemplateSelection(1);
+                        e.Handled = true;
+                        return;
+                    }
+                }
+            }
+
+            if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)
+                && e.Key == Key.C
+                && _copyButton != null
+                && _copyButton.IsEnabled)
+            {
+                OnCopyButtonClick(_copyButton, new RoutedEventArgs());
+                e.Handled = true;
+            }
+        }
+
+        private void MoveTemplateSelection(int offset)
+        {
+            if (_templateComboBox == null || _templateComboBox.Items.Count == 0)
+            {
+                return;
+            }
+
+            var nextIndex = _templateComboBox.SelectedIndex + offset;
+            if (nextIndex < 0)
+            {
+                nextIndex = 0;
+            }
+            else if (nextIndex >= _templateComboBox.Items.Count)
+            {
+                nextIndex = _templateComboBox.Items.Count - 1;
+            }
+
+            if (nextIndex != _templateComboBox.SelectedIndex)
+            {
+                _templateComboBox.SelectedIndex = nextIndex;
             }
         }
 
@@ -632,7 +707,7 @@ namespace GitHubNode.Commands
                     }
 
                     UpdatePreview();
-                    SetStatus("");
+                    SetStatus("Custom template");
                     return;
                 }
 
@@ -665,7 +740,8 @@ namespace GitHubNode.Commands
                 UpdatePreviewWithContent(template.Content);
 
                 var sizeKb = (template.Content?.Length ?? 0) / 1024.0;
-                SetStatus(sizeKb >= 1.0 ? $"{sizeKb:F1} KB" : $"{template.Content?.Length ?? 0} bytes");
+                var sizeText = sizeKb >= 1.0 ? $"{sizeKb:F1} KB" : $"{template.Content?.Length ?? 0} bytes";
+                SetStatus($"{GetTemplateSourceSummary(template)} - {sizeText}");
             }
             catch (Exception ex)
             {
@@ -773,6 +849,44 @@ namespace GitHubNode.Commands
             }
 
             return null;
+        }
+
+        private string GetTemplateSourceSummary(TemplateInfo template)
+        {
+            if (template == null)
+            {
+                return "Template";
+            }
+
+            TemplateProvider provider = null;
+            if (!string.IsNullOrWhiteSpace(template.ProviderId))
+            {
+                provider = _templateProviders.Find(candidate => candidate.Id == template.ProviderId);
+            }
+
+            provider ??= GetSelectedProvider();
+
+            var templateName = string.IsNullOrWhiteSpace(template.DisplayName)
+                ? (string.IsNullOrWhiteSpace(template.Name) ? template.FileName : template.Name)
+                : template.DisplayName;
+
+            if (provider == null)
+            {
+                return string.IsNullOrWhiteSpace(templateName)
+                    ? "Template"
+                    : $"Template: {templateName}";
+            }
+
+            var repository = string.IsNullOrWhiteSpace(provider.RepoOwner) || string.IsNullOrWhiteSpace(provider.RepoName)
+                ? provider.DisplayName
+                : $"{provider.RepoOwner}/{provider.RepoName}";
+
+            if (string.IsNullOrWhiteSpace(templateName))
+            {
+                return $"Source: {provider.DisplayName} ({repository})";
+            }
+
+            return $"Template: {templateName} - Source: {provider.DisplayName} ({repository})";
         }
     }
 }
