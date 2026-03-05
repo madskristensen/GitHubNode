@@ -33,6 +33,21 @@ namespace GitHubNode.Services
             "TemplateCache");
         private static readonly string _templateContentCacheDirectory = Path.Combine(_cacheDirectory, "TemplateContent");
 
+        private sealed class TemplateCacheEntry
+        {
+            public string Name { get; set; }
+
+            public string FileName { get; set; }
+
+            public string DownloadUrl { get; set; }
+
+            public int TemplateType { get; set; }
+
+            public string ProviderId { get; set; }
+
+            public string DisplayName { get; set; }
+        }
+
         private static HttpClient CreateHttpClient()
         {
             // Ensure TLS 1.2 is enabled for GitHub API requests in .NET Framework host processes.
@@ -120,7 +135,7 @@ namespace GitHubNode.Services
             List<TemplateInfo> cached = forceRefresh ? null : LoadFromCache(cacheFile, expiredOk: false);
             if (cached != null)
             {
-                bool cachedNamesUpdated = await PopulateDisplayNamesFromTemplateMetadataAsync(cached, cancellationToken);
+                bool cachedNamesUpdated = await PopulateDisplayNamesFromTemplateMetadataAsync(cached, allowNetworkFetch: false, cancellationToken);
                 if (cachedNamesUpdated)
                 {
                     SaveToCache(cacheFile, cached);
@@ -133,7 +148,7 @@ namespace GitHubNode.Services
             cancellationToken.ThrowIfCancellationRequested();
 
             List<TemplateInfo> templates = await FetchTemplatesFromGitHubAsync(provider, rule, templateType, cancellationToken);
-            _ = await PopulateDisplayNamesFromTemplateMetadataAsync(templates, cancellationToken);
+            _ = await PopulateDisplayNamesFromTemplateMetadataAsync(templates, allowNetworkFetch: false, cancellationToken);
 
             if (templates.Count > 0)
             {
@@ -285,7 +300,24 @@ namespace GitHubNode.Services
                     return null;
                 }
 
-                var lines = File.ReadAllLines(cacheFile);
+                string cacheContent = File.ReadAllText(cacheFile);
+                if (string.IsNullOrWhiteSpace(cacheContent))
+                {
+                    return null;
+                }
+
+                string trimmedCacheContent = cacheContent.Trim();
+                if (string.Equals(trimmedCacheContent, _emptyCacheMarker, StringComparison.Ordinal))
+                {
+                    return new List<TemplateInfo>();
+                }
+
+                if (trimmedCacheContent.StartsWith("[", StringComparison.Ordinal))
+                {
+                    return DeserializeCacheEntries(trimmedCacheContent);
+                }
+
+                string[] lines = cacheContent.Split(["\r\n", "\n"], StringSplitOptions.None);
 
                 // If cache is empty (0 templates), treat as invalid
                 if (lines.Length == 0)
@@ -369,18 +401,20 @@ namespace GitHubNode.Services
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(cacheFile));
 
-                var lines = new List<string>();
                 if (templates.Count == 0)
                 {
-                    lines.Add(_emptyCacheMarker);
+                    File.WriteAllText(cacheFile, _emptyCacheMarker);
+                    return;
                 }
 
-                foreach (TemplateInfo t in templates)
+                var entries = new List<TemplateCacheEntry>(templates.Count);
+                foreach (TemplateInfo template in templates)
                 {
-                    lines.Add($"{t.Name}\t{t.FileName}\t{t.DownloadUrl}\t{(int)t.TemplateType}\t{t.ProviderId}\t{t.DisplayName}");
+                    entries.Add(ToCacheEntry(template));
                 }
 
-                File.WriteAllLines(cacheFile, lines);
+                string serialized = JsonSerializer.Serialize(entries);
+                File.WriteAllText(cacheFile, serialized);
             }
             catch (IOException ex)
             {
@@ -661,7 +695,7 @@ namespace GitHubNode.Services
             return relativePath;
         }
 
-        private static async Task<bool> PopulateDisplayNamesFromTemplateMetadataAsync(List<TemplateInfo> templates, CancellationToken cancellationToken)
+        private static async Task<bool> PopulateDisplayNamesFromTemplateMetadataAsync(List<TemplateInfo> templates, bool allowNetworkFetch, CancellationToken cancellationToken)
         {
             if (templates == null || templates.Count == 0)
             {
@@ -679,10 +713,15 @@ namespace GitHubNode.Services
                     continue;
                 }
 
+                if (!NeedsMetadataDisplayName(template))
+                {
+                    continue;
+                }
+
                 string metadataDisplayName = null;
                 try
                 {
-                    string content = await GetTemplateContentFromCacheOrGitHubAsync(template.DownloadUrl, cancellationToken);
+                    string content = await GetTemplateContentFromCacheAsync(template.DownloadUrl, allowNetworkFetch, cancellationToken);
                     metadataDisplayName = ExtractDisplayNameFromFrontMatter(content);
                 }
                 catch (TaskCanceledException ex)
@@ -713,7 +752,7 @@ namespace GitHubNode.Services
             return updated;
         }
 
-        private static async Task<string> GetTemplateContentFromCacheOrGitHubAsync(string downloadUrl, CancellationToken cancellationToken)
+        private static async Task<string> GetTemplateContentFromCacheAsync(string downloadUrl, bool allowNetworkFetch, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(downloadUrl))
             {
@@ -735,6 +774,11 @@ namespace GitHubNode.Services
                 {
                     _ = ex.LogAsync();
                 }
+            }
+
+            if (!allowNetworkFetch)
+            {
+                return null;
             }
 
             using HttpResponseMessage response = await _httpClient.GetAsync(downloadUrl, cancellationToken);
@@ -864,6 +908,93 @@ namespace GitHubNode.Services
             return value[0] == '\uFEFF'
                 ? value.Substring(1)
                 : value;
+        }
+
+        private static bool NeedsMetadataDisplayName(TemplateInfo template)
+        {
+            if (template == null)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(template.DisplayName))
+            {
+                return true;
+            }
+
+            return string.Equals(template.DisplayName, template.Name, StringComparison.Ordinal) ||
+                   string.Equals(template.DisplayName, template.FileName, StringComparison.Ordinal);
+        }
+
+        private static List<TemplateInfo> DeserializeCacheEntries(string serializedEntries)
+        {
+            List<TemplateCacheEntry> entries = JsonSerializer.Deserialize<List<TemplateCacheEntry>>(serializedEntries);
+            if (entries == null)
+            {
+                return null;
+            }
+
+            var templates = new List<TemplateInfo>(entries.Count);
+            foreach (TemplateCacheEntry entry in entries)
+            {
+                TemplateInfo template = FromCacheEntry(entry);
+                if (template != null)
+                {
+                    templates.Add(template);
+                }
+            }
+
+            return templates;
+        }
+
+        private static TemplateCacheEntry ToCacheEntry(TemplateInfo template)
+        {
+            if (template == null)
+            {
+                return null;
+            }
+
+            return new TemplateCacheEntry
+            {
+                Name = template.Name,
+                FileName = template.FileName,
+                DownloadUrl = template.DownloadUrl,
+                TemplateType = (int)template.TemplateType,
+                ProviderId = template.ProviderId,
+                DisplayName = template.DisplayName
+            };
+        }
+
+        private static TemplateInfo FromCacheEntry(TemplateCacheEntry entry)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            if (!Enum.IsDefined(typeof(TemplateType), entry.TemplateType) ||
+                string.IsNullOrWhiteSpace(entry.Name) ||
+                string.IsNullOrWhiteSpace(entry.FileName) ||
+                string.IsNullOrWhiteSpace(entry.DownloadUrl))
+            {
+                return null;
+            }
+
+            string providerId = !string.IsNullOrWhiteSpace(entry.ProviderId)
+                ? entry.ProviderId
+                : AwesomeCopilotTemplateProvider.ProviderId;
+
+            return new TemplateInfo
+            {
+                Name = entry.Name,
+                FileName = entry.FileName,
+                DownloadUrl = entry.DownloadUrl,
+                TemplateType = (TemplateType)entry.TemplateType,
+                ProviderId = providerId,
+                DisplayName = !string.IsNullOrWhiteSpace(entry.DisplayName)
+                    ? entry.DisplayName
+                    : entry.Name
+            };
         }
 
 

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace GitHubNode.Services
@@ -11,6 +12,8 @@ namespace GitHubNode.Services
     /// </summary>
     internal static class GitHubUrlService
     {
+        private static readonly TimeSpan _gitCommandTimeout = TimeSpan.FromSeconds(5);
+
         // Pre-compiled regex patterns for better performance
         private static readonly Regex _sshUrlRegex = new(@"git@github\.com:(.+?)(?:\.git)?$", RegexOptions.Compiled);
         private static readonly Regex _httpsUrlRegex = new(@"https://github\.com/(.+?)(?:\.git)?$", RegexOptions.Compiled);
@@ -131,44 +134,9 @@ namespace GitHubNode.Services
 
         private static string RunGitCommand(string workingDirectory, string arguments)
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = arguments,
-                WorkingDirectory = workingDirectory,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-
             try
             {
-                using (var process = Process.Start(startInfo))
-                {
-                    if (process == null)
-                    {
-                        return null;
-                    }
-
-                    Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-                    Task<string> errorTask = process.StandardError.ReadToEndAsync();
-
-                    var exited = process.WaitForExit(5000);
-                    if (!exited)
-                    {
-                        TryTerminateProcess(process);
-                        return null;
-                    }
-
-                    Task.WaitAll([outputTask, errorTask], 1000);
-                    if (outputTask.Status != TaskStatus.RanToCompletion)
-                    {
-                        return null;
-                    }
-
-                    return process.ExitCode == 0 ? outputTask.Result : null;
-                }
+                return RunGitCommandAsync(workingDirectory, arguments).GetAwaiter().GetResult();
             }
             catch (InvalidOperationException ex)
             {
@@ -184,6 +152,76 @@ namespace GitHubNode.Services
             }
         }
 
+        private static async Task<string> RunGitCommandAsync(string workingDirectory, string arguments)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            using (var process = Process.Start(startInfo))
+            {
+                if (process == null)
+                {
+                    return null;
+                }
+
+                Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+                Task<string> errorTask = process.StandardError.ReadToEndAsync();
+                Task completionTask = Task.WhenAll(outputTask, errorTask, WaitForExitAsync(process));
+
+                using (var timeoutCancellation = new CancellationTokenSource(_gitCommandTimeout))
+                {
+                    Task timeoutTask = Task.Delay(Timeout.InfiniteTimeSpan, timeoutCancellation.Token);
+                    Task finishedTask = await Task.WhenAny(completionTask, timeoutTask).ConfigureAwait(false);
+                    if (!ReferenceEquals(finishedTask, completionTask))
+                    {
+                        TryTerminateProcess(process);
+                        return null;
+                    }
+
+                    timeoutCancellation.Cancel();
+                }
+
+                return process.ExitCode == 0
+                    ? await outputTask.ConfigureAwait(false)
+                    : null;
+            }
+        }
+
+        private static Task WaitForExitAsync(Process process)
+        {
+            if (process.HasExited)
+            {
+                return Task.CompletedTask;
+            }
+
+            var completionSource = new TaskCompletionSource<object>();
+            EventHandler handler = null;
+            handler = (sender, args) =>
+            {
+                process.Exited -= handler;
+                completionSource.TrySetResult(null);
+            };
+
+            process.EnableRaisingEvents = true;
+            process.Exited += handler;
+
+            if (process.HasExited)
+            {
+                process.Exited -= handler;
+                return Task.CompletedTask;
+            }
+
+            return completionSource.Task;
+        }
+
         private static void TryTerminateProcess(Process process)
         {
             try
@@ -194,7 +232,11 @@ namespace GitHubNode.Services
                     process.WaitForExit(1000);
                 }
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
+            {
+                _ = ex.LogAsync();
+            }
+            catch (System.ComponentModel.Win32Exception ex)
             {
                 _ = ex.LogAsync();
                 // Best-effort cleanup only

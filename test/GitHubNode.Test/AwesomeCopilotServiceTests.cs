@@ -77,6 +77,68 @@ public class AwesomeCopilotServiceTests
     }
 
     [TestMethod]
+    public void SaveToCache_AndLoadFromCache_RoundTripsJsonEntriesWithSpecialCharacters()
+    {
+        string cacheFile = Path.Combine(Path.GetTempPath(), $"githubnode-{Guid.NewGuid():N}.cache");
+
+        try
+        {
+            var templates = new List<TemplateInfo>
+            {
+                new()
+                {
+                    Name = "build\tperf",
+                    FileName = "build-perf.agent.md",
+                    DownloadUrl = "https://example.invalid/build-perf.agent.md",
+                    TemplateType = TemplateType.Agent,
+                    ProviderId = "dotnet-skills-plugins",
+                    DisplayName = "Build\nPerf"
+                }
+            };
+
+            InvokeSaveToCache(cacheFile, templates);
+            List<TemplateInfo> loadedTemplates = InvokeLoadFromCache(cacheFile, expiredOk: false);
+
+            Assert.IsNotNull(loadedTemplates);
+            Assert.AreEqual(1, loadedTemplates.Count);
+            Assert.AreEqual("build\tperf", loadedTemplates[0].Name);
+            Assert.AreEqual("Build\nPerf", loadedTemplates[0].DisplayName);
+        }
+        finally
+        {
+            if (File.Exists(cacheFile))
+            {
+                File.Delete(cacheFile);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void LoadFromCache_ReadsJsonCacheFormat()
+    {
+        string cacheFile = Path.Combine(Path.GetTempPath(), $"githubnode-{Guid.NewGuid():N}.cache");
+
+        try
+        {
+            File.WriteAllText(cacheFile,
+                "[{\"Name\":\"build-perf\",\"FileName\":\"build-perf.agent.md\",\"DownloadUrl\":\"https://example.invalid/build-perf.agent.md\",\"TemplateType\":0,\"ProviderId\":\"dotnet-skills-plugins\",\"DisplayName\":\"Build Perf\"}]");
+
+            List<TemplateInfo> loadedTemplates = InvokeLoadFromCache(cacheFile, expiredOk: false);
+
+            Assert.IsNotNull(loadedTemplates);
+            Assert.AreEqual(1, loadedTemplates.Count);
+            Assert.AreEqual("Build Perf", loadedTemplates[0].DisplayName);
+        }
+        finally
+        {
+            if (File.Exists(cacheFile))
+            {
+                File.Delete(cacheFile);
+            }
+        }
+    }
+
+    [TestMethod]
     public void ExtractDisplayNameFromFrontMatter_ReturnsName_WhenNameExists()
     {
         const string markdown = "---\nname: Build Perf Agent\ntitle: Ignored Title\n---\n# Heading";

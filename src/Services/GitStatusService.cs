@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Imaging.Interop;
@@ -41,8 +43,9 @@ namespace GitHubNode.Services
     {
         private static readonly ConcurrentDictionary<string, CachedStatus> _statusCache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly TimeSpan _cacheExpiration = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan _gitCommandTimeout = TimeSpan.FromSeconds(5);
         private static readonly object _refreshLock = new();
-        private static DateTime _lastRefresh = DateTime.MinValue;
+        private static readonly ConcurrentDictionary<string, DateTime> _lastRefreshByRepo = new(StringComparer.OrdinalIgnoreCase);
 
         private sealed class CachedStatus
         {
@@ -65,9 +68,9 @@ namespace GitHubNode.Services
             // Normalize the file path for consistent cache lookups
             filePath = Path.GetFullPath(filePath);
 
-            if (_statusCache.TryGetValue(filePath, out CachedStatus cached))
+            if (TryGetFreshCachedStatus(filePath, out GitFileStatus cachedStatus))
             {
-                return cached.Status;
+                return cachedStatus;
             }
 
             // Check if any parent directory has a status (e.g., git reports "?? folder/" for untracked folders)
@@ -117,25 +120,12 @@ namespace GitHubNode.Services
                 return GitFileStatus.NotInRepo;
             }
 
-            // Refresh status for all files if cache is stale
-            if (DateTime.UtcNow - _lastRefresh > _cacheExpiration)
-            {
-                lock (_refreshLock)
-                {
-                    // Recapture 'now' inside the lock
-                    DateTime now = DateTime.UtcNow;
-                    if (now - _lastRefresh > _cacheExpiration)
-                    {
-                        RefreshStatusCache(repoRoot);
-                        _lastRefresh = now;
-                    }
-                }
-            }
+            EnsureStatusCacheFresh(repoRoot);
 
             // Return cached status or default to Unmodified
-            if (_statusCache.TryGetValue(filePath, out CachedStatus cached))
+            if (TryGetFreshCachedStatus(filePath, out GitFileStatus cachedStatus))
             {
-                return cached.Status;
+                return cachedStatus;
             }
 
             // Check if any parent directory has a status (e.g., git reports "?? folder/" for untracked folders)
@@ -164,10 +154,9 @@ namespace GitHubNode.Services
             filePath = Path.GetFullPath(filePath);
 
             // Check cache first
-            if (_statusCache.TryGetValue(filePath, out CachedStatus cached) &&
-                DateTime.UtcNow - cached.Timestamp < _cacheExpiration)
+            if (TryGetFreshCachedStatus(filePath, out GitFileStatus cachedStatus))
             {
-                return cached.Status;
+                return cachedStatus;
             }
 
             // Find repo root
@@ -177,25 +166,12 @@ namespace GitHubNode.Services
                 return GitFileStatus.NotInRepo;
             }
 
-            // Refresh status for all files in .github folder if cache is stale
-            if (DateTime.UtcNow - _lastRefresh > _cacheExpiration)
-            {
-                lock (_refreshLock)
-                {
-                    // Recapture 'now' inside the lock
-                    DateTime now = DateTime.UtcNow;
-                    if (now - _lastRefresh > _cacheExpiration)
-                    {
-                        RefreshStatusCache(repoRoot);
-                        _lastRefresh = now;
-                    }
-                }
-            }
+            EnsureStatusCacheFresh(repoRoot);
 
             // Return cached status or default to Unmodified
-            if (_statusCache.TryGetValue(filePath, out cached))
+            if (TryGetFreshCachedStatus(filePath, out cachedStatus))
             {
-                return cached.Status;
+                return cachedStatus;
             }
 
             // Check if any parent directory has a status (e.g., git reports "?? folder/" for untracked folders)
@@ -265,7 +241,52 @@ namespace GitHubNode.Services
         public static void InvalidateCache()
         {
             _statusCache.Clear();
-            _lastRefresh = DateTime.MinValue;
+            _lastRefreshByRepo.Clear();
+        }
+
+        private static bool TryGetFreshCachedStatus(string filePath, out GitFileStatus status)
+        {
+            status = GitFileStatus.NotInRepo;
+
+            if (!_statusCache.TryGetValue(filePath, out CachedStatus cached))
+            {
+                return false;
+            }
+
+            if (DateTime.UtcNow - cached.Timestamp >= _cacheExpiration)
+            {
+                _statusCache.TryRemove(filePath, out _);
+                return false;
+            }
+
+            status = cached.Status;
+            return true;
+        }
+
+        private static void EnsureStatusCacheFresh(string repoRoot)
+        {
+            if (string.IsNullOrWhiteSpace(repoRoot))
+            {
+                return;
+            }
+
+            if (_lastRefreshByRepo.TryGetValue(repoRoot, out DateTime lastRefresh) &&
+                DateTime.UtcNow - lastRefresh <= _cacheExpiration)
+            {
+                return;
+            }
+
+            lock (_refreshLock)
+            {
+                if (_lastRefreshByRepo.TryGetValue(repoRoot, out lastRefresh) &&
+                    DateTime.UtcNow - lastRefresh <= _cacheExpiration)
+                {
+                    return;
+                }
+
+                RefreshStatusCache(repoRoot);
+                _lastRefreshByRepo[repoRoot] = DateTime.UtcNow;
+            }
         }
 
         private static void RefreshStatusCache(string repoRoot)
@@ -282,6 +303,9 @@ namespace GitHubNode.Services
                 }
 
                 var lines = output.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries);
+                var statusPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                DateTime now = DateTime.UtcNow;
+
                 foreach (var line in lines)
                 {
                     if (line.Length < 3)
@@ -311,12 +335,29 @@ namespace GitHubNode.Services
 
                     var fullPath = Path.GetFullPath(Path.Combine(repoRoot, relativePath));
                     GitFileStatus status = ParseGitStatus(indexStatus, workTreeStatus);
+                    statusPaths.Add(fullPath);
 
                     _statusCache[fullPath] = new CachedStatus
                     {
                         Status = status,
-                        Timestamp = DateTime.UtcNow
+                        Timestamp = now
                     };
+                }
+
+                string repoPrefix = repoRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                foreach (string key in _statusCache.Keys)
+                {
+                    if (!key.StartsWith(repoPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (statusPaths.Contains(key))
+                    {
+                        continue;
+                    }
+
+                    _statusCache.TryRemove(key, out _);
                 }
             }
             catch (IOException ex)
@@ -391,42 +432,7 @@ namespace GitHubNode.Services
         {
             try
             {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    Arguments = arguments,
-                    WorkingDirectory = workingDirectory,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-
-                using (var process = Process.Start(startInfo))
-                {
-                    if (process == null)
-                    {
-                        return null;
-                    }
-
-                    Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-                    Task<string> errorTask = process.StandardError.ReadToEndAsync();
-
-                    var exited = process.WaitForExit(5000);
-                    if (!exited)
-                    {
-                        TryTerminateProcess(process);
-                        return null;
-                    }
-
-                    Task.WaitAll([outputTask, errorTask], 1000);
-                    if (outputTask.Status != TaskStatus.RanToCompletion)
-                    {
-                        return null;
-                    }
-
-                    return process.ExitCode == 0 ? outputTask.Result : null;
-                }
+                return RunGitCommandAsync(workingDirectory, arguments).GetAwaiter().GetResult();
             }
             catch (InvalidOperationException ex)
             {
@@ -442,6 +448,76 @@ namespace GitHubNode.Services
             }
         }
 
+        private static async Task<string> RunGitCommandAsync(string workingDirectory, string arguments)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            using (var process = Process.Start(startInfo))
+            {
+                if (process == null)
+                {
+                    return null;
+                }
+
+                Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+                Task<string> errorTask = process.StandardError.ReadToEndAsync();
+                Task completionTask = Task.WhenAll(outputTask, errorTask, WaitForExitAsync(process));
+
+                using (var timeoutCancellation = new CancellationTokenSource(_gitCommandTimeout))
+                {
+                    Task timeoutTask = Task.Delay(Timeout.InfiniteTimeSpan, timeoutCancellation.Token);
+                    Task finishedTask = await Task.WhenAny(completionTask, timeoutTask).ConfigureAwait(false);
+                    if (!ReferenceEquals(finishedTask, completionTask))
+                    {
+                        TryTerminateProcess(process);
+                        return null;
+                    }
+
+                    timeoutCancellation.Cancel();
+                }
+
+                return process.ExitCode == 0
+                    ? await outputTask.ConfigureAwait(false)
+                    : null;
+            }
+        }
+
+        private static Task WaitForExitAsync(Process process)
+        {
+            if (process.HasExited)
+            {
+                return Task.CompletedTask;
+            }
+
+            var completionSource = new TaskCompletionSource<object>();
+            EventHandler handler = null;
+            handler = (sender, args) =>
+            {
+                process.Exited -= handler;
+                completionSource.TrySetResult(null);
+            };
+
+            process.EnableRaisingEvents = true;
+            process.Exited += handler;
+
+            if (process.HasExited)
+            {
+                process.Exited -= handler;
+                return Task.CompletedTask;
+            }
+
+            return completionSource.Task;
+        }
+
         private static void TryTerminateProcess(Process process)
         {
             try
@@ -452,7 +528,12 @@ namespace GitHubNode.Services
                     process.WaitForExit(1000);
                 }
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
+            {
+                _ = ex.LogAsync();
+                // Best-effort cleanup only
+            }
+            catch (System.ComponentModel.Win32Exception ex)
             {
                 _ = ex.LogAsync();
                 // Best-effort cleanup only
