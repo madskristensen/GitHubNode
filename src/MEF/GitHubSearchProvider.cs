@@ -62,36 +62,41 @@ namespace GitHubNode.SolutionExplorer
                 return;
             }
 
-            // Ensure the root node exists - this is needed for ContainedBy relationship to work
-            GitHubRootNode rootNode = _sourceProvider.RootNode;
-            if (rootNode == null)
-            {
-                // Root node doesn't exist yet (tree not expanded)
-                return;
-            }
-
-            if (!rootNode.HasItems)
+            // Ensure at least one root node exists - needed for ContainedBy relationship to work
+            IReadOnlyList<GitHubRootNode> rootNodes = _sourceProvider.RootNodes;
+            if (rootNodes.Count == 0)
             {
                 return;
             }
 
-            // Get items from the root node's Items collection
-            // Cast each item since we know they're all GitHubNodeBase derived types
-            var items = new List<GitHubNodeBase>();
-            foreach (object item in rootNode.Items)
+            foreach (GitHubRootNode rootNode in rootNodes)
             {
-                if (item is GitHubNodeBase node)
+                if (!rootNode.HasItems)
                 {
-                    items.Add(node);
+                    continue;
+                }
+
+                var items = new List<GitHubNodeBase>();
+                foreach (object item in rootNode.Items)
+                {
+                    if (item is GitHubNodeBase node)
+                    {
+                        items.Add(node);
+                    }
+                }
+
+                if (items.Count == 0)
+                {
+                    continue;
+                }
+
+                SearchBreadthFirstParallel(rootNode, items, searchPattern, resultAccumulator, cancellationToken);
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
                 }
             }
-
-            if (items.Count == 0)
-            {
-                return;
-            }
-
-            SearchBreadthFirstParallel(rootNode, items, searchPattern, resultAccumulator, cancellationToken);
         }
 
         /// <summary>

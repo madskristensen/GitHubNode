@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using GitHubNode.SolutionExplorer;
 
 namespace GitHubNode.Commands
 {
@@ -9,37 +10,11 @@ namespace GitHubNode.Commands
     internal static class CommandHelpers
     {
         /// <summary>
-        /// Gets the .github folder path from any path within or below it.
+        /// Gets a supported AI root folder path from any path within or below it.
         /// </summary>
         public static string GetGitHubFolderPath(string path)
         {
-            if (string.IsNullOrEmpty(path))
-                return null;
-
-            // Check if we're already in or at .github
-            if (Path.GetFileName(path).Equals(".github", StringComparison.OrdinalIgnoreCase))
-            {
-                return path;
-            }
-
-            // Check if path contains .github - extract it
-            var normalizedPath = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-            var parts = normalizedPath.Split(Path.DirectorySeparatorChar);
-            var index = Array.FindIndex(parts, p => p.Equals(".github", StringComparison.OrdinalIgnoreCase));
-            
-            if (index >= 0)
-            {
-                return string.Join(Path.DirectorySeparatorChar.ToString(), parts.Take(index + 1));
-            }
-
-            // Check if .github exists as a child
-            var gitHubPath = Path.Combine(path, ".github");
-            if (Directory.Exists(gitHubPath))
-            {
-                return gitHubPath;
-            }
-
-            return null;
+            return AiRootFolders.GetRootFolderPath(path);
         }
 
         /// <summary>

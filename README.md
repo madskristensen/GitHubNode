@@ -12,17 +12,23 @@ or get the [CI build][vsixgallery].
 
 ----------------------------------------
 
-Adds **GitHub** and **MCP Servers** nodes to Solution Explorer. Quickly access and manage GitHub-specific files like workflows, Copilot instructions, and agents, plus Model Context Protocol (MCP) server configurations - all without leaving Visual Studio.
+Adds **GitHub**, optional **Claude** and **Agents**, and **MCP Servers** nodes to Solution Explorer. Quickly access and manage AI customization files and GitHub-specific files, plus Model Context Protocol (MCP) server configurations - all without leaving Visual Studio.
 
 ![GitHub Node in Solution Explorer](art/github-node.png)
 
 ## Features
 
-### GitHub Node in Solution Explorer
+### AI Nodes in Solution Explorer
 
-The extension adds a dedicated **GitHub** node directly under your solution, providing easy access to the `.github` folder contents:
+The extension adds dedicated AI nodes directly under your solution:
 
-- Automatically detects the `.github` folder in your repository
+- **GitHub** - always shown, backed by the `.github` folder
+- **Claude** - shown when a `.claude` folder exists
+- **Agents** - shown when a `.agents` folder exists
+
+These nodes provide easy access to their folder contents:
+
+- Automatically detects supported AI root folders in your repository
 - Displays files and subfolders with appropriate icons
 - Live updates when files are added, removed, or modified
 - Double-click any file to open it in the editor
@@ -41,6 +47,8 @@ Right-click on the GitHub node or any subfolder to quickly create new files:
 - **Add Skill** - Create an agent skill folder with `skill.md` in the `skills` folder
 
 #### GitHub Configuration
+
+These commands are available only when you right-click in the **GitHub** (`.github`) node tree:
 
 - **Add Workflow** - Create a new GitHub Actions workflow (`.yml`) in the `workflows` folder
 - **Add Dependabot Config** - Create a `dependabot.yml` for automated dependency updates
@@ -143,7 +151,7 @@ All created files come with helpful starter templates that follow best practices
 ## Requirements
 
 - Visual Studio 2022 (17.0 or later)
-- A solution with a `.github` folder in the repository root
+- A solution in a Git repository
 
 ## How It Works
 

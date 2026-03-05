@@ -6,6 +6,7 @@ namespace GitHubNode.Commands
     [Command(PackageIds.AddWorkflow)]
     internal sealed class AddWorkflowCommand : GitHubFileCommandBase<AddWorkflowCommand>
     {
+        protected override string RequiredRootFolderName => ".github";
         protected override string DialogTitle => "New GitHub Actions Workflow";
         protected override string DialogPrompt => "Enter the workflow name:";
         protected override string DialogDefaultValue => "build";

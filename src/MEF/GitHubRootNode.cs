@@ -23,6 +23,7 @@ namespace GitHubNode.SolutionExplorer
         private readonly ObservableCollection<object> _children;
         private readonly string _gitHubFolderPath;
         private readonly NodeChildrenManager _childrenManager;
+        private readonly AiRootFolderDefinition _rootDefinition;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -32,12 +33,13 @@ namespace GitHubNode.SolutionExplorer
             typeof(ISupportDisposalNotification),
         ];
 
-        public GitHubRootNode(object parentItem, string gitHubFolderPath)
+        public GitHubRootNode(object parentItem, string gitHubFolderPath, AiRootFolderDefinition rootDefinition)
             : base(parentItem)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
             _gitHubFolderPath = gitHubFolderPath;
+            _rootDefinition = rootDefinition;
             _children = [];
             _childrenManager = new NodeChildrenManager(
                 gitHubFolderPath,
@@ -144,13 +146,13 @@ namespace GitHubNode.SolutionExplorer
         }
 
         // ITreeDisplayItem
-        public override string Text => "GitHub";
+        public override string Text => _rootDefinition.DisplayName;
         public override string ToolTipText => _gitHubFolderPath;
         public override System.Windows.FontWeight FontWeight => System.Windows.FontWeights.SemiBold;
 
         // ITreeDisplayItemWithImages
-        public ImageMoniker IconMoniker => KnownMonikers.GitHub;
-        public ImageMoniker ExpandedIconMoniker => KnownMonikers.GitHub;
+        public ImageMoniker IconMoniker => _rootDefinition.IconMoniker;
+        public ImageMoniker ExpandedIconMoniker => _rootDefinition.IconMoniker;
         public ImageMoniker OverlayIconMoniker => default;
         public ImageMoniker StateIconMoniker => default;
 

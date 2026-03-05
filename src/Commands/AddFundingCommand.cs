@@ -8,6 +8,7 @@ namespace GitHubNode.Commands
     [Command(PackageIds.AddFunding)]
     internal sealed class AddFundingCommand : GitHubFileCommandBase<AddFundingCommand>
     {
+        protected override string RequiredRootFolderName => ".github";
         // No dialog needed - fixed file name
         protected override string DialogTitle => null;
         protected override string ErrorMessagePrefix => "Failed to create FUNDING.yml";

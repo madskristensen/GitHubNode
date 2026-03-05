@@ -1,6 +1,8 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 
 namespace GitHubNode.SolutionExplorer
 {
@@ -13,13 +15,12 @@ namespace GitHubNode.SolutionExplorer
         private readonly ObservableCollection<object> _items;
         private bool _disposed;
 
-        public GitHubSolutionCollectionSource(object sourceItem, GitHubRootNode rootNode)
+        public GitHubSolutionCollectionSource(object sourceItem, IReadOnlyList<GitHubRootNode> rootNodes)
         {
             SourceItem = sourceItem;
             _items = [];
 
-            // Add the root node immediately
-            _items.Add(rootNode);
+            UpdateRootNodes(rootNodes);
         }
 
         public object SourceItem { get; }
@@ -33,6 +34,27 @@ namespace GitHubNode.SolutionExplorer
         private void RaisePropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        public void UpdateRootNodes(IReadOnlyList<GitHubRootNode> rootNodes)
+        {
+            foreach (var existing in _items.OfType<GitHubRootNode>().ToList())
+            {
+                if (!rootNodes.Contains(existing))
+                {
+                    existing.Dispose();
+                }
+            }
+
+            _items.Clear();
+
+            foreach (GitHubRootNode rootNode in rootNodes)
+            {
+                _items.Add(rootNode);
+            }
+
+            RaisePropertyChanged(nameof(HasItems));
+            RaisePropertyChanged(nameof(Items));
         }
 
         public void Dispose()

@@ -8,6 +8,7 @@ namespace GitHubNode.Commands
     [Command(PackageIds.AddIssueTemplate)]
     internal sealed class AddIssueTemplateCommand : GitHubFileCommandBase<AddIssueTemplateCommand>
     {
+        protected override string RequiredRootFolderName => ".github";
         protected override string DialogTitle => "New Issue Template";
         protected override string DialogPrompt => "Enter the template name:";
         protected override string DialogDefaultValue => "Bug Report";

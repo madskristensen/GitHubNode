@@ -50,6 +50,7 @@
     <Compile Include="Commands\AddCopilotInstructionsCommand.cs" />
     <Compile Include="Commands\AddDependabotCommand.cs" />
     <Compile Include="Commands\AddFundingCommand.cs" />
+    <Compile Include="Commands\AddGitHubSubMenuCommand.cs" />
     <Compile Include="Commands\AddIssueTemplateCommand.cs" />
     <Compile Include="Commands\AddPromptCommand.cs" />
     <Compile Include="Commands\AddPullRequestTemplateCommand.cs" />
@@ -69,6 +70,7 @@
     <Compile Include="Commands\RefreshMcpCommand.cs" />
     <Compile Include="Commands\ToggleMcpServersCommand.cs" />
     <Compile Include="FileTemplates.cs" />
+    <Compile Include="MEF\AiRootFolderDefinition.cs" />
     <Compile Include="MEF\ContainedByCollection.cs" />
     <Compile Include="MEF\GitHubSearchProvider.cs" />
     <Compile Include="MEF\McpSearchProvider.cs" />
@@ -116,6 +118,9 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Monikers.imagemanifest">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
       <Generator>VsixManifestGenerator</Generator>
@@ -125,6 +130,9 @@
       <Link>Resources\LICENSE.txt</Link>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Resource Include="Icons\claude.16.16.png" />
+    <Resource Include="Icons\claude.24.24.png" />
+    <Resource Include="Icons\claude.32.32.png" />
     <Content Include="Resources\Icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>

@@ -56,12 +56,31 @@ namespace GitHubNode.Commands
         protected virtual string SubfolderName => null;
 
         /// <summary>
+        /// Restricts command visibility to a specific root folder name (for example ".github").
+        /// Return null to allow any supported AI root.
+        /// </summary>
+        protected virtual string RequiredRootFolderName => null;
+
+        /// <summary>
         /// Controls visibility of the command in folder context menus.
         /// Shows the command only when right-clicking the matching subfolder.
         /// </summary>
         protected override void BeforeQueryStatus(EventArgs e)
         {
             base.BeforeQueryStatus(e);
+
+            if (!string.IsNullOrEmpty(RequiredRootFolderName))
+            {
+                string currentFolderPath = GitHubContextMenuController.CurrentFolderPath;
+                string rootFolderPath = CommandHelpers.GetGitHubFolderPath(currentFolderPath);
+
+                if (string.IsNullOrEmpty(rootFolderPath) ||
+                    !string.Equals(Path.GetFileName(rootFolderPath), RequiredRootFolderName, StringComparison.OrdinalIgnoreCase))
+                {
+                    Command.Visible = false;
+                    return;
+                }
+            }
 
             // Always visible in root menu (via submenus)
             if (GitHubContextMenuController.CurrentItem is GitHubRootNode)

@@ -13,24 +13,21 @@
       <!-- GitHub Root Node Context Menu -->
       <Menu guid="GitHubNode" id="GitHubRootContextMenu" priority="0x0100" type="Context">
         <Strings>
-          <ButtonText>GitHub Root Context Menu</ButtonText>
-          <CanonicalName>.GitHubNode.RootMenu</CanonicalName>
+          <CommandName>GitHub Root Context Menu</CommandName>
         </Strings>
       </Menu>
       
       <!-- GitHub Folder Node Context Menu -->
       <Menu guid="GitHubNode" id="GitHubFolderContextMenu" priority="0x0100" type="Context">
         <Strings>
-          <ButtonText>GitHub Folder Context Menu</ButtonText>
-          <CanonicalName>.GitHubNode.FolderMenu</CanonicalName>
+          <CommandName>GitHub Folder Context Menu</CommandName>
         </Strings>
       </Menu>
       
       <!-- GitHub File Node Context Menu -->
       <Menu guid="GitHubNode" id="GitHubFileContextMenu" priority="0x0100" type="Context">
         <Strings>
-          <ButtonText>GitHub File Context Menu</ButtonText>
-          <CanonicalName>.GitHubNode.FileMenu</CanonicalName>
+          <CommandName>GitHub File Context Menu</CommandName>
         </Strings>
       </Menu>
       
@@ -39,8 +36,7 @@
         <Parent guid="GitHubNode" id="RootAddGroup"/>
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
-          <ButtonText>Add Copilot File</ButtonText>
-          <CanonicalName>.GitHubNode.AddCopilotFile</CanonicalName>
+          <CommandName>Add Agent File</CommandName>
         </Strings>
       </Menu>
       
@@ -49,16 +45,14 @@
         <Parent guid="GitHubNode" id="RootAddGroup"/>
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
-          <ButtonText>Add GitHub File</ButtonText>
-          <CanonicalName>.GitHubNode.AddGitHubFile</CanonicalName>
+          <CommandName>Add GitHub File</CommandName>
         </Strings>
       </Menu>
       
       <!-- MCP Root Node Context Menu -->
       <Menu guid="GitHubNode" id="McpRootContextMenu" priority="0x0100" type="Context">
         <Strings>
-          <ButtonText>MCP Root Context Menu</ButtonText>
-          <CanonicalName>.GitHubNode.McpRootMenu</CanonicalName>
+          <CommandName>MCP Root Context Menu</CommandName>
         </Strings>
       </Menu>
     </Menus>
@@ -185,6 +179,7 @@
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddBehavior" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Dependabot Configuration</ButtonText>
           <LocCanonicalName>.GitHubNode.AddDependabot</LocCanonicalName>
@@ -196,6 +191,7 @@
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddAttachment" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Issue Template...</ButtonText>
           <LocCanonicalName>.GitHubNode.AddIssueTemplate</LocCanonicalName>
@@ -207,6 +203,7 @@
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddEntity" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Pull Request Template</ButtonText>
           <LocCanonicalName>.GitHubNode.AddPullRequestTemplate</LocCanonicalName>
@@ -218,6 +215,7 @@
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddUser" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>CODEOWNERS</ButtonText>
           <LocCanonicalName>.GitHubNode.AddCodeOwners</LocCanonicalName>
@@ -229,6 +227,7 @@
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="AddLink" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>FUNDING.yml</ButtonText>
           <CanonicalName>.GitHubNode.AddFunding</CanonicalName>
@@ -240,6 +239,7 @@
         <Parent guid="GitHubNode" id="GitHubSubMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="Lock" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>SECURITY.md</ButtonText>
           <CanonicalName>.GitHubNode.AddSecurity</CanonicalName>
