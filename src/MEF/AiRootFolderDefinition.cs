@@ -24,10 +24,18 @@ namespace GitHubNode.SolutionExplorer
 
     internal static class AiRootFolders
     {
+        private static readonly System.Guid _monikersGuid = new("48dc1369-76d5-448f-b1fd-85333d8ff6ce");
+
         private static readonly ImageMoniker _claudeIcon = new()
         {
-            Guid = new System.Guid("48dc1369-76d5-448f-b1fd-85333d8ff6ce"),
+            Guid = _monikersGuid,
             Id = 0,
+        };
+
+        private static readonly ImageMoniker _agentsIcon = new()
+        {
+            Guid = _monikersGuid,
+            Id = 1,
         };
 
         public static readonly AiRootFolderDefinition GitHub = new(
@@ -45,7 +53,7 @@ namespace GitHubNode.SolutionExplorer
         public static readonly AiRootFolderDefinition Agents = new(
             folderName: ".agents",
             displayName: "Agents",
-            iconMoniker: KnownMonikers.Spy,
+            iconMoniker: _agentsIcon,
             alwaysVisible: false);
 
         public static readonly IReadOnlyList<AiRootFolderDefinition> All =

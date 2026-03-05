@@ -118,6 +118,9 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Resource Include="Icons\agents.16.16.png" />
+    <Resource Include="Icons\agents.24.24.png" />
+    <Resource Include="Icons\agents.32.32.png" />
     <Content Include="Monikers.imagemanifest">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
