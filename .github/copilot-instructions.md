@@ -17,6 +17,8 @@
 
 ## Template Loading
 - When template loading fails due to GitHub API rate limiting, show an explicit user-facing status message in the input dialog instead of a generic offline message.
+- Use frontmatter `name` (or `title` fallback) from cached template markdown content as dropdown display names across providers; avoid filename-based normalization for display labels.
+- Avoid adding extra HTTP requests to compute template dropdown display names; derive display names from cached metadata or available local data.
 
 ## JSON Parsing
 - Use System.Text.Json for JSON parsing instead of legacy serializers in this codebase.

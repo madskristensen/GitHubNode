@@ -77,6 +77,46 @@ public class AwesomeCopilotServiceTests
     }
 
     [TestMethod]
+    public void ExtractDisplayNameFromFrontMatter_ReturnsName_WhenNameExists()
+    {
+        const string markdown = "---\nname: Build Perf Agent\ntitle: Ignored Title\n---\n# Heading";
+
+        string displayName = InvokeExtractDisplayNameFromFrontMatter(markdown);
+
+        Assert.AreEqual("Build Perf Agent", displayName);
+    }
+
+    [TestMethod]
+    public void ExtractDisplayNameFromFrontMatter_ReturnsTitle_WhenNameMissing()
+    {
+        const string markdown = "---\ntitle: \"Agent Title\"\n---\n# Heading";
+
+        string displayName = InvokeExtractDisplayNameFromFrontMatter(markdown);
+
+        Assert.AreEqual("Agent Title", displayName);
+    }
+
+    [TestMethod]
+    public void ExtractDisplayNameFromFrontMatter_ReturnsNull_WhenFrontMatterMissing()
+    {
+        const string markdown = "# Heading\ncontent";
+
+        string displayName = InvokeExtractDisplayNameFromFrontMatter(markdown);
+
+        Assert.IsNull(displayName);
+    }
+
+    [TestMethod]
+    public void ExtractDisplayNameFromFrontMatter_ReturnsName_WhenFrontMatterHasBomAndLeadingBlankLines()
+    {
+        const string markdown = "\uFEFF\n\n---\nname: '4.1 Beast Mode v3.1'\n---\ncontent";
+
+        string displayName = InvokeExtractDisplayNameFromFrontMatter(markdown);
+
+        Assert.AreEqual("4.1 Beast Mode v3.1", displayName);
+    }
+
+    [TestMethod]
     public void ParseGitHubTreeJson_HandlesLargeValidPayload()
     {
         MethodInfo method = typeof(AwesomeCopilotService).GetMethod("ParseGitHubTreeJson", BindingFlags.NonPublic | BindingFlags.Static);
@@ -176,13 +216,13 @@ public class AwesomeCopilotServiceTests
     }
 
     [TestMethod]
-    public void GetTemplateDisplayName_ReturnsFileName_ForDotNetSkillsAgents()
+    public void GetTemplateDisplayName_ReturnsRelativePath_ForDotNetSkillsAgents()
     {
         TemplateProvider provider = DotNetSkillsTemplateProvider.Create();
 
         string displayName = InvokeGetTemplateDisplayName(provider, TemplateType.Agent, "dotnet-msbuild/agents/build-perf.agent.md", "build-perf.agent.md");
 
-        Assert.AreEqual("build-perf.agent.md", displayName);
+        Assert.AreEqual("dotnet-msbuild/agents/build-perf.agent.md", displayName);
     }
 
     [TestMethod]
@@ -193,6 +233,117 @@ public class AwesomeCopilotServiceTests
         string displayName = InvokeGetTemplateDisplayName(provider, TemplateType.Agent, "dotnet/build-perf.agent.md", "build-perf.agent.md");
 
         Assert.AreEqual("dotnet/build-perf.agent.md", displayName);
+    }
+
+    [TestMethod]
+    public void GetTemplateDisplayName_ReturnsRelativePath_ForDotNetSkillsSkills()
+    {
+        TemplateProvider provider = DotNetSkillsTemplateProvider.Create();
+
+        string displayName = InvokeGetTemplateDisplayName(provider, TemplateType.Skill, "dotnet-msbuild/SKILL.md", "SKILL.md");
+
+        Assert.AreEqual("dotnet-msbuild/SKILL.md", displayName);
+    }
+
+    [TestMethod]
+    public void GetTemplateDisplayName_ReturnsRelativePath_ForNestedDotNetSkillsSkills()
+    {
+        TemplateProvider provider = DotNetSkillsTemplateProvider.Create();
+
+        string displayName = InvokeGetTemplateDisplayName(provider, TemplateType.Skill, "dotnet-msbuild/skills/binlog-failure-analysis/SKILL.md", "SKILL.md");
+
+        Assert.AreEqual("dotnet-msbuild/skills/binlog-failure-analysis/SKILL.md", displayName);
+    }
+
+    [TestMethod]
+    public void GetTemplateDisplayName_ReturnsRelativePath_ForAnthropicSkillsSkills()
+    {
+        TemplateProvider provider = AnthropicSkillsTemplateProvider.Create();
+
+        string displayName = InvokeGetTemplateDisplayName(provider, TemplateType.Skill, "algorithmic-art/SKILL.md", "SKILL.md");
+
+        Assert.AreEqual("algorithmic-art/SKILL.md", displayName);
+    }
+
+    [TestMethod]
+    public void LoadFromCache_PreservesDisplayName_FromCacheEntry()
+    {
+        string cacheFile = Path.Combine(Path.GetTempPath(), $"githubnode-{Guid.NewGuid():N}.cache");
+
+        try
+        {
+            File.WriteAllLines(cacheFile,
+            [
+                "algorithmic-art\talgorithmic-art\thttps://example.invalid/algorithmic-art/SKILL.md\t2\tanthropic-skills\talgorithmic-art/SKILL.md"
+            ]);
+
+            List<TemplateInfo> templates = InvokeLoadFromCache(cacheFile, expiredOk: false);
+
+            Assert.IsNotNull(templates);
+            Assert.AreEqual(1, templates.Count);
+            Assert.AreEqual("algorithmic-art/SKILL.md", templates[0].DisplayName);
+        }
+        finally
+        {
+            if (File.Exists(cacheFile))
+            {
+                File.Delete(cacheFile);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void LoadFromCache_PreservesDotNetAgentDisplayName_FromCacheEntry()
+    {
+        string cacheFile = Path.Combine(Path.GetTempPath(), $"githubnode-{Guid.NewGuid():N}.cache");
+
+        try
+        {
+            File.WriteAllLines(cacheFile,
+            [
+                "build-perf\tbuild-perf.agent.md\thttps://example.invalid/build-perf.agent.md\t0\tdotnet-skills-plugins\tbuild-perf.agent.md"
+            ]);
+
+            List<TemplateInfo> templates = InvokeLoadFromCache(cacheFile, expiredOk: false);
+
+            Assert.IsNotNull(templates);
+            Assert.AreEqual(1, templates.Count);
+            Assert.AreEqual("build-perf.agent.md", templates[0].DisplayName);
+        }
+        finally
+        {
+            if (File.Exists(cacheFile))
+            {
+                File.Delete(cacheFile);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void LoadFromCache_PreservesDotNetSkillDisplayName_FromCacheEntry()
+    {
+        string cacheFile = Path.Combine(Path.GetTempPath(), $"githubnode-{Guid.NewGuid():N}.cache");
+
+        try
+        {
+            File.WriteAllLines(cacheFile,
+            [
+                "binlog-failure-analysis\tbinlog-failure-analysis\thttps://example.invalid/dotnet-msbuild/skills/binlog-failure-analysis/SKILL.md\t2\tdotnet-skills-plugins\tdotnet-msbuild/skills/binlog-failure-analysis/SKILL.md"
+            ]);
+
+            List<TemplateInfo> templates = InvokeLoadFromCache(cacheFile, expiredOk: false);
+
+            Assert.IsNotNull(templates);
+            Assert.AreEqual(1, templates.Count);
+            Assert.AreEqual("dotnet-msbuild/skills/binlog-failure-analysis/SKILL.md", templates[0].DisplayName);
+        }
+        finally
+        {
+            if (File.Exists(cacheFile))
+            {
+                File.Delete(cacheFile);
+            }
+        }
     }
 
     private static string InvokeGetFriendlyHttpErrorMessage(HttpStatusCode statusCode, HttpResponseHeaders headers)
@@ -234,4 +385,13 @@ public class AwesomeCopilotServiceTests
 
         return (string)method.Invoke(null, [provider, templateType, relativePath, fileName]);
     }
+
+    private static string InvokeExtractDisplayNameFromFrontMatter(string markdown)
+    {
+        MethodInfo method = typeof(AwesomeCopilotService).GetMethod("ExtractDisplayNameFromFrontMatter", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method);
+
+        return (string)method.Invoke(null, [markdown]);
+    }
+
 }

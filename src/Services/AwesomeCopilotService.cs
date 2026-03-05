@@ -4,6 +4,8 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,6 +31,7 @@ namespace GitHubNode.Services
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "GitHubNode",
             "TemplateCache");
+        private static readonly string _templateContentCacheDirectory = Path.Combine(_cacheDirectory, "TemplateContent");
 
         private static HttpClient CreateHttpClient()
         {
@@ -117,6 +120,12 @@ namespace GitHubNode.Services
             List<TemplateInfo> cached = forceRefresh ? null : LoadFromCache(cacheFile, expiredOk: false);
             if (cached != null)
             {
+                bool cachedNamesUpdated = await PopulateDisplayNamesFromTemplateMetadataAsync(cached, cancellationToken);
+                if (cachedNamesUpdated)
+                {
+                    SaveToCache(cacheFile, cached);
+                }
+
                 return cached;
             }
 
@@ -124,6 +133,7 @@ namespace GitHubNode.Services
             cancellationToken.ThrowIfCancellationRequested();
 
             List<TemplateInfo> templates = await FetchTemplatesFromGitHubAsync(provider, rule, templateType, cancellationToken);
+            _ = await PopulateDisplayNamesFromTemplateMetadataAsync(templates, cancellationToken);
 
             if (templates.Count > 0)
             {
@@ -315,15 +325,17 @@ namespace GitHubNode.Services
                         continue;
                     }
 
+                    string providerId = parts.Length >= 5 && !string.IsNullOrWhiteSpace(parts[4])
+                        ? parts[4]
+                        : AwesomeCopilotTemplateProvider.ProviderId;
+
                     templates.Add(new TemplateInfo
                     {
                         Name = name,
                         FileName = fileName,
                         DownloadUrl = downloadUrl,
                         TemplateType = (TemplateType)templateTypeValue,
-                        ProviderId = parts.Length >= 5 && !string.IsNullOrWhiteSpace(parts[4])
-                            ? parts[4]
-                            : AwesomeCopilotTemplateProvider.ProviderId,
+                        ProviderId = providerId,
                         DisplayName = parts.Length >= 6 && !string.IsNullOrWhiteSpace(parts[5])
                             ? parts[5]
                             : name
@@ -646,15 +658,214 @@ namespace GitHubNode.Services
 
         private static string GetTemplateDisplayName(TemplateProvider provider, TemplateType templateType, string relativePath, string fileName)
         {
-            if (provider != null &&
-                templateType == TemplateType.Agent &&
-                string.Equals(provider.Id, DotNetSkillsTemplateProvider.ProviderId, StringComparison.OrdinalIgnoreCase))
-            {
-                return fileName;
-            }
-
             return relativePath;
         }
+
+        private static async Task<bool> PopulateDisplayNamesFromTemplateMetadataAsync(List<TemplateInfo> templates, CancellationToken cancellationToken)
+        {
+            if (templates == null || templates.Count == 0)
+            {
+                return false;
+            }
+
+            bool updated = false;
+
+            foreach (TemplateInfo template in templates)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (template == null || string.IsNullOrWhiteSpace(template.DownloadUrl))
+                {
+                    continue;
+                }
+
+                string metadataDisplayName = null;
+                try
+                {
+                    string content = await GetTemplateContentFromCacheOrGitHubAsync(template.DownloadUrl, cancellationToken);
+                    metadataDisplayName = ExtractDisplayNameFromFrontMatter(content);
+                }
+                catch (TaskCanceledException ex)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+
+                    _ = ex.LogAsync();
+                }
+                catch (HttpRequestException ex)
+                {
+                    _ = ex.LogAsync();
+                }
+
+                string resolvedDisplayName = !string.IsNullOrWhiteSpace(metadataDisplayName)
+                    ? metadataDisplayName
+                    : template.DisplayName;
+
+                if (!string.Equals(template.DisplayName, resolvedDisplayName, StringComparison.Ordinal))
+                {
+                    template.DisplayName = resolvedDisplayName;
+                    updated = true;
+                }
+            }
+
+            return updated;
+        }
+
+        private static async Task<string> GetTemplateContentFromCacheOrGitHubAsync(string downloadUrl, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(downloadUrl))
+            {
+                return null;
+            }
+
+            string cacheFile = GetTemplateContentCacheFilePath(downloadUrl);
+            if (File.Exists(cacheFile))
+            {
+                try
+                {
+                    return File.ReadAllText(cacheFile);
+                }
+                catch (IOException ex)
+                {
+                    _ = ex.LogAsync();
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    _ = ex.LogAsync();
+                }
+            }
+
+            using HttpResponseMessage response = await _httpClient.GetAsync(downloadUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            string content = await response.Content.ReadAsStringAsync();
+            try
+            {
+                Directory.CreateDirectory(_templateContentCacheDirectory);
+                File.WriteAllText(cacheFile, content);
+            }
+            catch (IOException ex)
+            {
+                _ = ex.LogAsync();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _ = ex.LogAsync();
+            }
+
+            return content;
+        }
+
+        private static string GetTemplateContentCacheFilePath(string downloadUrl)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(downloadUrl);
+            byte[] hash;
+            using (MD5 md5 = MD5.Create())
+            {
+                hash = md5.ComputeHash(bytes);
+            }
+
+            string fileName = BitConverter.ToString(hash).Replace("-", string.Empty) + ".md";
+
+            return Path.Combine(_templateContentCacheDirectory, fileName);
+        }
+
+        private static string ExtractDisplayNameFromFrontMatter(string markdown)
+        {
+            if (string.IsNullOrWhiteSpace(markdown))
+            {
+                return null;
+            }
+
+            string normalized = markdown.Replace("\r\n", "\n");
+            string[] lines = normalized.Split('\n');
+            if (lines.Length < 3)
+            {
+                return null;
+            }
+
+            int startIndex = 0;
+            while (startIndex < lines.Length)
+            {
+                string line = StripBom(lines[startIndex]).Trim();
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    break;
+                }
+
+                startIndex++;
+            }
+
+            if (startIndex >= lines.Length || !string.Equals(StripBom(lines[startIndex]).Trim(), "---", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            string title = null;
+
+            for (int index = startIndex + 1; index < lines.Length; index++)
+            {
+                string line = lines[index].Trim();
+                if (string.Equals(line, "---", StringComparison.Ordinal))
+                {
+                    return title;
+                }
+
+                string name = TryGetFrontMatterValue(line, "name");
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    return name;
+                }
+
+                title ??= TryGetFrontMatterValue(line, "title");
+            }
+
+            return null;
+        }
+
+        private static string TryGetFrontMatterValue(string line, string key)
+        {
+            if (string.IsNullOrWhiteSpace(line) || string.IsNullOrWhiteSpace(key))
+            {
+                return null;
+            }
+
+            string prefix = key + ":";
+            if (!line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            string value = line.Substring(prefix.Length).Trim();
+            if (value.Length > 1)
+            {
+                if ((value.StartsWith("\"", StringComparison.Ordinal) && value.EndsWith("\"", StringComparison.Ordinal)) ||
+                    (value.StartsWith("'", StringComparison.Ordinal) && value.EndsWith("'", StringComparison.Ordinal)))
+                {
+                    value = value.Substring(1, value.Length - 2).Trim();
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        private static string StripBom(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return value;
+            }
+
+            return value[0] == '\uFEFF'
+                ? value.Substring(1)
+                : value;
+        }
+
 
         private static bool IsRuleMatch(string fileName, TemplateSearchRule rule)
         {
