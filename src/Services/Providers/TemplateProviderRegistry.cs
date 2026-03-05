@@ -9,7 +9,8 @@ namespace GitHubNode.Services
             return
             [
                 AwesomeCopilotTemplateProvider.Create(),
-                DotNetSkillsTemplateProvider.Create()
+                DotNetSkillsTemplateProvider.Create(),
+                AnthropicSkillsTemplateProvider.Create()
             ];
         }
     }

@@ -40,4 +40,27 @@ public class DotNetSkillsTemplateProviderTests
         Assert.IsTrue(skillRule.Recursive);
         Assert.AreEqual("SKILL.md", skillRule.FileName);
     }
+
+    [TestMethod]
+    public void AnthropicCreate_ReturnsExpectedRepositoryAndBranch()
+    {
+        TemplateProvider provider = AnthropicSkillsTemplateProvider.Create();
+
+        Assert.AreEqual("anthropics", provider.RepoOwner);
+        Assert.AreEqual("skills", provider.RepoName);
+        Assert.AreEqual("main", provider.Branch);
+    }
+
+    [TestMethod]
+    public void AnthropicCreate_SkillRule_UsesRecursiveSkillFileName()
+    {
+        TemplateProvider provider = AnthropicSkillsTemplateProvider.Create();
+
+        TemplateSearchRule skillRule = provider.GetRule(TemplateType.Skill);
+
+        Assert.IsNotNull(skillRule);
+        Assert.AreEqual("skills", skillRule.RootPath);
+        Assert.IsTrue(skillRule.Recursive);
+        Assert.AreEqual("SKILL.md", skillRule.FileName);
+    }
 }

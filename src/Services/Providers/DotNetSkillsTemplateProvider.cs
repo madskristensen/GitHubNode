@@ -35,4 +35,31 @@ namespace GitHubNode.Services
             };
         }
     }
+
+    internal static class AnthropicSkillsTemplateProvider
+    {
+        internal const string ProviderId = "anthropic-skills";
+
+        public static TemplateProvider Create()
+        {
+            return new TemplateProvider
+            {
+                Id = ProviderId,
+                DisplayName = "anthropics/skills",
+                RepoOwner = "anthropics",
+                RepoName = "skills",
+                Branch = "main",
+                SearchRules =
+                [
+                    new TemplateSearchRule
+                    {
+                        TemplateType = TemplateType.Skill,
+                        RootPath = "skills",
+                        Recursive = true,
+                        FileName = "SKILL.md"
+                    }
+                ]
+            };
+        }
+    }
 }

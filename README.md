@@ -103,6 +103,7 @@ Currently included providers:
 
 - **GitHub Awesome Copilot** - Community templates from [awesome-copilot](https://github.com/github/awesome-copilot) for agents, prompts, instructions, and skills
 - **dotnet/skills plugins** - Templates from [dotnet/skills/plugins](https://github.com/dotnet/skills/tree/main/plugins) for agents and skills
+- **anthropics/skills** - Templates from [anthropics/skills](https://github.com/anthropics/skills/tree/main/skills) for skills
 
 ![Template Selection Dialog](art/template-dialog.png)
 
