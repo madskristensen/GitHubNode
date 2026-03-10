@@ -126,6 +126,28 @@ Features:
 
 The provider model is extensible, making it straightforward to add more template sources in future releases.
 
+### Agent Marketplaces
+
+In addition to built-in template providers, you can register custom GitHub repositories as "agent marketplaces" to provide your own templates for agents, skills, instructions, and prompts.
+
+**Managing Marketplaces:**
+
+Right-click on the GitHub node and select **Manage Marketplaces** to open the marketplace management dialog. From here you can:
+
+- **View registered marketplaces** - See all built-in and user-added marketplace repositories
+- **Add custom marketplaces** - Register any GitHub repository that follows the marketplace structure
+- **Remove user-added marketplaces** - Built-in marketplaces cannot be removed
+- **Refresh all** - Pull the latest changes from all marketplace repositories
+
+**How it works:**
+
+- Marketplaces are GitHub repositories containing plugin definitions with agents, skills, instructions, and prompts
+- Repositories are cloned locally and updated automatically (configurable interval)
+- When creating new files, templates from all registered marketplaces appear in the provider dropdown
+- Each marketplace can contain multiple plugins, each with various asset types
+
+This allows teams to create and share their own curated collections of Copilot customization templates.
+
 The preview pane includes syntax highlighting for:
 
 - Markdown headers and formatting

@@ -116,10 +116,16 @@ namespace GitHubNode.Services.Marketplace
 
             foreach (var asset in assets)
             {
+                // For skills, use the asset name (folder name) as the filename
+                // since the actual file is always "skill.md"
+                var fileName = templateType == TemplateType.Skill
+                    ? asset.Name
+                    : System.IO.Path.GetFileName(asset.LocalPath);
+
                 templates.Add(new TemplateInfo
                 {
                     Name = asset.Name,
-                    FileName = System.IO.Path.GetFileName(asset.LocalPath),
+                    FileName = fileName,
                     DisplayName = $"{asset.Name} ({asset.PluginName})",
                     DownloadUrl = asset.LocalPath, // Local path since we're using git clone
                     TemplateType = templateType,

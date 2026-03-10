@@ -201,6 +201,7 @@ namespace GitHubNode.SolutionExplorer
             lock (_debounceLock)
             {
                 _debounceCts?.Cancel();
+                _debounceCts?.Dispose();
                 _debounceCts = new CancellationTokenSource();
                 CancellationToken token = _debounceCts.Token;
 
@@ -220,9 +221,9 @@ namespace GitHubNode.SolutionExplorer
                         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(token);
                         RefreshChildren();
                     }
-                    catch (System.Threading.Tasks.TaskCanceledException ex)
+                    catch (System.Threading.Tasks.TaskCanceledException)
                     {
-                        _ = ex.LogAsync();
+                        // Expected when debounce is superseded by a newer request
                     }
                 });
 #pragma warning restore VSSDK007

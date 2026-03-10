@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -26,11 +27,13 @@ namespace GitHubNode.Commands
         private const int _dwmwaCaptionColor = 35;
         private const int _dwmwaTextColor = 36;
         private const string _customTemplateText = "<Custom>";
+        private const string _allMarketplacesText = "All Marketplaces";
         private const string _settingsKey = "InputDialog";
 
         private readonly TextBox _textBox;
         private readonly RichTextBox _previewBox;
         private readonly ComboBox _providerComboBox;
+        private readonly TextBox _searchBox;
         private readonly ComboBox _templateComboBox;
         private readonly TextBlock _templateLabel;
         private readonly TextBlock _statusText;
@@ -41,8 +44,9 @@ namespace GitHubNode.Commands
         private readonly string _defaultFileName;
 
         private List<MarketplaceAsProvider> _marketplaceProviders;
+        private List<TemplateInfo> _allTemplates;
+        private List<TemplateInfo> _filteredTemplates;
         private bool _userModifiedFileName;
-        private List<TemplateInfo> _templates;
         private string _currentPreviewContent;
         private CancellationTokenSource _templateListCancellationTokenSource;
         private CancellationTokenSource _templateContentCancellationTokenSource;
@@ -101,28 +105,29 @@ namespace GitHubNode.Commands
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             SetResourceReference(BackgroundProperty, EnvironmentColors.ToolWindowBackgroundBrushKey);
 
+            _allTemplates = new List<TemplateInfo>();
+            _filteredTemplates = new List<TemplateInfo>();
+
             var grid = new Grid
             {
                 Margin = new Thickness(12)
             };
 
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Prompt
 
-            var showProviderDropdown = templateType != null && _marketplaceProviders.Count > 1;
-            if (showProviderDropdown)
-            {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            }
-
+            // Always add rows for marketplace, search, and template when templateType is set
             if (templateType != null)
             {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace label
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace dropdown
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Search label
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Search box
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Template label
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Template dropdown
             }
 
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // File name label
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // File name textbox
 
             if (previewGenerator != null || templateType != null)
             {
@@ -149,8 +154,9 @@ namespace GitHubNode.Commands
             Grid.SetRow(label, currentRow++);
             grid.Children.Add(label);
 
-            if (showProviderDropdown)
+            if (templateType != null)
             {
+                // Marketplace dropdown (always shown for templates)
                 var providerLabel = new TextBlock
                 {
                     Text = "Marketplace:",
@@ -166,23 +172,39 @@ namespace GitHubNode.Commands
                     IsEditable = false
                 };
                 _providerComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
-
-                foreach (MarketplaceAsProvider provider in _marketplaceProviders)
-                {
-                    _providerComboBox.Items.Add(provider);
-                }
-
+                _providerComboBox.Items.Add(_allMarketplacesText);
                 _providerComboBox.SelectedIndex = 0;
                 _providerComboBox.SelectionChanged += OnProviderSelectionChanged;
-                AutomationProperties.SetName(_providerComboBox, "Template provider");
-                AutomationProperties.SetHelpText(_providerComboBox, "Select the source repository for community templates.");
-
+                AutomationProperties.SetName(_providerComboBox, "Marketplace filter");
+                AutomationProperties.SetHelpText(_providerComboBox, "Filter templates by marketplace, or select 'All Marketplaces' to see all.");
                 Grid.SetRow(_providerComboBox, currentRow++);
                 grid.Children.Add(_providerComboBox);
-            }
 
-            if (templateType != null)
-            {
+                // Search box
+                var searchLabel = new TextBlock
+                {
+                    Text = "Search:",
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+                searchLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+                Grid.SetRow(searchLabel, currentRow++);
+                grid.Children.Add(searchLabel);
+
+                _searchBox = new TextBox
+                {
+                    Margin = new Thickness(0, 0, 0, 8),
+                    Padding = new Thickness(4, 2, 4, 2)
+                };
+                _searchBox.SetResourceReference(TextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
+                _searchBox.SetResourceReference(TextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+                _searchBox.SetResourceReference(TextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+                _searchBox.TextChanged += OnSearchTextChanged;
+                AutomationProperties.SetName(_searchBox, "Search templates");
+                AutomationProperties.SetHelpText(_searchBox, "Type to filter templates by name.");
+                Grid.SetRow(_searchBox, currentRow++);
+                grid.Children.Add(_searchBox);
+
+                // Template dropdown
                 _templateLabel = new TextBlock
                 {
                     Text = "Template:",
@@ -203,7 +225,6 @@ namespace GitHubNode.Commands
                 _templateComboBox.SelectionChanged += OnTemplateSelectionChanged;
                 AutomationProperties.SetName(_templateComboBox, "Template selection");
                 AutomationProperties.SetHelpText(_templateComboBox, "Use Alt + Up or Alt + Down to move between templates.");
-
                 Grid.SetRow(_templateComboBox, currentRow++);
                 grid.Children.Add(_templateComboBox);
             }
@@ -550,8 +571,6 @@ namespace GitHubNode.Commands
 
             try
             {
-                MarketplaceAsProvider provider = GetSelectedProvider();
-
                 // Load providers if not yet loaded (this clones marketplace repos on first run)
                 if (_marketplaceProviders.Count == 0)
                 {
@@ -561,22 +580,19 @@ namespace GitHubNode.Commands
                     _marketplaceProviders = await TemplateProviderRegistry.GetProvidersForTemplateTypeAsync(_templateType.Value, cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    // Update provider dropdown
+                    // Update provider dropdown with "All Marketplaces" + individual marketplaces
                     if (_providerComboBox != null)
                     {
                         _providerComboBox.Items.Clear();
+                        _providerComboBox.Items.Add(_allMarketplacesText);
+
                         foreach (var p in _marketplaceProviders)
                         {
                             _providerComboBox.Items.Add(p);
                         }
 
-                        if (_marketplaceProviders.Count > 0)
-                        {
-                            _providerComboBox.SelectedIndex = 0;
-                        }
+                        _providerComboBox.SelectedIndex = 0; // "All Marketplaces"
                     }
-
-                    provider = GetSelectedProvider();
                 }
                 else
                 {
@@ -584,37 +600,27 @@ namespace GitHubNode.Commands
                     SetRefreshEnabled(false);
                 }
 
-                if (provider == null)
+                if (_marketplaceProviders.Count == 0)
                 {
                     SetStatus("No marketplaces available. Check your internet connection or use Manage Marketplaces.");
                     return;
                 }
 
-                _templates = await TemplateProviderRegistry.GetTemplatesAsync(_templateType.Value, provider, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-
-                while (_templateComboBox.Items.Count > 1)
+                // Load all templates from all providers
+                _allTemplates = new List<TemplateInfo>();
+                foreach (var provider in _marketplaceProviders)
                 {
-                    _templateComboBox.Items.RemoveAt(1);
+                    var templates = await TemplateProviderRegistry.GetTemplatesAsync(_templateType.Value, provider, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    _allTemplates.AddRange(templates);
                 }
 
-                foreach (TemplateInfo template in _templates)
-                {
-                    _templateComboBox.Items.Add(template.DisplayName ?? template.FileName);
-                }
+                // Apply filters and update UI
+                ApplyFilters();
 
-                if (_templates.Count > 0)
-                {
-                    SetStatus($"Loaded {_templates.Count} templates from {provider.DisplayName}");
-                    _templateLabel.Text = $"Template ({_templates.Count} available):";
-                }
-                else
-                {
-                    string errorMessage = provider.HasError
-                        ? provider.ErrorMessage
-                        : $"No templates found in {provider.DisplayName}.";
-                    SetStatus(errorMessage);
-                }
+                var totalCount = _allTemplates.Count;
+                var marketplaceCount = _marketplaceProviders.Count;
+                SetStatus($"Loaded {totalCount} templates from {marketplaceCount} marketplace{(marketplaceCount != 1 ? "s" : "")}");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -630,9 +636,163 @@ namespace GitHubNode.Commands
             }
         }
 
-        private async void OnProviderSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        private void ApplyFilters()
         {
-            await ExecuteUiActionAsync(OnProviderSelectionChangedAsync, "Failed to load provider templates");
+            // Get selected marketplace filter
+            string selectedMarketplaceId = null;
+            if (_providerComboBox?.SelectedItem is MarketplaceAsProvider selectedProvider)
+            {
+                selectedMarketplaceId = selectedProvider.Id;
+            }
+
+            // Get search text
+            string searchText = _searchBox?.Text?.Trim() ?? "";
+
+            // Filter templates
+            _filteredTemplates = _allTemplates
+                .Where(t =>
+                {
+                    // Filter by marketplace
+                    if (selectedMarketplaceId != null && !string.Equals(t.ProviderId, selectedMarketplaceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+
+                    // Filter by search text
+                    if (!string.IsNullOrEmpty(searchText))
+                    {
+                        var name = t.DisplayName ?? t.Name ?? t.FileName ?? "";
+                        if (name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                })
+                .ToList();
+
+            // Update template dropdown (grouped when showing all marketplaces)
+            bool showGrouped = selectedMarketplaceId == null;
+            UpdateTemplateDropdown(showGrouped);
+        }
+
+        private void UpdateTemplateDropdown(bool groupByMarketplace)
+        {
+            if (_templateComboBox == null)
+            {
+                return;
+            }
+
+            _templateComboBox.Items.Clear();
+            _templateComboBox.Items.Add(_customTemplateText);
+
+            if (groupByMarketplace && _filteredTemplates.Count > 0)
+            {
+                // Group by marketplace and sort within each group
+                var grouped = _filteredTemplates
+                    .GroupBy(t => t.ProviderId ?? "unknown")
+                    .OrderBy(g => GetMarketplaceDisplayName(g.Key));
+
+                foreach (var group in grouped)
+                {
+                    var marketplaceName = GetMarketplaceDisplayName(group.Key);
+
+                    // Add group header (disabled separator item)
+                    var header = new ComboBoxItem
+                    {
+                        Content = $"── {marketplaceName} ──",
+                        IsEnabled = false,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = new SolidColorBrush(Colors.Gray)
+                    };
+                    _templateComboBox.Items.Add(header);
+
+                    // Add templates in this group, sorted by name
+                    foreach (var template in group.OrderBy(t => t.DisplayName ?? t.Name ?? t.FileName))
+                    {
+                        _templateComboBox.Items.Add(template.DisplayName ?? template.FileName);
+                    }
+                }
+            }
+            else
+            {
+                // Simple list sorted by name
+                foreach (var template in _filteredTemplates.OrderBy(t => t.DisplayName ?? t.Name ?? t.FileName))
+                {
+                    _templateComboBox.Items.Add(template.DisplayName ?? template.FileName);
+                }
+            }
+
+            _templateComboBox.SelectedIndex = 0;
+            _templateLabel.Text = $"Template ({_filteredTemplates.Count} available):";
+        }
+
+        private string GetMarketplaceDisplayName(string marketplaceId)
+        {
+            if (string.IsNullOrEmpty(marketplaceId))
+            {
+                return "Unknown";
+            }
+
+            var provider = _marketplaceProviders?.FirstOrDefault(p =>
+                string.Equals(p.Id, marketplaceId, StringComparison.OrdinalIgnoreCase));
+
+            return provider?.DisplayName ?? marketplaceId;
+        }
+
+        /// <summary>
+        /// Gets the template for the currently selected dropdown item, accounting for group headers.
+        /// </summary>
+        private TemplateInfo GetSelectedTemplate()
+        {
+            if (_templateComboBox == null || _templateComboBox.SelectedIndex <= 0)
+            {
+                return null;
+            }
+
+            var selectedItem = _templateComboBox.SelectedItem;
+
+            // If it's a ComboBoxItem (header), return null
+            if (selectedItem is ComboBoxItem)
+            {
+                return null;
+            }
+
+            // It's a string - find which template it corresponds to
+            var selectedText = selectedItem as string;
+            if (string.IsNullOrEmpty(selectedText) || selectedText == _customTemplateText)
+            {
+                return null;
+            }
+
+            // Find the template by display name
+            return _filteredTemplates?.FirstOrDefault(t =>
+                string.Equals(t.DisplayName ?? t.FileName, selectedText, StringComparison.Ordinal));
+        }
+
+        private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
+        {
+            // Apply filters when search text changes
+            if (_allTemplates != null && _allTemplates.Count > 0)
+            {
+                ApplyFilters();
+            }
+        }
+
+        private void OnProviderSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            // Apply filters when marketplace selection changes
+            if (_allTemplates != null && _allTemplates.Count > 0)
+            {
+                ApplyFilters();
+
+                // Update status with filter info
+                string selectedName = _providerComboBox?.SelectedItem is MarketplaceAsProvider provider
+                    ? provider.DisplayName
+                    : _allMarketplacesText;
+                SetStatus($"Showing {_filteredTemplates.Count} templates from {selectedName}");
+            }
         }
 
         private async void OnRefreshButtonClick(object sender, RoutedEventArgs e)
@@ -677,7 +837,7 @@ namespace GitHubNode.Commands
         {
             if (_templateComboBox != null && _templateComboBox.SelectedIndex > 0)
             {
-                TemplateInfo selectedTemplate = _templates?[_templateComboBox.SelectedIndex - 1];
+                TemplateInfo selectedTemplate = GetSelectedTemplate();
                 if (selectedTemplate != null && _textBox.Text != selectedTemplate.FileName)
                 {
                     _userModifiedFileName = true;
@@ -696,16 +856,26 @@ namespace GitHubNode.Commands
 
         private async void OnTemplateSelectionChanged(object sender, RoutedEventArgs e)
         {
-            await ExecuteUiActionAsync(OnTemplateSelectionChangedAsync, "Failed to load template content");
-        }
+            // Skip if a header item was selected
+            if (_templateComboBox?.SelectedItem is ComboBoxItem)
+            {
+                // Move to next non-header item
+                var currentIndex = _templateComboBox.SelectedIndex;
+                for (int i = currentIndex + 1; i < _templateComboBox.Items.Count; i++)
+                {
+                    if (!(_templateComboBox.Items[i] is ComboBoxItem))
+                    {
+                        _templateComboBox.SelectedIndex = i;
+                        return;
+                    }
+                }
 
-        private async Task OnProviderSelectionChangedAsync()
-        {
-            _userModifiedFileName = false;
-            _templateComboBox.SelectedIndex = 0;
-            SelectedTemplateContent = null;
-            UpdatePreview();
-            await LoadTemplatesAsync();
+                // No valid item found, go back to Custom
+                _templateComboBox.SelectedIndex = 0;
+                return;
+            }
+
+            await ExecuteUiActionAsync(OnTemplateSelectionChangedAsync, "Failed to load template content");
         }
 
         private async Task OnTemplateSelectionChangedAsync()
@@ -728,12 +898,11 @@ namespace GitHubNode.Commands
                     return;
                 }
 
-                if (_templates == null || _templateComboBox.SelectedIndex <= 0)
+                TemplateInfo template = GetSelectedTemplate();
+                if (template == null)
                 {
                     return;
                 }
-
-                TemplateInfo template = _templates[_templateComboBox.SelectedIndex - 1];
 
                 if (!_userModifiedFileName)
                 {
