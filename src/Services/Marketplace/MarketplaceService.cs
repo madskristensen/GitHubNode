@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -26,29 +27,22 @@ namespace GitHubNode.Services.Marketplace
             CancellationToken cancellationToken = default)
         {
             var entries = MarketplaceStorageService.GetAllMarketplaceEntries();
-            var marketplaces = new List<MarketplaceInfo>();
             var config = MarketplaceStorageService.LoadConfig();
 
-            foreach (var entry in entries)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var MarketplaceInfo = await GetMarketplaceAsync(
+            // Fetch all marketplaces in parallel for better performance
+            var tasks = entries.Select(entry =>
+                GetMarketplaceAsync(
                     entry.Owner,
                     entry.Repo,
                     entry.Branch,
                     forceRefresh,
                     config.UpdateIntervalHours,
-                    cancellationToken);
+                    cancellationToken));
 
-                if (MarketplaceInfo != null)
-                {
-                    marketplaces.Add(MarketplaceInfo);
-                }
-            }
+            var results = await Task.WhenAll(tasks);
 
             _initialLoadComplete = true;
-            return marketplaces;
+            return results.Where(m => m != null).ToList();
         }
 
         /// <summary>

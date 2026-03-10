@@ -615,14 +615,14 @@ namespace GitHubNode.Commands
                     return;
                 }
 
-                // Load all templates from all providers
-                _allTemplates = new List<TemplateInfo>();
-                foreach (var provider in _marketplaceProviders)
-                {
-                    var templates = await TemplateProviderRegistry.GetTemplatesAsync(_templateType.Value, provider, cancellationToken);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    _allTemplates.AddRange(templates);
-                }
+                // Load all templates from all providers in parallel for better performance
+                var templateTasks = _marketplaceProviders.Select(provider =>
+                    TemplateProviderRegistry.GetTemplatesAsync(_templateType.Value, provider, cancellationToken));
+
+                var templateResults = await Task.WhenAll(templateTasks);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                _allTemplates = templateResults.SelectMany(t => t).ToList();
 
                 // Apply filters and update UI
                 ApplyFilters();
