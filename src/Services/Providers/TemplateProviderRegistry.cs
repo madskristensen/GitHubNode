@@ -7,27 +7,12 @@ namespace GitHubNode.Services
 {
     /// <summary>
     /// Registry for template providers.
-    /// This class bridges the old provider system with the new Marketplace system.
+    /// Routes template requests to the marketplace system.
     /// </summary>
     internal static class TemplateProviderRegistry
     {
         /// <summary>
-        /// Creates the legacy template providers for backward compatibility.
-        /// </summary>
-        [System.Obsolete("Use GetProvidersForTemplateTypeAsync instead. This method is kept for backward compatibility.")]
-        public static List<TemplateProvider> CreateProviders()
-        {
-            return
-            [
-                AwesomeCopilotTemplateProvider.Create(),
-                DotNetSkillsTemplateProvider.Create(),
-                AnthropicSkillsTemplateProvider.Create()
-            ];
-        }
-
-        /// <summary>
         /// Gets providers that support a specific template type.
-        /// Now uses the marketplace system internally.
         /// </summary>
         public static async Task<List<MarketplaceAsProvider>> GetProvidersForTemplateTypeAsync(
             TemplateType templateType,

@@ -98,7 +98,6 @@
     <Compile Include="MEF\McpServerNode.cs" />
     <Compile Include="MEF\McpSolutionCollectionSource.cs" />
     <Compile Include="MEF\McpSourceProvider.cs" />
-    <Compile Include="Services\AwesomeCopilotService.cs" />
     <Compile Include="Services\GitHubUrlService.cs" />
     <Compile Include="Services\GitStatusService.cs" />
     <Compile Include="Services\MarkdownSyntaxHighlighter.cs" />
@@ -112,12 +111,10 @@
     <Compile Include="Services\Marketplace\MarketplaceStorageService.cs" />
     <Compile Include="Services\Marketplace\MarketplaceTemplateAdapter.cs" />
     <Compile Include="Services\McpSettingsService.cs" />
-    <Compile Include="Services\Providers\AwesomeCopilotTemplateProvider.cs" />
-    <Compile Include="Services\Providers\DotNetSkillsTemplateProvider.cs" />
     <Compile Include="Services\Providers\TemplateProviderRegistry.cs" />
     <Compile Include="Services\SyntaxColors.cs" />
     <Compile Include="Services\McpConfigService.cs" />
-    <Compile Include="Services\TemplateProvider.cs" />
+    <Compile Include="Services\TemplateTypes.cs" />
     <Compile Include="source.extension.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

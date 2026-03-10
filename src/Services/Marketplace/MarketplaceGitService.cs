@@ -61,6 +61,51 @@ namespace GitHubNode.Services.Marketplace
         }
 
         /// <summary>
+        /// Clones a linked repository into a subfolder of the parent marketplace.
+        /// Linked repositories are external repos referenced by plugins in a marketplace.json.
+        /// </summary>
+        /// <param name="parentMarketplaceOwner">Owner of the parent marketplace.</param>
+        /// <param name="parentMarketplaceRepo">Repository name of the parent marketplace.</param>
+        /// <param name="linkedOwner">Owner of the linked repository.</param>
+        /// <param name="linkedRepo">Repository name of the linked repository.</param>
+        /// <param name="branch">Branch to clone (defaults to "main").</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Result of the git operation and the local path to the cloned repo.</returns>
+        public static async Task<(GitResult Result, string LocalPath)> CloneLinkedRepositoryAsync(
+            string parentMarketplaceOwner,
+            string parentMarketplaceRepo,
+            string linkedOwner,
+            string linkedRepo,
+            string branch = "main",
+            CancellationToken cancellationToken = default)
+        {
+            var localPath = MarketplaceStorageService.GetLinkedRepositoryDirectory(
+                parentMarketplaceOwner, parentMarketplaceRepo, linkedOwner, linkedRepo);
+            var cloneUrl = $"https://github.com/{linkedOwner}/{linkedRepo}.git";
+
+            await _gitLock.WaitAsync(cancellationToken);
+            try
+            {
+                if (Directory.Exists(Path.Combine(localPath, ".git")))
+                {
+                    // Linked repo already cloned, do a pull
+                    var result = await PullAsync(localPath, branch, cancellationToken);
+                    return (result, localPath);
+                }
+                else
+                {
+                    // Clone the linked repository
+                    var result = await CloneAsync(cloneUrl, localPath, branch, cancellationToken);
+                    return (result, localPath);
+                }
+            }
+            finally
+            {
+                _gitLock.Release();
+            }
+        }
+
+        /// <summary>
         /// Checks if a MarketplaceInfo repository is cloned.
         /// </summary>
         public static bool IsCloned(string owner, string repo)

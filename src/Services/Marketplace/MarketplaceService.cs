@@ -116,17 +116,18 @@ namespace GitHubNode.Services.Marketplace
                 }
             }
 
-            // Parse the MarketplaceInfo
-            var MarketplaceInfo = MarketplaceParserService.ParseMarketplace(owner, repo, localPath);
-            MarketplaceInfo.Branch = branch;
+            // Parse the MarketplaceInfo asynchronously (supports linked repos)
+            var marketplaceInfo = await MarketplaceParserService.ParseMarketplaceAsync(
+                owner, repo, localPath, cloneLinkedRepos: true, cancellationToken);
+            marketplaceInfo.Branch = branch;
 
             // Update cache
             lock (_cacheLock)
             {
-                _marketplaceCache[id] = MarketplaceInfo;
+                _marketplaceCache[id] = marketplaceInfo;
             }
 
-            return MarketplaceInfo;
+            return marketplaceInfo;
         }
 
         /// <summary>

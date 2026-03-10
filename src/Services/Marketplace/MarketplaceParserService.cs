@@ -3,21 +3,26 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace GitHubNode.Services.Marketplace
 {
     /// <summary>
-    /// Parses MarketplaceInfo.json files and scans plugin directories for assets.
+    /// Parses marketplace.json files and scans plugin directories for assets.
     /// </summary>
     internal static class MarketplaceParserService
     {
         /// <summary>
-        /// Known locations for MarketplaceInfo.json within a repository.
+        /// Known locations for marketplace.json within a repository.
         /// </summary>
         private static readonly string[] MarketplaceJsonPaths = new[]
         {
+            ".github/plugin/marketplace.json",
             ".github/plugin/MarketplaceInfo.json",
+            ".claude-plugin/marketplace.json",
             ".claude-plugin/MarketplaceInfo.json",
+            "marketplace.json",
             "MarketplaceInfo.json"
         };
 
@@ -42,6 +47,29 @@ namespace GitHubNode.Services.Marketplace
         {
             public string description { get; set; }
             public string version { get; set; }
+            public string pluginRoot { get; set; }
+        }
+
+        /// <summary>
+        /// Represents an external repository source for a linked plugin.
+        /// Used when a plugin references content from a different GitHub repository.
+        /// </summary>
+        private sealed class RawPluginSource
+        {
+            /// <summary>
+            /// The source type (e.g., "github").
+            /// </summary>
+            public string source { get; set; }
+
+            /// <summary>
+            /// The repository in "owner/repo" format.
+            /// </summary>
+            public string repo { get; set; }
+
+            /// <summary>
+            /// The path within the external repository.
+            /// </summary>
+            public string path { get; set; }
         }
 
         private sealed class RawPlugin
@@ -49,16 +77,79 @@ namespace GitHubNode.Services.Marketplace
             public string name { get; set; }
             public string description { get; set; }
             public string version { get; set; }
-            public string source { get; set; }
+
+            /// <summary>
+            /// Source can be either a string (relative path) or a RawPluginSource object (external repo).
+            /// Use TryGetLinkedSource() to check for the external repo format.
+            /// </summary>
+            public JsonElement? source { get; set; }
             public List<string> skills { get; set; }
+
+            /// <summary>
+            /// Tries to get the source as a simple string path (local to parent repo).
+            /// </summary>
+            public string GetLocalSourcePath()
+            {
+                if (source == null || source.Value.ValueKind == JsonValueKind.Null)
+                {
+                    return null;
+                }
+
+                if (source.Value.ValueKind == JsonValueKind.String)
+                {
+                    return source.Value.GetString();
+                }
+
+                return null;
+            }
+
+            /// <summary>
+            /// Tries to get the source as an external repository reference.
+            /// </summary>
+            public RawPluginSource GetLinkedSource()
+            {
+                if (source == null || source.Value.ValueKind != JsonValueKind.Object)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    return JsonSerializer.Deserialize<RawPluginSource>(source.Value.GetRawText(), new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                }
+                catch
+                {
+                    return null;
+                }
+            }
         }
 
         /// <summary>
         /// Parses a cloned MarketplaceInfo repository and returns the MarketplaceInfo object.
+        /// This is a synchronous version that does not clone linked repositories.
+        /// Use ParseMarketplaceAsync for full linked repository support.
         /// </summary>
         public static MarketplaceInfo ParseMarketplace(string owner, string repo, string localPath)
         {
-            var MarketplaceInfo = new MarketplaceInfo
+            return ParseMarketplaceAsync(owner, repo, localPath, cloneLinkedRepos: false, CancellationToken.None)
+                .GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Parses a cloned MarketplaceInfo repository and returns the MarketplaceInfo object.
+        /// Supports async cloning of linked repositories.
+        /// </summary>
+        public static async Task<MarketplaceInfo> ParseMarketplaceAsync(
+            string owner,
+            string repo,
+            string localPath,
+            bool cloneLinkedRepos = true,
+            CancellationToken cancellationToken = default)
+        {
+            var marketplaceInfo = new MarketplaceInfo
             {
                 Id = MarketplaceStorageService.GetMarketplaceId(owner, repo),
                 Owner = owner,
@@ -69,13 +160,13 @@ namespace GitHubNode.Services.Marketplace
                 LastUpdated = MarketplaceGitService.GetLastUpdateTime(owner, repo)
             };
 
-            if (!MarketplaceInfo.IsCloned)
+            if (!marketplaceInfo.IsCloned)
             {
-                MarketplaceInfo.ErrorMessage = "Repository not cloned.";
-                return MarketplaceInfo;
+                marketplaceInfo.ErrorMessage = "Repository not cloned.";
+                return marketplaceInfo;
             }
 
-            // Try to find and parse MarketplaceInfo.json
+            // Try to find and parse marketplace.json
             RawMarketplaceJson rawJson = null;
             foreach (var relativePath in MarketplaceJsonPaths)
             {
@@ -92,49 +183,59 @@ namespace GitHubNode.Services.Marketplace
 
             if (rawJson != null)
             {
-                // Populate from MarketplaceInfo.json
-                MarketplaceInfo.DisplayName = rawJson.name ?? $"{owner}/{repo}";
-                MarketplaceInfo.OwnerInfo = rawJson.owner != null
+                // Populate from marketplace.json
+                marketplaceInfo.DisplayName = rawJson.name ?? $"{owner}/{repo}";
+                marketplaceInfo.OwnerInfo = rawJson.owner != null
                     ? new MarketplaceOwner { Name = rawJson.owner.name, Email = rawJson.owner.email }
                     : null;
-                MarketplaceInfo.Metadata = rawJson.metadata != null
+                marketplaceInfo.Metadata = rawJson.metadata != null
                     ? new MarketplaceMetadata { Description = rawJson.metadata.description, Version = rawJson.metadata.version }
                     : null;
-                MarketplaceInfo.Description = rawJson.metadata?.description;
+                marketplaceInfo.Description = rawJson.metadata?.description;
+
+                // Get the plugin root directory (default to repo root if not specified)
+                string pluginRoot = rawJson.metadata?.pluginRoot?.TrimStart('.', '/', '\\') ?? string.Empty;
 
                 // Parse plugins
                 if (rawJson.plugins != null)
                 {
                     foreach (var rawPlugin in rawJson.plugins)
                     {
-                        var plugin = ParsePlugin(rawPlugin, localPath, MarketplaceInfo.Id);
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        var plugin = await ParsePluginAsync(rawPlugin, localPath, pluginRoot, marketplaceInfo.Id, cloneLinkedRepos, cancellationToken);
                         if (plugin != null)
                         {
-                            MarketplaceInfo.Plugins.Add(plugin);
+                            marketplaceInfo.Plugins.Add(plugin);
                         }
                     }
                 }
             }
             else
             {
-                // No MarketplaceInfo.json - scan entire repo for assets (legacy mode)
-                MarketplaceInfo.DisplayName = $"{owner}/{repo}";
-                var legacyPlugin = ScanDirectoryForAssets(localPath, "root", MarketplaceInfo.Id);
+                // No marketplace.json - scan entire repo for assets (legacy mode)
+                marketplaceInfo.DisplayName = $"{owner}/{repo}";
+                var legacyPlugin = ScanDirectoryForAssets(localPath, repo, marketplaceInfo.Id);
                 if (legacyPlugin != null && legacyPlugin.Assets.Count > 0)
                 {
-                    legacyPlugin.Name = repo;
                     legacyPlugin.Description = "Assets discovered in repository root";
-                    MarketplaceInfo.Plugins.Add(legacyPlugin);
+                    marketplaceInfo.Plugins.Add(legacyPlugin);
                 }
             }
 
-            return MarketplaceInfo;
+            return marketplaceInfo;
         }
 
         /// <summary>
         /// Parses a single plugin from the raw JSON and scans for assets.
         /// </summary>
-        private static MarketplacePlugin ParsePlugin(RawPlugin raw, string repoPath, string marketplaceId)
+        private static async Task<MarketplacePlugin> ParsePluginAsync(
+            RawPlugin raw,
+            string repoPath,
+            string pluginRoot,
+            string marketplaceId,
+            bool cloneLinkedRepos,
+            CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(raw?.name))
             {
@@ -146,14 +247,96 @@ namespace GitHubNode.Services.Marketplace
                 Name = raw.name,
                 Description = raw.description,
                 Version = raw.version,
-                Source = raw.source,
+                Source = raw.GetLocalSourcePath(),
                 Skills = raw.skills ?? new List<string>(),
                 MarketplaceId = marketplaceId
             };
 
-            // Determine the plugin directory
-            var sourcePath = raw.source?.TrimStart('.', '/', '\\') ?? raw.name;
-            var pluginDir = Path.Combine(repoPath, sourcePath);
+            // Check if this is a linked (external) repository source
+            RawPluginSource linkedSource = raw.GetLinkedSource();
+            if (linkedSource != null && 
+                !string.IsNullOrWhiteSpace(linkedSource.repo) &&
+                string.Equals(linkedSource.source, "github", StringComparison.OrdinalIgnoreCase))
+            {
+                // Parse owner/repo from "owner/repo" format
+                string[] repoParts = linkedSource.repo.Split('/');
+                if (repoParts.Length == 2)
+                {
+                    string linkedOwner = repoParts[0];
+                    string linkedRepo = repoParts[1];
+
+                    // Extract parent marketplace owner/repo from marketplaceId
+                    string[] parentParts = marketplaceId.Split('/');
+                    if (parentParts.Length == 2)
+                    {
+                        string parentOwner = parentParts[0];
+                        string parentRepo = parentParts[1];
+
+                        // Check if linked repo is already cloned (fast path)
+                        string linkedLocalPath = MarketplaceStorageService.GetLinkedRepositoryDirectory(
+                            parentOwner, parentRepo, linkedOwner, linkedRepo);
+
+                        bool needsClone = !Directory.Exists(Path.Combine(linkedLocalPath, ".git"));
+
+                        if (needsClone && cloneLinkedRepos)
+                        {
+                            // Clone the linked repository asynchronously
+                            try
+                            {
+                                var (result, clonedPath) = await MarketplaceGitService.CloneLinkedRepositoryAsync(
+                                    parentOwner, parentRepo, linkedOwner, linkedRepo, cancellationToken: cancellationToken);
+
+                                if (!result.Success)
+                                {
+                                    Debug.WriteLine($"MarketplaceParserService: Failed to clone linked repo {linkedSource.repo}: {result.Error}");
+                                }
+
+                                linkedLocalPath = clonedPath;
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                throw;
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"MarketplaceParserService: Exception cloning linked repo {linkedSource.repo}: {ex.Message}");
+                            }
+                        }
+
+                        // Scan if the linked repo directory exists
+                        if (Directory.Exists(linkedLocalPath))
+                        {
+                            // Determine the plugin directory within the linked repo
+                            string linkedPluginPath = string.IsNullOrWhiteSpace(linkedSource.path)
+                                ? linkedLocalPath
+                                : Path.Combine(linkedLocalPath, linkedSource.path.TrimStart('.', '/', '\\'));
+
+                            if (Directory.Exists(linkedPluginPath))
+                            {
+                                // Scan the linked plugin directory for assets
+                                ScanPluginDirectory(linkedPluginPath, plugin, linkedLocalPath);
+                                plugin.Source = $"{linkedSource.repo}:{linkedSource.path}";
+                            }
+                        }
+                    }
+                }
+
+                return plugin;
+            }
+
+            // Standard local source path handling
+            // Combine: repoPath / pluginRoot / sourcePath
+            var sourcePath = raw.GetLocalSourcePath()?.TrimStart('.', '/', '\\') ?? raw.name;
+
+            string pluginDir;
+            if (!string.IsNullOrEmpty(pluginRoot))
+            {
+                pluginDir = Path.Combine(repoPath, pluginRoot, sourcePath);
+            }
+            else
+            {
+                pluginDir = Path.Combine(repoPath, sourcePath);
+            }
 
             if (Directory.Exists(pluginDir))
             {

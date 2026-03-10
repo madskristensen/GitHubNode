@@ -25,6 +25,7 @@ namespace GitHubNode.Commands
         private const int _dwmwaTextColor = 36;
 
         private readonly ListBox _marketplaceList;
+        private readonly TextBox _urlInputTextBox;
         private readonly Button _addButton;
         private readonly Button _removeButton;
         private readonly Button _refreshButton;
@@ -63,11 +64,13 @@ namespace GitHubNode.Commands
             _marketplaces = new ObservableCollection<MarketplaceListItem>();
 
             var grid = new Grid { Margin = new Thickness(12) };
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Row 0: Header
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Row 1: Marketplace list
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Row 2: Input label
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Row 3: Input panel
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Row 4: Action buttons
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Row 5: Progress bar
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Row 6: Status text
 
             // Header
             var headerText = new TextBlock
@@ -95,6 +98,46 @@ namespace GitHubNode.Commands
             Grid.SetRow(_marketplaceList, 1);
             grid.Children.Add(_marketplaceList);
 
+            // URL input row
+            var inputLabel = new TextBlock
+            {
+                Text = "Add marketplace (owner/repo or GitHub URL):",
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            inputLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+            Grid.SetRow(inputLabel, 2);
+            grid.Children.Add(inputLabel);
+
+            var inputPanel = new Grid
+            {
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            inputPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            inputPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            _urlInputTextBox = new TextBox
+            {
+                Padding = new Thickness(4, 2, 4, 2),
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+            _urlInputTextBox.SetResourceReference(TextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
+            _urlInputTextBox.SetResourceReference(TextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+            _urlInputTextBox.SetResourceReference(TextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+            AutomationProperties.SetName(_urlInputTextBox, "Marketplace repository URL");
+            AutomationProperties.SetHelpText(_urlInputTextBox, "Enter owner/repo or a GitHub URL");
+            Grid.SetColumn(_urlInputTextBox, 0);
+            inputPanel.Children.Add(_urlInputTextBox);
+
+            _addButton = CreateThemedButton("Add");
+            _addButton.Click += OnAddButtonClick;
+            _addButton.Margin = new Thickness(8, 0, 0, 0);
+            AutomationProperties.SetName(_addButton, "Add marketplace");
+            Grid.SetColumn(_addButton, 1);
+            inputPanel.Children.Add(_addButton);
+
+            Grid.SetRow(inputPanel, 3);
+            grid.Children.Add(inputPanel);
+
             // Action buttons row
             var actionPanel = new StackPanel
             {
@@ -102,12 +145,6 @@ namespace GitHubNode.Commands
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 0, 0, 8)
             };
-
-            _addButton = CreateThemedButton("Add...");
-            _addButton.Click += OnAddButtonClick;
-            _addButton.Margin = new Thickness(0, 0, 8, 0);
-            AutomationProperties.SetName(_addButton, "Add marketplace");
-            actionPanel.Children.Add(_addButton);
 
             _removeButton = CreateThemedButton("Remove");
             _removeButton.Click += OnRemoveButtonClick;
@@ -121,7 +158,7 @@ namespace GitHubNode.Commands
             AutomationProperties.SetName(_refreshButton, "Refresh all marketplaces");
             actionPanel.Children.Add(_refreshButton);
 
-            Grid.SetRow(actionPanel, 2);
+            Grid.SetRow(actionPanel, 4);
             grid.Children.Add(actionPanel);
 
             // Progress bar
@@ -132,7 +169,7 @@ namespace GitHubNode.Commands
                 Visibility = Visibility.Collapsed,
                 Margin = new Thickness(0, 0, 0, 8)
             };
-            Grid.SetRow(_progressBar, 3);
+            Grid.SetRow(_progressBar, 5);
             grid.Children.Add(_progressBar);
 
             // Status text
@@ -142,7 +179,7 @@ namespace GitHubNode.Commands
                 Margin = new Thickness(0, 0, 0, 12)
             };
             _statusText.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-            Grid.SetRow(_statusText, 4);
+            Grid.SetRow(_statusText, 6);
             grid.Children.Add(_statusText);
 
             Content = grid;
@@ -272,37 +309,42 @@ namespace GitHubNode.Commands
 
         private async void OnAddButtonClick(object sender, RoutedEventArgs e)
         {
-            var dialog = new AddMarketplaceDialog();
-            if (dialog.ShowModal() == true && !string.IsNullOrWhiteSpace(dialog.MarketplaceInput))
+            var input = _urlInputTextBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(input))
             {
-                SetLoading(true, $"Adding {dialog.MarketplaceInput}...");
+                await VS.MessageBox.ShowWarningAsync("Invalid Input", "Please enter a repository in owner/repo format or a GitHub URL.");
+                _urlInputTextBox.Focus();
+                return;
+            }
 
-                try
-                {
-                    var (success, error, marketplace) = await MarketplaceService.AddMarketplaceAsync(
-                        dialog.MarketplaceInput,
-                        _loadCancellationTokenSource?.Token ?? CancellationToken.None);
+            SetLoading(true, $"Adding {input}...");
 
-                    if (success && marketplace != null)
-                    {
-                        await LoadMarketplacesAsync();
-                        SetStatus($"Added {marketplace.DisplayName}");
-                    }
-                    else
-                    {
-                        SetStatus(error ?? "Failed to add marketplace");
-                        await VS.MessageBox.ShowWarningAsync("Failed to Add Marketplace", error ?? "Unknown error");
-                    }
-                }
-                catch (Exception ex)
+            try
+            {
+                var (success, error, marketplace) = await MarketplaceService.AddMarketplaceAsync(
+                    input,
+                    _loadCancellationTokenSource?.Token ?? CancellationToken.None);
+
+                if (success && marketplace != null)
                 {
-                    _ = ex.LogAsync();
-                    SetStatus($"Error: {ex.Message}");
+                    _urlInputTextBox.Clear();
+                    await LoadMarketplacesAsync();
+                    SetStatus($"Added {marketplace.DisplayName}");
                 }
-                finally
+                else
                 {
-                    SetLoading(false);
+                    SetStatus(error ?? "Failed to add marketplace");
+                    await VS.MessageBox.ShowWarningAsync("Failed to Add Marketplace", error ?? "Unknown error");
                 }
+            }
+            catch (Exception ex)
+            {
+                _ = ex.LogAsync();
+                SetStatus($"Error: {ex.Message}");
+            }
+            finally
+            {
+                SetLoading(false);
             }
         }
 

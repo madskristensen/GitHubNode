@@ -52,6 +52,21 @@ namespace GitHubNode.Services.Marketplace
         }
 
         /// <summary>
+        /// Gets the local directory for a linked repository within a parent marketplace.
+        /// Linked repositories are stored in a _linked subfolder to keep them separate from the parent's content.
+        /// </summary>
+        /// <param name="parentOwner">Owner of the parent marketplace.</param>
+        /// <param name="parentRepo">Repository name of the parent marketplace.</param>
+        /// <param name="linkedOwner">Owner of the linked repository.</param>
+        /// <param name="linkedRepo">Repository name of the linked repository.</param>
+        public static string GetLinkedRepositoryDirectory(string parentOwner, string parentRepo, string linkedOwner, string linkedRepo)
+        {
+            var parentDir = GetMarketplaceDirectory(parentOwner, parentRepo);
+            var linkedSafeName = $"{SanitizePathComponent(linkedOwner)}_{SanitizePathComponent(linkedRepo)}";
+            return Path.Combine(parentDir, "_linked", linkedSafeName);
+        }
+
+        /// <summary>
         /// Gets the MarketplaceInfo ID from owner and repo.
         /// </summary>
         public static string GetMarketplaceId(string owner, string repo)
