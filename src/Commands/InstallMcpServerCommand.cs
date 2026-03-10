@@ -54,7 +54,7 @@ namespace GitHubNode.Commands
 
             // Show the MCP server picker dialog
             var dialog = new InstallMcpServerDialog(mcpAssets, solutionDirectory);
-            if (dialog.ShowDialog() != true || dialog.SelectedAsset == null)
+            if (dialog.ShowDialog() != true || dialog.SelectedAsset == null || string.IsNullOrEmpty(dialog.SelectedServerName))
             {
                 return;
             }
@@ -62,15 +62,12 @@ namespace GitHubNode.Commands
             // Install the selected MCP server
             McpInstallResult result = McpInstallService.InstallFromMarketplace(
                 dialog.SelectedAsset.LocalPath,
+                dialog.SelectedServerName,
                 solutionDirectory);
 
             if (result.Success)
             {
-                await VS.MessageBox.ShowAsync(
-                    "MCP Server Installed",
-                    result.Message + $"\n\nConfiguration updated: {result.TargetFilePath}");
-
-                // Open the configuration file
+                // Open the configuration file (no confirmation dialog needed)
                 await VS.Documents.OpenAsync(result.TargetFilePath);
             }
             else

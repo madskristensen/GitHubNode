@@ -55,6 +55,13 @@
           <CommandName>MCP Root Context Menu</CommandName>
         </Strings>
       </Menu>
+
+      <!-- MCP Server Node Context Menu -->
+      <Menu guid="GitHubNode" id="McpServerContextMenu" priority="0x0100" type="Context">
+        <Strings>
+          <CommandName>MCP Server Context Menu</CommandName>
+        </Strings>
+      </Menu>
     </Menus>
     
     <Groups>
@@ -110,6 +117,11 @@
       </Group>
       <Group guid="GitHubNode" id="McpRootActionsGroup" priority="0x0200">
         <Parent guid="GitHubNode" id="McpRootContextMenu"/>
+      </Group>
+
+      <!-- MCP server context menu groups -->
+      <Group guid="GitHubNode" id="McpServerEditGroup" priority="0x0100">
+        <Parent guid="GitHubNode" id="McpServerContextMenu"/>
       </Group>
     </Groups>
 
@@ -419,6 +431,17 @@
             <CanonicalName>.GitHubNode.InstallMcpServer</CanonicalName>
           </Strings>
         </Button>
+
+        <!-- Delete MCP Server -->
+        <Button guid="GitHubNode" id="DeleteMcpServer" priority="0x0100" type="Button">
+          <Parent guid="GitHubNode" id="McpServerEditGroup" />
+          <Icon guid="ImageCatalogGuid" id="Cancel" />
+          <CommandFlag>IconIsMoniker</CommandFlag>
+          <Strings>
+            <ButtonText>Delete</ButtonText>
+            <CanonicalName>.GitHubNode.DeleteMcpServer</CanonicalName>
+          </Strings>
+        </Button>
       </Buttons>
     </Commands>
 
@@ -466,6 +489,7 @@
       <IDSymbol name="AddCopilotSubMenu" value="0x0010" />
       <IDSymbol name="AddGitHubSubMenu" value="0x0011" />
       <IDSymbol name="McpRootContextMenu" value="0x0012" />
+      <IDSymbol name="McpServerContextMenu" value="0x0013" />
       
       <!-- Groups -->
       <IDSymbol name="RootAddGroup" value="0x0020" />
@@ -482,6 +506,7 @@
       <IDSymbol name="GitHubSubMenuGroup" value="0x0051" />
       <IDSymbol name="McpRootAddGroup" value="0x0060" />
       <IDSymbol name="McpRootActionsGroup" value="0x0061" />
+      <IDSymbol name="McpServerEditGroup" value="0x0062" />
       
       <!-- Commands -->
             <IDSymbol name="AddCopilotInstructions" value="0x0100" />
@@ -511,6 +536,7 @@
             <IDSymbol name="ToggleMcpServers" value="0x0118" />
             <IDSymbol name="ManageMarketplaces" value="0x0119" />
             <IDSymbol name="InstallMcpServer" value="0x011A" />
+            <IDSymbol name="DeleteMcpServer" value="0x011B" />
           </GuidSymbol>
         </Symbols>
       </CommandTable>

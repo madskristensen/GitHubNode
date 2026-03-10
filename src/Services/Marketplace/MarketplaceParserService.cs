@@ -498,7 +498,40 @@ namespace GitHubNode.Services.Marketplace
                 }
             }
 
+            // Scan for MCP servers (.mcp.json and mcp.json) at root and in subdirectories
+            ScanForMcpServers(directory, plugin);
+
             return plugin;
+        }
+
+        private static void ScanForMcpServers(string directory, MarketplacePlugin plugin)
+        {
+            try
+            {
+                var addedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                // Scan for .mcp.json files
+                foreach (var file in Directory.GetFiles(directory, ".mcp.json", SearchOption.AllDirectories))
+                {
+                    if (addedPaths.Add(file))
+                    {
+                        plugin.Assets.Add(CreateAsset(file, directory, AssetType.McpServer, plugin.Name, plugin.MarketplaceId));
+                    }
+                }
+
+                // Scan for mcp.json files (without dot prefix)
+                foreach (var file in Directory.GetFiles(directory, "mcp.json", SearchOption.AllDirectories))
+                {
+                    if (addedPaths.Add(file))
+                    {
+                        plugin.Assets.Add(CreateAsset(file, directory, AssetType.McpServer, plugin.Name, plugin.MarketplaceId));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceParserService.ScanForMcpServers failed: {ex}");
+            }
         }
 
         private static void ScanFolderForType(

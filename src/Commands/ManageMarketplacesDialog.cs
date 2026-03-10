@@ -184,7 +184,7 @@ namespace GitHubNode.Commands
 
             Content = grid;
 
-            Loaded += OnDialogLoaded;
+            ContentRendered += OnDialogContentRendered;
             Closing += OnDialogClosing;
             SourceInitialized += OnSourceInitialized;
         }
@@ -243,7 +243,7 @@ namespace GitHubNode.Commands
         private static int ToColorRef(Color color)
             => color.R | (color.G << 8) | (color.B << 16);
 
-        private async void OnDialogLoaded(object sender, RoutedEventArgs e)
+        private async void OnDialogContentRendered(object sender, EventArgs e)
         {
             await LoadMarketplacesAsync();
         }
@@ -424,18 +424,18 @@ namespace GitHubNode.Commands
             public string ErrorMessage { get; }
 
             public string DisplayText
-            {
-                get
                 {
-                    var suffix = IsBuiltIn ? " (built-in)" : "";
-                    var status = IsCloned ? "" : " [not cloned]";
-                    if (!string.IsNullOrEmpty(ErrorMessage))
+                    get
                     {
-                        status = $" [error: {ErrorMessage}]";
+                        var suffix = IsBuiltIn ? " (built-in)" : "";
+                        var status = IsCloned ? "" : " [not cloned]";
+                        if (!string.IsNullOrEmpty(ErrorMessage))
+                        {
+                            status = $" [error: {ErrorMessage}]";
+                        }
+                        return $"{Id}{suffix}{status}";
                     }
-                    return $"{DisplayName}{suffix}{status}";
                 }
-            }
 
             public MarketplaceListItem(MarketplaceInfo marketplace)
             {

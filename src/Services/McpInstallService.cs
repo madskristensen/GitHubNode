@@ -1,10 +1,9 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 using System.Text;
+using System.Text.Json;
 
 namespace GitHubNode.Services
 {
@@ -45,13 +44,13 @@ namespace GitHubNode.Services
     internal static class McpInstallService
     {
         /// <summary>
-        /// Installs MCP servers from a marketplace .mcp.json file into the workspace.
-        /// Uses the first existing workspace config location, or creates one at the solution root.
+        /// Installs a specific MCP server from a marketplace .mcp.json file into the workspace.
         /// </summary>
         /// <param name="sourceFilePath">Path to the marketplace .mcp.json file.</param>
+        /// <param name="serverName">The name of the specific server to install, or null to install all.</param>
         /// <param name="solutionDirectory">The solution directory path.</param>
         /// <returns>Installation result.</returns>
-        public static McpInstallResult InstallFromMarketplace(string sourceFilePath, string solutionDirectory)
+        public static McpInstallResult InstallFromMarketplace(string sourceFilePath, string serverName, string solutionDirectory)
         {
             var result = new McpInstallResult();
 
@@ -74,30 +73,44 @@ namespace GitHubNode.Services
                 result.TargetFilePath = targetPath;
 
                 // Parse the source marketplace MCP config
-                var sourceServers = ParseMarketplaceMcpConfig(sourceFilePath);
-                if (sourceServers == null || sourceServers.Count == 0)
+                var allSourceServers = ParseMarketplaceMcpConfig(sourceFilePath);
+                if (allSourceServers == null || allSourceServers.Count == 0)
                 {
                     result.Message = "No MCP servers found in the source configuration.";
                     return result;
                 }
 
-                // Load or create the target config
-                Dictionary<string, object> targetConfig = LoadOrCreateConfig(targetPath);
-
-                // Get existing servers from target
-                var existingServerNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (targetConfig.TryGetValue("servers", out object serversObj) && serversObj is IDictionary existingServers)
+                // Filter to just the selected server if specified
+                var sourceServers = new Dictionary<string, string>();
+                if (!string.IsNullOrEmpty(serverName))
                 {
-                    foreach (var key in existingServers.Keys)
+                    if (allSourceServers.TryGetValue(serverName, out string serverConfigJson))
                     {
-                        if (key is string serverName)
-                        {
-                            existingServerNames.Add(serverName);
-                        }
+                        sourceServers[serverName] = serverConfigJson;
+                    }
+                    else
+                    {
+                        result.Message = $"Server '{serverName}' not found in the source configuration.";
+                        return result;
+                    }
+                }
+                else
+                {
+                    sourceServers = allSourceServers;
+                }
+
+                // Get existing server names from target
+                var existingServerNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (File.Exists(targetPath))
+                {
+                    var existingNames = McpConfigService.ParseServerNames(targetPath);
+                    foreach (var name in existingNames)
+                    {
+                        existingServerNames.Add(name);
                     }
                 }
 
-                // Merge servers
+                // Determine which servers to install vs skip
                 foreach (var kvp in sourceServers)
                 {
                     if (existingServerNames.Contains(kvp.Key))
@@ -113,7 +126,7 @@ namespace GitHubNode.Services
                 if (result.InstalledServers.Count == 0)
                 {
                     result.Message = result.SkippedServers.Count > 0
-                        ? $"All servers already exist in the configuration: {string.Join(", ", result.SkippedServers)}"
+                        ? $"Server already exists in the configuration: {string.Join(", ", result.SkippedServers)}"
                         : "No servers to install.";
                     return result;
                 }
@@ -166,43 +179,38 @@ namespace GitHubNode.Services
         /// <summary>
         /// Parses an MCP config file from a marketplace plugin.
         /// Handles both "mcpServers" (marketplace format) and "servers" (VS format).
+        /// Returns the raw JSON text for each server.
         /// </summary>
-        private static Dictionary<string, object> ParseMarketplaceMcpConfig(string filePath)
+        private static Dictionary<string, string> ParseMarketplaceMcpConfig(string filePath)
         {
-            var servers = new Dictionary<string, object>();
+            var servers = new Dictionary<string, string>();
 
             try
             {
                 string json = File.ReadAllText(filePath);
-                object deserialized = DeserializeJson(json);
-
-                if (deserialized is not IDictionary root)
-                {
-                    return servers;
-                }
+                using JsonDocument doc = JsonDocument.Parse(json);
+                JsonElement root = doc.RootElement;
 
                 // Try "mcpServers" first (marketplace format), then "servers" (VS format)
-                IDictionary serversDict = null;
-                if (root.Contains("mcpServers") && root["mcpServers"] is IDictionary mcpServers)
+                JsonElement? serversElement = null;
+                if (root.TryGetProperty("mcpServers", out JsonElement mcpServers) && mcpServers.ValueKind == JsonValueKind.Object)
                 {
-                    serversDict = mcpServers;
+                    serversElement = mcpServers;
                 }
-                else if (root.Contains("servers") && root["servers"] is IDictionary vsServers)
+                else if (root.TryGetProperty("servers", out JsonElement vsServers) && vsServers.ValueKind == JsonValueKind.Object)
                 {
-                    serversDict = vsServers;
+                    serversElement = vsServers;
                 }
 
-                if (serversDict == null)
+                if (serversElement == null)
                 {
                     return servers;
                 }
 
-                foreach (DictionaryEntry entry in serversDict)
+                foreach (JsonProperty prop in serversElement.Value.EnumerateObject())
                 {
-                    if (entry.Key is string serverName)
-                    {
-                        servers[serverName] = entry.Value;
-                    }
+                    // Store the raw JSON text for the server config
+                    servers[prop.Name] = prop.Value.GetRawText();
                 }
             }
             catch (Exception ex)
@@ -214,179 +222,53 @@ namespace GitHubNode.Services
         }
 
         /// <summary>
-        /// Loads an existing config file or creates a new config structure.
-        /// </summary>
-        private static Dictionary<string, object> LoadOrCreateConfig(string filePath)
-        {
-            if (File.Exists(filePath))
-            {
-                try
-                {
-                    string json = File.ReadAllText(filePath);
-                    object deserialized = DeserializeJson(json);
-                    if (deserialized is IDictionary dict)
-                    {
-                        var result = new Dictionary<string, object>();
-                        foreach (DictionaryEntry entry in dict)
-                        {
-                            if (entry.Key is string key)
-                            {
-                                result[key] = entry.Value;
-                            }
-                        }
-                        return result;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"McpInstallService.LoadOrCreateConfig failed for '{filePath}': {ex}");
-                }
-            }
-
-            // Return new empty config structure
-            return new Dictionary<string, object>
-            {
-                ["inputs"] = new object[0],
-                ["servers"] = new Dictionary<string, object>()
-            };
-        }
-
-        /// <summary>
         /// Merges source servers into the target config and saves it.
+        /// sourceServers contains server name -> raw JSON string mappings.
         /// </summary>
-        private static void MergeAndSaveConfig(string targetPath, Dictionary<string, object> sourceServers, List<string> serversToInstall)
+        private static void MergeAndSaveConfig(string targetPath, Dictionary<string, string> sourceServers, List<string> serversToInstall)
         {
             // Read the existing file or create default content
             string existingJson;
             if (File.Exists(targetPath))
             {
                 existingJson = File.ReadAllText(targetPath);
-            }
-            else
-            {
-                existingJson = McpConfigService.GetDefaultContent();
-            }
-
-            // Build the new servers JSON to insert
-            var newServersJson = new StringBuilder();
-            bool first = true;
-
-            foreach (string serverName in serversToInstall)
-            {
-                if (sourceServers.TryGetValue(serverName, out object serverConfig))
-                {
-                    if (!first)
-                    {
-                        newServersJson.Append(",");
-                    }
-                    first = false;
-
-                    string serverJson = SerializeServerConfig(serverName, serverConfig);
-                    newServersJson.Append(serverJson);
                 }
-            }
+                else
+                {
+                    existingJson = McpConfigService.GetDefaultContent();
+                }
 
-            // Insert the new servers into the JSON
-            string updatedJson = InsertServersIntoJson(existingJson, newServersJson.ToString());
-
-            // Ensure directory exists
-            string directory = Path.GetDirectoryName(targetPath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            File.WriteAllText(targetPath, updatedJson);
-        }
-
-        /// <summary>
-        /// Serializes a server configuration to JSON format.
-        /// </summary>
-        private static string SerializeServerConfig(string serverName, object config)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine();
-            sb.Append($"    \"{EscapeJsonString(serverName)}\": ");
-
-            if (config is IDictionary dict)
-            {
-                sb.Append("{");
+                // Build the new servers JSON to insert
+                var newServersJson = new StringBuilder();
                 bool first = true;
 
-                foreach (DictionaryEntry entry in dict)
+                foreach (string serverName in serversToInstall)
                 {
-                    if (entry.Key is not string key)
+                    if (sourceServers.TryGetValue(serverName, out string serverConfigJson))
                     {
-                        continue;
-                    }
+                        if (!first)
+                        {
+                            newServersJson.Append(",");
+                        }
+                        first = false;
 
-                    if (!first)
-                    {
-                        sb.Append(",");
-                    }
-                    first = false;
-
-                    sb.AppendLine();
-                    sb.Append($"      \"{EscapeJsonString(key)}\": ");
-                    sb.Append(SerializeValue(entry.Value));
-                }
-
-                sb.AppendLine();
-                sb.Append("    }");
-            }
-
-            return sb.ToString();
-        }
-
-        /// <summary>
-        /// Serializes a value to JSON.
-        /// </summary>
-        private static string SerializeValue(object value)
-        {
-            if (value == null)
-            {
-                return "null";
-            }
-
-            if (value is string str)
-            {
-                return $"\"{EscapeJsonString(str)}\"";
-            }
-
-            if (value is bool b)
-            {
-                return b ? "true" : "false";
-            }
-
-            if (value is int || value is long || value is double || value is float || value is decimal)
-            {
-                return value.ToString();
-            }
-
-            if (value is IList list)
-            {
-                var items = new List<string>();
-                foreach (var item in list)
-                {
-                    items.Add(SerializeValue(item));
-                }
-                return "[" + string.Join(", ", items) + "]";
-            }
-
-            if (value is IDictionary dict)
-            {
-                var entries = new List<string>();
-                foreach (DictionaryEntry entry in dict)
-                {
-                    if (entry.Key is string key)
-                    {
-                        entries.Add($"\"{EscapeJsonString(key)}\": {SerializeValue(entry.Value)}");
+                        // Format as "serverName": { config }
+                        newServersJson.AppendLine();
+                        newServersJson.Append($"    \"{EscapeJsonString(serverName)}\": {serverConfigJson}");
                     }
                 }
-                return "{" + string.Join(", ", entries) + "}";
-            }
 
-            return $"\"{EscapeJsonString(value.ToString())}\"";
+                // Insert the new servers into the JSON
+                string updatedJson = InsertServersIntoJson(existingJson, newServersJson.ToString());
+
+                // Ensure directory exists
+                string directory = Path.GetDirectoryName(targetPath);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                File.WriteAllText(targetPath, updatedJson);
         }
 
         /// <summary>
@@ -524,29 +406,6 @@ namespace GitHubNode.Services
             }
 
             return sb.ToString();
-        }
-
-        private static object DeserializeJson(string json)
-        {
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                return null;
-            }
-
-            Type serializerType = Type.GetType("System.Web.Script.Serialization.JavaScriptSerializer, System.Web.Extensions", throwOnError: false);
-            if (serializerType == null)
-            {
-                throw new InvalidOperationException("System.Web.Extensions is required for JSON parsing.");
-            }
-
-            object serializer = Activator.CreateInstance(serializerType);
-            MethodInfo deserializeMethod = serializerType.GetMethod("DeserializeObject", [typeof(string)]);
-            if (deserializeMethod == null)
-            {
-                throw new InvalidOperationException("JavaScriptSerializer.DeserializeObject method was not found.");
-            }
-
-            return deserializeMethod.Invoke(serializer, [json]);
         }
     }
 }

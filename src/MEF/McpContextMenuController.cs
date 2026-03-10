@@ -63,6 +63,7 @@ namespace GitHubNode.SolutionExplorer
             return item switch
             {
                 McpRootNode => PackageIds.McpRootContextMenu,
+                McpServerNode => PackageIds.McpServerContextMenu,
                 _ => 0,
             };
         }

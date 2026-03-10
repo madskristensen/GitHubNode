@@ -61,6 +61,7 @@
     <Compile Include="Commands\CommandHelpers.cs" />
     <Compile Include="Commands\CopyPathCommand.cs" />
     <Compile Include="Commands\DeleteCommand.cs" />
+    <Compile Include="Commands\DeleteMcpServerCommand.cs" />
     <Compile Include="Commands\GitHubFileCommandBase.cs" />
     <Compile Include="Commands\InputDialog.cs" />
     <Compile Include="Commands\InstallMcpServerCommand.cs" />

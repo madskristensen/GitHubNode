@@ -26,7 +26,7 @@ namespace GitHubNode.Commands
         private const int _dwmwaUseImmersiveDarkMode = 20;
         private const int _dwmwaCaptionColor = 35;
         private const int _dwmwaTextColor = 36;
-        private const string _customTemplateText = "<Custom>";
+        private const string _blankTemplateText = "<blank>";
         private const string _allMarketplacesText = "All Marketplaces";
         private const string _settingsKey = "InputDialog";
 
@@ -46,7 +46,6 @@ namespace GitHubNode.Commands
         private List<MarketplaceAsProvider> _marketplaceProviders;
         private List<TemplateInfo> _allTemplates;
         private List<TemplateInfo> _filteredTemplates;
-        private bool _userModifiedFileName;
         private string _currentPreviewContent;
         private CancellationTokenSource _templateListCancellationTokenSource;
         private CancellationTokenSource _templateContentCancellationTokenSource;
@@ -222,7 +221,7 @@ namespace GitHubNode.Commands
                     ItemTemplate = CreateTemplateItemTemplate()
                 };
                 _templateComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
-                _templateComboBox.Items.Add(_customTemplateText);
+                _templateComboBox.Items.Add(_blankTemplateText);
                 _templateComboBox.SelectedIndex = 0;
                 _templateComboBox.SelectionChanged += OnTemplateSelectionChanged;
                 AutomationProperties.SetName(_templateComboBox, "Template selection");
@@ -702,7 +701,7 @@ namespace GitHubNode.Commands
             }
 
             _templateComboBox.Items.Clear();
-            _templateComboBox.Items.Add(_customTemplateText);
+            _templateComboBox.Items.Add(_blankTemplateText);
 
             if (groupByMarketplace && _filteredTemplates.Count > 0)
             {
@@ -921,19 +920,7 @@ namespace GitHubNode.Commands
 
         private void OnFileNameTextChanged(object sender, TextChangedEventArgs e)
         {
-            if (_templateComboBox != null && _templateComboBox.SelectedIndex > 0)
-            {
-                TemplateInfo selectedTemplate = GetSelectedTemplate();
-                if (selectedTemplate != null && _textBox.Text != selectedTemplate.FileName)
-                {
-                    _userModifiedFileName = true;
-                }
-            }
-            else if (_textBox.Text != _defaultFileName)
-            {
-                _userModifiedFileName = true;
-            }
-
+            // Only update preview when blank template is selected (textbox is editable)
             if (_templateComboBox == null || _templateComboBox.SelectedIndex == 0)
             {
                 UpdatePreview();
@@ -974,13 +961,11 @@ namespace GitHubNode.Commands
                 if (_templateComboBox.SelectedIndex == 0)
                 {
                     SelectedTemplateContent = null;
-                    if (!_userModifiedFileName)
-                    {
-                        _textBox.Text = _defaultFileName;
-                    }
+                    _textBox.Text = _defaultFileName;
+                    _textBox.IsEnabled = true;
 
                     UpdatePreview();
-                    SetStatus("Custom template");
+                    SetStatus("Blank template");
                     return;
                 }
 
@@ -990,10 +975,8 @@ namespace GitHubNode.Commands
                     return;
                 }
 
-                if (!_userModifiedFileName)
-                {
-                    _textBox.Text = template.FileName;
-                }
+                _textBox.Text = template.FileName;
+                _textBox.IsEnabled = false;
 
                 if (string.IsNullOrEmpty(template.Content))
                 {

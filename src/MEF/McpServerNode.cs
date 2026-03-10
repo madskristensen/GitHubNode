@@ -14,7 +14,8 @@ namespace GitHubNode.SolutionExplorer
         McpNodeBase,
         ITreeDisplayItemWithImages,
         IPrioritizedComparable,
-        IInvocationPattern
+        IInvocationPattern,
+        IContextMenuPattern
     {
         private readonly string _serverName;
         private readonly string _configFilePath;
@@ -26,6 +27,7 @@ namespace GitHubNode.SolutionExplorer
             typeof(IBrowsablePattern),
             typeof(IInvocationPattern),
             typeof(ISupportDisposalNotification),
+            typeof(IContextMenuPattern),
         ];
 
         public McpServerNode(string serverName, string configFilePath, string transportType, object parent)
@@ -72,5 +74,8 @@ namespace GitHubNode.SolutionExplorer
         // IInvocationPattern - double-click opens the config file
         public IInvocationController InvocationController => McpInvocationController.Instance;
         public bool CanPreview => true;
+
+        // IContextMenuPattern - right-click context menu
+        public IContextMenuController ContextMenuController => McpContextMenuController.Instance;
     }
 }

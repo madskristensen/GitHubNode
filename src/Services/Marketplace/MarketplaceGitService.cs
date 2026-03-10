@@ -68,7 +68,7 @@ namespace GitHubNode.Services.Marketplace
         /// <param name="parentMarketplaceRepo">Repository name of the parent marketplace.</param>
         /// <param name="linkedOwner">Owner of the linked repository.</param>
         /// <param name="linkedRepo">Repository name of the linked repository.</param>
-        /// <param name="branch">Branch to clone (defaults to "main").</param>
+        /// <param name="branch">Branch to clone. If null or empty, the default branch is detected automatically.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Result of the git operation and the local path to the cloned repo.</returns>
         public static async Task<(GitResult Result, string LocalPath)> CloneLinkedRepositoryAsync(
@@ -76,12 +76,18 @@ namespace GitHubNode.Services.Marketplace
             string parentMarketplaceRepo,
             string linkedOwner,
             string linkedRepo,
-            string branch = "main",
+            string branch = null,
             CancellationToken cancellationToken = default)
         {
             var localPath = MarketplaceStorageService.GetLinkedRepositoryDirectory(
                 parentMarketplaceOwner, parentMarketplaceRepo, linkedOwner, linkedRepo);
             var cloneUrl = $"https://github.com/{linkedOwner}/{linkedRepo}.git";
+
+            // If branch is not specified, detect it from the remote
+            if (string.IsNullOrEmpty(branch))
+            {
+                branch = await GetDefaultBranchAsync(linkedOwner, linkedRepo, cancellationToken);
+            }
 
             await _gitLock.WaitAsync(cancellationToken);
             try
@@ -112,6 +118,68 @@ namespace GitHubNode.Services.Marketplace
         {
             var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo);
             return Directory.Exists(Path.Combine(localPath, ".git"));
+        }
+
+        /// <summary>
+        /// Gets the default branch for a GitHub repository using git ls-remote.
+        /// Falls back to checking main, then master if the remote HEAD cannot be determined.
+        /// </summary>
+        public static async Task<string> GetDefaultBranchAsync(
+            string owner,
+            string repo,
+            CancellationToken cancellationToken = default)
+        {
+            var repoUrl = $"https://github.com/{owner}/{repo}.git";
+
+            try
+            {
+                // Try to get the default branch from the remote HEAD reference
+                var result = await RunGitAsync($"ls-remote --symref \"{repoUrl}\" HEAD", workingDirectory: null, cancellationToken);
+
+                if (result.Success && !string.IsNullOrEmpty(result.Output))
+                {
+                    // Parse output like: "ref: refs/heads/main\tHEAD"
+                    var lines = result.Output.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var line in lines)
+                    {
+                        if (line.StartsWith("ref: refs/heads/", StringComparison.Ordinal))
+                        {
+                            var tabIndex = line.IndexOf('\t');
+                            var branchPath = tabIndex > 0 ? line.Substring(0, tabIndex) : line;
+                            var branch = branchPath.Substring("ref: refs/heads/".Length);
+                            if (!string.IsNullOrWhiteSpace(branch))
+                            {
+                                Debug.WriteLine($"MarketplaceGitService: Detected default branch '{branch}' for {owner}/{repo}");
+                                return branch;
+                            }
+                        }
+                    }
+                }
+
+                // Fallback: try to verify main exists
+                var mainCheck = await RunGitAsync($"ls-remote --heads \"{repoUrl}\" main", workingDirectory: null, cancellationToken);
+                if (mainCheck.Success && !string.IsNullOrEmpty(mainCheck.Output) && mainCheck.Output.Contains("refs/heads/main"))
+                {
+                    Debug.WriteLine($"MarketplaceGitService: Using 'main' branch for {owner}/{repo} (fallback)");
+                    return "main";
+                }
+
+                // Fallback: try master
+                var masterCheck = await RunGitAsync($"ls-remote --heads \"{repoUrl}\" master", workingDirectory: null, cancellationToken);
+                if (masterCheck.Success && !string.IsNullOrEmpty(masterCheck.Output) && masterCheck.Output.Contains("refs/heads/master"))
+                {
+                    Debug.WriteLine($"MarketplaceGitService: Using 'master' branch for {owner}/{repo} (fallback)");
+                    return "master";
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceGitService.GetDefaultBranchAsync failed for {owner}/{repo}: {ex.Message}");
+            }
+
+            // Ultimate fallback
+            Debug.WriteLine($"MarketplaceGitService: Could not detect default branch for {owner}/{repo}, defaulting to 'main'");
+            return "main";
         }
 
         /// <summary>

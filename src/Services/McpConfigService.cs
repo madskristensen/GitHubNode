@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Collections;
-using System.Reflection;
+using System.Linq;
+using System.Text.Json;
 
 namespace GitHubNode.Services
 {
@@ -142,34 +142,20 @@ namespace GitHubNode.Services
             try
             {
                 var json = File.ReadAllText(filePath);
-                IDictionary servers = GetServersObject(json);
+                JsonElement? servers = GetServersObject(json);
                 if (servers == null)
                 {
                     return serverInfo;
                 }
 
-                foreach (DictionaryEntry serverEntry in servers)
+                foreach (JsonProperty serverEntry in servers.Value.EnumerateObject())
                 {
-                    if (serverEntry.Key is not string serverName)
-                    {
-                        continue;
-                    }
-
+                    string serverName = serverEntry.Name;
                     string transportType = GetTransportType(serverEntry.Value);
                     serverInfo[serverName] = transportType;
                 }
             }
-            catch (InvalidOperationException ex)
-            {
-                _ = ex.LogAsync();
-                Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
-            }
-            catch (ArgumentException ex)
-            {
-                _ = ex.LogAsync();
-                Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
-            }
-            catch (TargetInvocationException ex)
+            catch (JsonException ex)
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerInfo failed for '{filePath}': {ex}");
@@ -200,31 +186,18 @@ namespace GitHubNode.Services
             try
             {
                 var json = File.ReadAllText(filePath);
-                IDictionary servers = GetServersObject(json);
+                JsonElement? servers = GetServersObject(json);
                 if (servers == null)
                 {
                     return serverNames;
                 }
 
-                foreach (object serverName in servers.Keys)
+                foreach (JsonProperty serverEntry in servers.Value.EnumerateObject())
                 {
-                    if (serverName is string name)
-                    {
-                        serverNames.Add(name);
-                    }
+                    serverNames.Add(serverEntry.Name);
                 }
             }
-            catch (InvalidOperationException ex)
-            {
-                _ = ex.LogAsync();
-                Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
-            }
-            catch (ArgumentException ex)
-            {
-                _ = ex.LogAsync();
-                Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
-            }
-            catch (TargetInvocationException ex)
+            catch (JsonException ex)
             {
                 _ = ex.LogAsync();
                 Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
@@ -289,56 +262,48 @@ namespace GitHubNode.Services
             }
         }
 
-        private static IDictionary GetServersObject(string json)
+        /// <summary>
+        /// Parses the JSON and returns the servers object (handling both "servers" and "mcpServers" keys).
+        /// </summary>
+        private static JsonElement? GetServersObject(string json)
         {
-            object deserialized = DeserializeJson(json);
-            if (deserialized is not IDictionary root)
+            try
             {
-                return null;
+                using JsonDocument doc = JsonDocument.Parse(json);
+                JsonElement root = doc.RootElement;
+
+                // Check for VS format ("servers") first, then marketplace format ("mcpServers")
+                if (root.TryGetProperty("servers", out JsonElement servers) && servers.ValueKind == JsonValueKind.Object)
+                {
+                    return servers.Clone();
+                }
+
+                if (root.TryGetProperty("mcpServers", out JsonElement mcpServers) && mcpServers.ValueKind == JsonValueKind.Object)
+                {
+                    return mcpServers.Clone();
+                }
+            }
+            catch (JsonException)
+            {
+                // Invalid JSON, return null
             }
 
-            if (!root.Contains("servers"))
-            {
-                return null;
-            }
-
-            return root["servers"] as IDictionary;
+            return null;
         }
 
-        private static string GetTransportType(object serverConfig)
+        private static string GetTransportType(JsonElement serverConfig)
         {
-            if (serverConfig is IDictionary config &&
-                config.Contains("url") &&
-                config["url"] is string url &&
-                !string.IsNullOrWhiteSpace(url))
+            if (serverConfig.TryGetProperty("url", out JsonElement urlElement) &&
+                urlElement.ValueKind == JsonValueKind.String)
             {
-                return "http";
+                string url = urlElement.GetString();
+                if (!string.IsNullOrWhiteSpace(url))
+                {
+                    return "http";
+                }
             }
 
             return "stdio";
-        }
-
-        private static object DeserializeJson(string json)
-        {
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                return null;
-            }
-
-            Type serializerType = Type.GetType("System.Web.Script.Serialization.JavaScriptSerializer, System.Web.Extensions", throwOnError: false);
-            if (serializerType == null)
-            {
-                throw new InvalidOperationException("System.Web.Extensions is required for JSON parsing.");
-            }
-
-            object serializer = Activator.CreateInstance(serializerType);
-            MethodInfo deserializeMethod = serializerType.GetMethod("DeserializeObject", [typeof(string)]);
-            if (deserializeMethod == null)
-            {
-                throw new InvalidOperationException("JavaScriptSerializer.DeserializeObject method was not found.");
-            }
-
-            return deserializeMethod.Invoke(serializer, [json]);
         }
 
         private static McpConfigLocation CreateLocation(string filePath, string displayName, string description, bool isSourceControlled)
@@ -358,6 +323,170 @@ namespace GitHubNode.Services
             }
 
             return location;
+        }
+
+        /// <summary>
+        /// Deletes an MCP server from a configuration file.
+        /// If the server is the last one in a workspace file (not user profile), the file is deleted.
+        /// </summary>
+        /// <param name="configFilePath">The path to the MCP configuration file.</param>
+        /// <param name="serverName">The name of the server to delete.</param>
+        /// <param name="fileWasDeleted">Set to true if the config file was deleted (last server in workspace file).</param>
+        /// <returns>True if the operation succeeded, false otherwise.</returns>
+        public static bool DeleteServer(string configFilePath, string serverName, out bool fileWasDeleted)
+        {
+            fileWasDeleted = false;
+
+            if (string.IsNullOrEmpty(configFilePath) || !File.Exists(configFilePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                string json = File.ReadAllText(configFilePath);
+                using JsonDocument doc = JsonDocument.Parse(json);
+                JsonElement root = doc.RootElement;
+
+                // Determine which key holds the servers
+                string serversKey = null;
+                if (root.TryGetProperty("servers", out JsonElement servers) && servers.ValueKind == JsonValueKind.Object)
+                {
+                    serversKey = "servers";
+                }
+                else if (root.TryGetProperty("mcpServers", out JsonElement mcpServers) && mcpServers.ValueKind == JsonValueKind.Object)
+                {
+                    serversKey = "mcpServers";
+                    servers = mcpServers;
+                }
+
+                if (serversKey == null)
+                {
+                    return false;
+                }
+
+                // Count servers and check if this server exists
+                int serverCount = 0;
+                bool serverExists = false;
+                foreach (JsonProperty serverEntry in servers.EnumerateObject())
+                {
+                    serverCount++;
+                    if (string.Equals(serverEntry.Name, serverName, StringComparison.Ordinal))
+                    {
+                        serverExists = true;
+                    }
+                }
+
+                if (!serverExists)
+                {
+                    return false;
+                }
+
+                // If this is the last server and it's a workspace file, delete the file
+                bool isUserProfile = IsUserProfileConfig(configFilePath);
+                if (serverCount == 1 && !isUserProfile)
+                {
+                    File.Delete(configFilePath);
+                    fileWasDeleted = true;
+
+                    // Delete the parent directory if empty (e.g., .vscode or .cursor folder)
+                    string parentDir = Path.GetDirectoryName(configFilePath);
+                    if (!string.IsNullOrEmpty(parentDir) && Directory.Exists(parentDir))
+                    {
+                        try
+                        {
+                            if (!Directory.EnumerateFileSystemEntries(parentDir).Any())
+                            {
+                                Directory.Delete(parentDir);
+                            }
+                        }
+                        catch
+                        {
+                            // Ignore errors when cleaning up empty directories
+                        }
+                    }
+
+                    return true;
+                }
+
+                // Otherwise, remove just the server entry and rewrite the file
+                return RemoveServerFromConfig(configFilePath, json, serversKey, serverName);
+            }
+            catch (JsonException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"McpConfigService.DeleteServer failed for '{configFilePath}': {ex}");
+                return false;
+            }
+            catch (IOException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"McpConfigService.DeleteServer failed for '{configFilePath}': {ex}");
+                return false;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _ = ex.LogAsync();
+                Debug.WriteLine($"McpConfigService.DeleteServer failed for '{configFilePath}': {ex}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks if the config file is the user profile config.
+        /// </summary>
+        private static bool IsUserProfileConfig(string configFilePath)
+        {
+            string userProfilePath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".mcp.json");
+            return string.Equals(configFilePath, userProfilePath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Removes a server entry from the config file and rewrites it.
+        /// </summary>
+        private static bool RemoveServerFromConfig(string configFilePath, string originalJson, string serversKey, string serverName)
+        {
+            using JsonDocument doc = JsonDocument.Parse(originalJson);
+            JsonElement root = doc.RootElement;
+
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+            {
+                writer.WriteStartObject();
+
+                foreach (JsonProperty property in root.EnumerateObject())
+                {
+                    if (property.Name == serversKey)
+                    {
+                        writer.WritePropertyName(serversKey);
+                        writer.WriteStartObject();
+
+                        foreach (JsonProperty server in property.Value.EnumerateObject())
+                        {
+                            if (!string.Equals(server.Name, serverName, StringComparison.Ordinal))
+                            {
+                                writer.WritePropertyName(server.Name);
+                                server.Value.WriteTo(writer);
+                            }
+                        }
+
+                        writer.WriteEndObject();
+                    }
+                    else
+                    {
+                        writer.WritePropertyName(property.Name);
+                        property.Value.WriteTo(writer);
+                    }
+                }
+
+                writer.WriteEndObject();
+            }
+
+            string newJson = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+            File.WriteAllText(configFilePath, newJson);
+            return true;
         }
     }
 }

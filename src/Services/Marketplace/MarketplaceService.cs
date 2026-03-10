@@ -51,7 +51,7 @@ namespace GitHubNode.Services.Marketplace
         public static async Task<MarketplaceInfo> GetMarketplaceAsync(
             string owner,
             string repo,
-            string branch = "main",
+            string branch = null,
             bool forceRefresh = false,
             int updateIntervalHours = 24,
             CancellationToken cancellationToken = default)
@@ -69,6 +69,12 @@ namespace GitHubNode.Services.Marketplace
                         return cached;
                     }
                 }
+            }
+
+            // If branch is not specified, detect it from the remote
+            if (string.IsNullOrEmpty(branch))
+            {
+                branch = await MarketplaceGitService.GetDefaultBranchAsync(owner, repo, cancellationToken);
             }
 
             // Determine if we need to clone/update
@@ -268,27 +274,30 @@ namespace GitHubNode.Services.Marketplace
             string repo,
             CancellationToken cancellationToken = default)
         {
-            // Get the branch from existing config or default
+            // Get the branch from existing config or detect from remote
             var config = MarketplaceStorageService.LoadConfig();
-            var branch = "main";
+            string branch = null;
 
             foreach (var entry in config.Marketplaces)
             {
                 if (string.Equals(entry.Owner, owner, StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(entry.Repo, repo, StringComparison.OrdinalIgnoreCase))
                 {
-                    branch = entry.Branch ?? "main";
+                    branch = entry.Branch;
                     break;
                 }
             }
 
-            foreach (var builtIn in MarketplaceStorageService.BuiltInMarketplaces)
+            if (string.IsNullOrEmpty(branch))
             {
-                if (string.Equals(builtIn.Owner, owner, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(builtIn.Repo, repo, StringComparison.OrdinalIgnoreCase))
+                foreach (var builtIn in MarketplaceStorageService.BuiltInMarketplaces)
                 {
-                    branch = builtIn.Branch ?? "main";
-                    break;
+                    if (string.Equals(builtIn.Owner, owner, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(builtIn.Repo, repo, StringComparison.OrdinalIgnoreCase))
+                    {
+                        branch = builtIn.Branch;
+                        break;
+                    }
                 }
             }
 
@@ -314,7 +323,7 @@ namespace GitHubNode.Services.Marketplace
         {
             if (string.IsNullOrWhiteSpace(input))
             {
-                return (null, null, "main");
+                return (null, null, null);
             }
 
             input = input.Trim();
@@ -365,7 +374,7 @@ namespace GitHubNode.Services.Marketplace
                 // Could have branch: owner/repo/tree/branch
                 var owner = parts[0];
                 var repo = parts[1];
-                var branch = "main";
+                string branch = null;
 
                 if (parts.Length >= 4 && string.Equals(parts[2], "tree", StringComparison.OrdinalIgnoreCase))
                 {
@@ -375,7 +384,7 @@ namespace GitHubNode.Services.Marketplace
                 return (owner, repo, branch);
             }
 
-            return (null, null, "main");
+            return (null, null, null);
         }
     }
 }
