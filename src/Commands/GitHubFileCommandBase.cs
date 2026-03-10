@@ -128,6 +128,7 @@ namespace GitHubNode.Commands
             // Get user input if dialog is configured
             string userInput = null;
             string selectedTemplateContent = null;
+            InstallScope selectedScope = InstallScope.Solution;
             if (DialogTitle != null)
             {
                 // Create preview generator that uses the subclass's GetFileContent method
@@ -141,12 +142,22 @@ namespace GitHubNode.Commands
                 }
                 userInput = dialog.InputText;
                 selectedTemplateContent = dialog.SelectedTemplateContent;
+                selectedScope = dialog.SelectedScope;
 
                 // Allow subclasses to validate the input
                 if (!await ValidateInputAsync(userInput))
                 {
                     return;
                 }
+            }
+
+            // If User Profile scope selected and we have templates, use user profile path
+            if (selectedScope == InstallScope.UserProfile && TemplateType != null)
+            {
+                var userProfileCopilot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    ".copilot");
+                targetFolder = userProfileCopilot;
             }
 
             // Get the file path from the subclass

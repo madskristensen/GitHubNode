@@ -52,6 +52,20 @@ namespace GitHubNode.Services
         /// <returns>Installation result.</returns>
         public static McpInstallResult InstallFromMarketplace(string sourceFilePath, string serverName, string solutionDirectory)
         {
+            string targetPath = GetTargetConfigPath(solutionDirectory);
+            return InstallFromMarketplace(sourceFilePath, serverName, solutionDirectory, targetPath);
+        }
+
+        /// <summary>
+        /// Installs a specific MCP server from a marketplace .mcp.json file to a specified target path.
+        /// </summary>
+        /// <param name="sourceFilePath">Path to the marketplace .mcp.json file.</param>
+        /// <param name="serverName">The name of the specific server to install, or null to install all.</param>
+        /// <param name="solutionDirectory">The solution directory path (used as fallback for target path).</param>
+        /// <param name="targetConfigPath">The explicit target configuration file path.</param>
+        /// <returns>Installation result.</returns>
+        public static McpInstallResult InstallFromMarketplace(string sourceFilePath, string serverName, string solutionDirectory, string targetConfigPath)
+        {
             var result = new McpInstallResult();
 
             if (string.IsNullOrEmpty(sourceFilePath) || !File.Exists(sourceFilePath))
@@ -60,17 +74,15 @@ namespace GitHubNode.Services
                 return result;
             }
 
-            if (string.IsNullOrEmpty(solutionDirectory))
+            if (string.IsNullOrEmpty(targetConfigPath))
             {
-                result.Message = "No solution is open. Please open a solution to install MCP servers.";
+                result.Message = "No target configuration path specified.";
                 return result;
             }
 
             try
             {
-                // Find the target config file (existing workspace config or solution root)
-                string targetPath = GetTargetConfigPath(solutionDirectory);
-                result.TargetFilePath = targetPath;
+                result.TargetFilePath = targetConfigPath;
 
                 // Parse the source marketplace MCP config
                 var allSourceServers = ParseMarketplaceMcpConfig(sourceFilePath);
@@ -101,9 +113,9 @@ namespace GitHubNode.Services
 
                 // Get existing server names from target
                 var existingServerNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (File.Exists(targetPath))
+                if (File.Exists(targetConfigPath))
                 {
-                    var existingNames = McpConfigService.ParseServerNames(targetPath);
+                    var existingNames = McpConfigService.ParseServerNames(targetConfigPath);
                     foreach (var name in existingNames)
                     {
                         existingServerNames.Add(name);
@@ -132,7 +144,7 @@ namespace GitHubNode.Services
                 }
 
                 // Perform the merge and save
-                MergeAndSaveConfig(targetPath, sourceServers, result.InstalledServers);
+                MergeAndSaveConfig(targetConfigPath, sourceServers, result.InstalledServers);
 
                 result.Success = true;
                 result.Message = BuildSuccessMessage(result);

@@ -59,11 +59,25 @@ namespace GitHubNode.Commands
                 return;
             }
 
+            // Determine target path based on selected scope
+            string targetPath;
+            if (dialog.SelectedScope == Services.InstallScope.UserProfile)
+            {
+                targetPath = System.IO.Path.Combine(
+                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile),
+                    ".mcp.json");
+            }
+            else
+            {
+                targetPath = McpInstallService.GetTargetConfigPath(solutionDirectory);
+            }
+
             // Install the selected MCP server
             McpInstallResult result = McpInstallService.InstallFromMarketplace(
                 dialog.SelectedAsset.LocalPath,
                 dialog.SelectedServerName,
-                solutionDirectory);
+                solutionDirectory,
+                targetPath);
 
             if (result.Success)
             {

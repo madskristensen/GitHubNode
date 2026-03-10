@@ -24,6 +24,7 @@ namespace GitHubNode.SolutionExplorer
         private readonly string _gitHubFolderPath;
         private readonly NodeChildrenManager _childrenManager;
         private readonly AiRootFolderDefinition _rootDefinition;
+        private readonly GitHubUserProfileNode _userProfileNode;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -41,19 +42,54 @@ namespace GitHubNode.SolutionExplorer
             _gitHubFolderPath = gitHubFolderPath;
             _rootDefinition = rootDefinition;
             _children = [];
+
+            // Add User Profile node only for the .github root (not for .claude, .agents, etc.)
+            if (rootDefinition == AiRootFolders.GitHub)
+            {
+                _userProfileNode = new GitHubUserProfileNode(this);
+            }
+
             _childrenManager = new NodeChildrenManager(
                 gitHubFolderPath,
                 this,
                 _children,
                 () =>
                 {
+                    // Re-insert User Profile node at the beginning after NodeChildrenManager refreshes
+                    EnsureUserProfileNodeFirst();
                     RaisePropertyChanged(nameof(HasItems));
                     RaisePropertyChanged(nameof(Items));
                 },
                 includeSubdirectories: false);
 
             _childrenManager.Initialize();
+
+            // Ensure User Profile node is at the beginning after initial load
+            EnsureUserProfileNodeFirst();
         }
+
+        /// <summary>
+        /// Ensures the User Profile node is the first child in the collection.
+        /// Called after NodeChildrenManager refreshes children.
+        /// </summary>
+        private void EnsureUserProfileNodeFirst()
+        {
+            if (_userProfileNode == null)
+            {
+                return;
+            }
+
+            // Remove if already present (shouldn't happen but be safe)
+            _children.Remove(_userProfileNode);
+
+            // Insert at beginning
+            _children.Insert(0, _userProfileNode);
+        }
+
+        /// <summary>
+        /// Gets the User Profile node, if this is the GitHub root node.
+        /// </summary>
+        public GitHubUserProfileNode UserProfileNode => _userProfileNode;
 
         /// <summary>
         /// Gets the path to the .github folder.
@@ -61,7 +97,8 @@ namespace GitHubNode.SolutionExplorer
         public string GitHubFolderPath => _gitHubFolderPath;
 
         // IAttachedCollectionSource
-        public bool HasItems => _childrenManager.HasItems;
+        // Always has items if User Profile node exists, or if file system has items
+        public bool HasItems => _userProfileNode != null || _childrenManager.HasItems;
         public IEnumerable Items => _children;
 
         /// <summary>
@@ -71,19 +108,29 @@ namespace GitHubNode.SolutionExplorer
         /// </summary>
         public IEnumerable<GitHubNodeBase> GetChildrenForSearch()
         {
-            // If children have already been loaded (tree was expanded), return them
-            if (_children.Count > 0)
+            var results = new List<GitHubNodeBase>();
+
+            // Include User Profile node if present
+            if (_userProfileNode != null)
             {
-                return _children.OfType<GitHubNodeBase>().ToList();
+                results.Add(_userProfileNode);
+            }
+
+            // If children have already been loaded (tree was expanded), return them
+            if (_children.Count > (_userProfileNode != null ? 1 : 0))
+            {
+                results.AddRange(_children.OfType<GitHubNodeBase>().Where(n => n != _userProfileNode));
+                return results;
             }
 
             // For unexpanded tree, enumerate file system directly without modifying _children
             if (!Directory.Exists(_gitHubFolderPath))
             {
-                return Enumerable.Empty<GitHubNodeBase>();
+                return results;
             }
 
-            return EnumerateChildrenForSearch();
+            results.AddRange(EnumerateChildrenForSearch());
+            return results;
         }
 
         /// <summary>
@@ -173,6 +220,7 @@ namespace GitHubNode.SolutionExplorer
 
         protected override void OnDisposing()
         {
+            _userProfileNode?.Dispose();
             _childrenManager.Dispose();
         }
     }

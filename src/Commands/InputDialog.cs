@@ -32,6 +32,7 @@ namespace GitHubNode.Commands
 
         private readonly TextBox _textBox;
         private readonly RichTextBox _previewBox;
+        private readonly ComboBox _scopeComboBox;
         private readonly ComboBox _providerComboBox;
         private readonly TextBox _searchBox;
         private readonly ComboBox _templateComboBox;
@@ -55,6 +56,12 @@ namespace GitHubNode.Commands
         /// Gets the text entered by the user.
         /// </summary>
         public string InputText => _textBox.Text;
+
+        /// <summary>
+        /// Gets the selected installation scope.
+        /// </summary>
+        public Services.InstallScope SelectedScope =>
+            _scopeComboBox?.SelectedIndex == 1 ? Services.InstallScope.UserProfile : Services.InstallScope.Solution;
 
         /// <summary>
         /// Gets the content to use for the file.
@@ -115,9 +122,11 @@ namespace GitHubNode.Commands
 
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Prompt
 
-            // Always add rows for marketplace, search, and template when templateType is set
+            // Always add rows for scope, marketplace, search, and template when templateType is set
             if (templateType != null)
             {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Scope label
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Scope dropdown
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace label
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace dropdown
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Search label
@@ -156,6 +165,30 @@ namespace GitHubNode.Commands
 
             if (templateType != null)
             {
+                // Scope dropdown (first, before marketplace)
+                var scopeLabel = new TextBlock
+                {
+                    Text = "Install to:",
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+                scopeLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+                Grid.SetRow(scopeLabel, currentRow++);
+                grid.Children.Add(scopeLabel);
+
+                _scopeComboBox = new ComboBox
+                {
+                    Margin = new Thickness(0, 0, 0, 8),
+                    IsEditable = false
+                };
+                _scopeComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
+                _scopeComboBox.Items.Add("Solution (shared with team)");
+                _scopeComboBox.Items.Add("User Profile (all solutions)");
+                _scopeComboBox.SelectedIndex = 0;
+                AutomationProperties.SetName(_scopeComboBox, "Installation scope");
+                AutomationProperties.SetHelpText(_scopeComboBox, "Choose where to install: Solution for team-shared assets, or User Profile for personal global settings.");
+                Grid.SetRow(_scopeComboBox, currentRow++);
+                grid.Children.Add(_scopeComboBox);
+
                 // Marketplace dropdown (always shown for templates)
                 var providerLabel = new TextBlock
                 {

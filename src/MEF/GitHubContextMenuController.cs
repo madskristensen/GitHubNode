@@ -34,6 +34,7 @@ namespace GitHubNode.SolutionExplorer
             {
                 return CurrentItem switch
                 {
+                    GitHubUserProfileNode userProfile => userProfile.FolderPath,
                     GitHubRootNode root => root.GitHubFolderPath,
                     GitHubFolderNode folder => folder.FolderPath,
                     GitHubFileNode file => System.IO.Path.GetDirectoryName(file.FilePath),
@@ -79,6 +80,8 @@ namespace GitHubNode.SolutionExplorer
         {
             return item switch
             {
+                // User Profile node uses the same context menu as root node
+                GitHubUserProfileNode => PackageIds.GitHubRootContextMenu,
                 GitHubRootNode => PackageIds.GitHubRootContextMenu,
                 GitHubFolderNode => PackageIds.GitHubFolderContextMenu,
                 GitHubFileNode => PackageIds.GitHubFileContextMenu,

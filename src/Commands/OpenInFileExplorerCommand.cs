@@ -14,7 +14,11 @@ namespace GitHubNode.Commands
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            if (GitHubContextMenuController.CurrentItem is GitHubRootNode root)
+            if (GitHubContextMenuController.CurrentItem is GitHubUserProfileNode userProfile)
+            {
+                OpenFolderInExplorer(userProfile.FolderPath);
+            }
+            else if (GitHubContextMenuController.CurrentItem is GitHubRootNode root)
             {
                 OpenFolderInExplorer(root.GitHubFolderPath);
             }

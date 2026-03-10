@@ -11,6 +11,14 @@ namespace GitHubNode.Commands
     [Command(PackageIds.OpenOnGitHubFile)]
     internal sealed class OpenOnGitHubFileCommand : BaseCommand<OpenOnGitHubFileCommand>
     {
+        protected override void BeforeQueryStatus(EventArgs e)
+        {
+            base.BeforeQueryStatus(e);
+
+            // Hide for items under User Profile node (not in a git repo)
+            Command.Visible = !IsUnderUserProfileNode();
+        }
+
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -35,6 +43,28 @@ namespace GitHubNode.Commands
                 }
             }
         }
+
+        private static bool IsUnderUserProfileNode()
+        {
+            var current = GitHubContextMenuController.CurrentItem;
+            while (current != null)
+            {
+                if (current is GitHubUserProfileNode)
+                {
+                    return true;
+                }
+
+                if (current is GitHubNodeBase node)
+                {
+                    current = node.ParentItem;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            return false;
+        }
     }
 
     /// <summary>
@@ -43,6 +73,14 @@ namespace GitHubNode.Commands
     [Command(PackageIds.OpenOnGitHubFolder)]
     internal sealed class OpenOnGitHubFolderCommand : BaseCommand<OpenOnGitHubFolderCommand>
     {
+        protected override void BeforeQueryStatus(EventArgs e)
+        {
+            base.BeforeQueryStatus(e);
+
+            // Hide for User Profile node and items under it (not in a git repo)
+            Command.Visible = !IsUnderUserProfileNode();
+        }
+
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -70,6 +108,28 @@ namespace GitHubNode.Commands
                     await VS.MessageBox.ShowWarningAsync("Could not determine GitHub URL for this folder.");
                 }
             }
+        }
+
+        private static bool IsUnderUserProfileNode()
+        {
+            var current = GitHubContextMenuController.CurrentItem;
+            while (current != null)
+            {
+                if (current is GitHubUserProfileNode)
+                {
+                    return true;
+                }
+
+                if (current is GitHubNodeBase node)
+                {
+                    current = node.ParentItem;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            return false;
         }
     }
 

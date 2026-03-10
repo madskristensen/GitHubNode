@@ -25,13 +25,14 @@ namespace GitHubNode.Commands
         private const int _dwmwaTextColor = 36;
         private const string _allMarketplacesText = "All Marketplaces";
 
+        private readonly ComboBox _scopeComboBox;
         private readonly ComboBox _marketplaceComboBox;
         private readonly ComboBox _serverComboBox;
         private readonly RichTextBox _previewBox;
         private readonly TextBlock _statusText;
         private readonly TextBlock _targetPathText;
         private readonly Button _refreshButton;
-        private readonly string _targetConfigPath;
+        private string _targetConfigPath;
         private readonly string _solutionDirectory;
 
         private List<McpServerItem> _allServerItems;
@@ -46,6 +47,12 @@ namespace GitHubNode.Commands
         /// Gets the selected server name to install.
         /// </summary>
         public string SelectedServerName { get; private set; }
+
+        /// <summary>
+        /// Gets the selected installation scope.
+        /// </summary>
+        public InstallScope SelectedScope =>
+            _scopeComboBox?.SelectedIndex == 1 ? InstallScope.UserProfile : InstallScope.Solution;
 
         public InstallMcpServerDialog(List<PluginAsset> mcpAssets, string solutionDirectory)
         {
@@ -90,6 +97,8 @@ namespace GitHubNode.Commands
 
             var grid = new Grid { Margin = new Thickness(12) };
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Prompt
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Scope label
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Scope dropdown
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace label
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace dropdown
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Server label
@@ -112,6 +121,30 @@ namespace GitHubNode.Commands
             promptLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
             Grid.SetRow(promptLabel, currentRow++);
             grid.Children.Add(promptLabel);
+
+            // Scope label
+            var scopeLabel = new TextBlock
+            {
+                Text = "Install to:",
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            scopeLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+            Grid.SetRow(scopeLabel, currentRow++);
+            grid.Children.Add(scopeLabel);
+
+            // Scope dropdown
+            _scopeComboBox = new ComboBox
+            {
+                Margin = new Thickness(0, 0, 0, 8),
+                IsEditable = false
+            };
+            _scopeComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
+            _scopeComboBox.Items.Add("Solution (shared with team)");
+            _scopeComboBox.Items.Add("User Profile (all solutions)");
+            _scopeComboBox.SelectedIndex = 0;
+            _scopeComboBox.SelectionChanged += OnScopeSelectionChanged;
+            Grid.SetRow(_scopeComboBox, currentRow++);
+            grid.Children.Add(_scopeComboBox);
 
             // Marketplace label
             var marketplaceLabel = new TextBlock
@@ -391,6 +424,28 @@ namespace GitHubNode.Commands
         private void OnMarketplaceSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             UpdateServerList();
+        }
+
+        private void OnScopeSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            UpdateTargetPath();
+        }
+
+        private void UpdateTargetPath()
+        {
+            if (SelectedScope == InstallScope.UserProfile)
+            {
+                _targetConfigPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    ".mcp.json");
+            }
+            else
+            {
+                _targetConfigPath = McpInstallService.GetTargetConfigPath(_solutionDirectory);
+            }
+
+            _targetPathText.Text = _targetConfigPath ?? "No workspace configuration found";
+            UpdateStatusText(_serverComboBox.Items.Count);
         }
 
         private void OnServerSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)

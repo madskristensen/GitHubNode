@@ -62,6 +62,11 @@ namespace GitHubNode.SolutionExplorer
                 yield return Relationships.Contains;
                 yield return Relationships.ContainedBy;
             }
+            else if (item is GitHubUserProfileNode)
+            {
+                yield return Relationships.Contains;
+                yield return Relationships.ContainedBy;
+            }
             else if (item is GitHubFolderNode)
             {
                 yield return Relationships.Contains;
@@ -104,6 +109,10 @@ namespace GitHubNode.SolutionExplorer
                 else if (item is GitHubRootNode rootNode)
                 {
                     return rootNode;
+                }
+                else if (item is GitHubUserProfileNode userProfileNode)
+                {
+                    return userProfileNode;
                 }
                 else if (item is GitHubFolderNode folderNode)
                 {
