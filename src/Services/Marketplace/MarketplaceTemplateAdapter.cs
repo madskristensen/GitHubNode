@@ -126,7 +126,8 @@ namespace GitHubNode.Services.Marketplace
                 {
                     Name = asset.Name,
                     FileName = fileName,
-                    DisplayName = $"{asset.Name} ({asset.PluginName})",
+                    DisplayName = asset.Name,
+                    Category = asset.PluginName,
                     DownloadUrl = asset.LocalPath, // Local path since we're using git clone
                     TemplateType = templateType,
                     ProviderId = asset.MarketplaceId

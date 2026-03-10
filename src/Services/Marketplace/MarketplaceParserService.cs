@@ -194,7 +194,8 @@ namespace GitHubNode.Services.Marketplace
                 marketplaceInfo.Description = rawJson.metadata?.description;
 
                 // Get the plugin root directory (default to repo root if not specified)
-                string pluginRoot = rawJson.metadata?.pluginRoot?.TrimStart('.', '/', '\\') ?? string.Empty;
+                // Only trim leading slashes, not dots (to preserve .github folder names)
+                string pluginRoot = rawJson.metadata?.pluginRoot?.TrimStart('/', '\\') ?? string.Empty;
 
                 // Parse plugins
                 if (rawJson.plugins != null)
@@ -307,9 +308,10 @@ namespace GitHubNode.Services.Marketplace
                         if (Directory.Exists(linkedLocalPath))
                         {
                             // Determine the plugin directory within the linked repo
+                            // Only trim leading slashes, not dots (to preserve .github folder names)
                             string linkedPluginPath = string.IsNullOrWhiteSpace(linkedSource.path)
                                 ? linkedLocalPath
-                                : Path.Combine(linkedLocalPath, linkedSource.path.TrimStart('.', '/', '\\'));
+                                : Path.Combine(linkedLocalPath, linkedSource.path.TrimStart('/', '\\'));
 
                             if (Directory.Exists(linkedPluginPath))
                             {
@@ -326,7 +328,8 @@ namespace GitHubNode.Services.Marketplace
 
             // Standard local source path handling
             // Combine: repoPath / pluginRoot / sourcePath
-            var sourcePath = raw.GetLocalSourcePath()?.TrimStart('.', '/', '\\') ?? raw.name;
+            // Only trim leading slashes, not dots (to preserve .github folder names)
+            var sourcePath = raw.GetLocalSourcePath()?.TrimStart('/', '\\') ?? raw.name;
 
             string pluginDir;
             if (!string.IsNullOrEmpty(pluginRoot))

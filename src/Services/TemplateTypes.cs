@@ -24,6 +24,11 @@ namespace GitHubNode.Services
         public string ProviderId { get; set; }
 
         /// <summary>
+        /// Category or plugin name that this template belongs to.
+        /// </summary>
+        public string Category { get; set; }
+
+        /// <summary>
         /// Local file path to the template content.
         /// </summary>
         public string LocalPath { get; set; }

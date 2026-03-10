@@ -217,7 +217,8 @@ namespace GitHubNode.Commands
                 _templateComboBox = new ComboBox
                 {
                     Margin = new Thickness(0, 0, 0, 12),
-                    IsEditable = false
+                    IsEditable = false,
+                    ItemTemplate = CreateTemplateItemTemplate()
                 };
                 _templateComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
                 _templateComboBox.Items.Add(_customTemplateText);
@@ -689,10 +690,21 @@ namespace GitHubNode.Commands
 
             if (groupByMarketplace && _filteredTemplates.Count > 0)
             {
-                // Group by marketplace and sort within each group
+                // Build a lookup for marketplace ordering (preserve the order from provider list)
+                var marketplaceOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < _marketplaceProviders.Count; i++)
+                {
+                    var providerId = _marketplaceProviders[i].Id;
+                    if (!string.IsNullOrEmpty(providerId) && !marketplaceOrder.ContainsKey(providerId))
+                    {
+                        marketplaceOrder[providerId] = i;
+                    }
+                }
+
+                // Group by marketplace and preserve original marketplace order
                 var grouped = _filteredTemplates
                     .GroupBy(t => t.ProviderId ?? "unknown")
-                    .OrderBy(g => GetMarketplaceDisplayName(g.Key));
+                    .OrderBy(g => marketplaceOrder.TryGetValue(g.Key, out int order) ? order : int.MaxValue);
 
                 foreach (var group in grouped)
                 {
@@ -711,7 +723,7 @@ namespace GitHubNode.Commands
                     // Add templates in this group, sorted by name
                     foreach (var template in group.OrderBy(t => t.DisplayName ?? t.Name ?? t.FileName))
                     {
-                        _templateComboBox.Items.Add(template.DisplayName ?? template.FileName);
+                        _templateComboBox.Items.Add(new TemplateDisplayItem(template));
                     }
                 }
             }
@@ -720,12 +732,44 @@ namespace GitHubNode.Commands
                 // Simple list sorted by name
                 foreach (var template in _filteredTemplates.OrderBy(t => t.DisplayName ?? t.Name ?? t.FileName))
                 {
-                    _templateComboBox.Items.Add(template.DisplayName ?? template.FileName);
+                    _templateComboBox.Items.Add(new TemplateDisplayItem(template));
                 }
             }
 
             _templateComboBox.SelectedIndex = 0;
             _templateLabel.Text = $"Template ({_filteredTemplates.Count} available):";
+        }
+
+        /// <summary>
+        /// Creates a DataTemplate for template dropdown items with name and category styling.
+        /// </summary>
+        private static DataTemplate CreateTemplateItemTemplate()
+        {
+            var template = new DataTemplate();
+
+            // Use DockPanel for simpler layout: category docked right, name fills remaining space
+            var factory = new FrameworkElementFactory(typeof(DockPanel));
+            factory.SetValue(DockPanel.LastChildFillProperty, true);
+
+            // Category TextBlock (dimmed, docked right)
+            var categoryBlock = new FrameworkElementFactory(typeof(TextBlock));
+            categoryBlock.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Category"));
+            categoryBlock.SetValue(TextBlock.OpacityProperty, 0.6);
+            categoryBlock.SetValue(TextBlock.MarginProperty, new Thickness(12, 0, 0, 0));
+            categoryBlock.SetValue(TextBlock.FontSizeProperty, 11.0);
+            categoryBlock.SetValue(DockPanel.DockProperty, Dock.Right);
+
+            // Name TextBlock (fills remaining space)
+            var nameBlock = new FrameworkElementFactory(typeof(TextBlock));
+            nameBlock.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Name"));
+            nameBlock.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+
+            // Add category first (docked right), then name (fills)
+            factory.AppendChild(categoryBlock);
+            factory.AppendChild(nameBlock);
+
+            template.VisualTree = factory;
+            return template;
         }
 
         private string GetMarketplaceDisplayName(string marketplaceId)
@@ -759,16 +803,14 @@ namespace GitHubNode.Commands
                 return null;
             }
 
-            // It's a string - find which template it corresponds to
-            var selectedText = selectedItem as string;
-            if (string.IsNullOrEmpty(selectedText) || selectedText == _customTemplateText)
+            // If it's a TemplateDisplayItem, return the associated template
+            if (selectedItem is TemplateDisplayItem displayItem)
             {
-                return null;
+                return displayItem.Template;
             }
 
-            // Find the template by display name
-            return _filteredTemplates?.FirstOrDefault(t =>
-                string.Equals(t.DisplayName ?? t.FileName, selectedText, StringComparison.Ordinal));
+            // It's a string (e.g., "<Custom>") - return null
+            return null;
         }
 
         private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
@@ -1146,6 +1188,27 @@ namespace GitHubNode.Commands
 
             return $"Template: {templateName} - Source: {provider.DisplayName}";
         }
+    }
+
+    /// <summary>
+    /// Display item for template dropdown with separate name and category for styling.
+    /// </summary>
+    internal sealed class TemplateDisplayItem
+    {
+        public string Name { get; }
+        public string Category { get; }
+        public TemplateInfo Template { get; }
+
+        public TemplateDisplayItem(TemplateInfo template)
+        {
+            Template = template;
+            Name = template?.DisplayName ?? template?.Name ?? template?.FileName ?? "Unknown";
+            Category = template?.Category;
+        }
+
+        public override string ToString() => string.IsNullOrEmpty(Category)
+            ? Name
+            : $"{Name} ({Category})";
     }
 }
 
