@@ -93,9 +93,11 @@ Folders show an aggregate status based on their contents - for example, if any f
 The extension adds an **MCP Servers** node that provides centralized access to all Model Context Protocol (MCP) server configurations in your solution:
 
 - Automatically discovers MCP configuration files from all standard locations:
-  - `.github/mcp.json` - Repository-level configuration
-  - `%APPDATA%/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json` - Cline global settings
-  - Solution-local `.mcp/mcp.json` - Solution-specific configuration
+  - `%USERPROFILE%\.mcp.json` - Global configuration for all solutions
+  - `<SolutionDir>\.vs\mcp.json` - Solution-specific, user-specific settings
+  - `<SolutionDir>\.mcp.json` - Repository-wide configuration (recommended)
+  - `<SolutionDir>\.vscode\mcp.json` - VS Code compatibility
+  - `<SolutionDir>\.cursor\mcp.json` - Cursor compatibility
 - Displays each configuration file with its servers organized hierarchically
 - Live updates when configuration files are added, modified, or removed
 - Click on a server entry to view its configuration details
@@ -110,8 +112,9 @@ When creating Copilot agents, instructions, prompts, or skills, the dialog suppo
 Currently included providers:
 
 - **GitHub Awesome Copilot** - Community templates from [awesome-copilot](https://github.com/github/awesome-copilot) for agents, prompts, instructions, and skills
-- **dotnet/skills plugins** - Templates from [dotnet/skills/plugins](https://github.com/dotnet/skills/tree/main/plugins) for agents and skills
-- **anthropics/skills** - Templates from [anthropics/skills](https://github.com/anthropics/skills/tree/main/skills) for skills
+- **GitHub Copilot Plugins** - Templates from [copilot-plugins](https://github.com/github/copilot-plugins) for agents and skills
+- **dotnet/skills** - Templates from [dotnet/skills](https://github.com/dotnet/skills) for agents and skills
+- **anthropics/skills** - Templates from [anthropics/skills](https://github.com/anthropics/skills) for skills
 
 ![Template Selection Dialog](art/template-dialog.png)
 

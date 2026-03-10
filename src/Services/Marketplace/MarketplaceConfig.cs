@@ -40,10 +40,10 @@ namespace GitHubNode.Services.Marketplace
         public List<MarketplaceEntry> Marketplaces { get; set; } = new List<MarketplaceEntry>();
 
         /// <summary>
-        /// Gets or sets the update interval in hours. Defaults to 24.
+        /// Gets or sets the update interval in hours. Defaults to 168 (7 days).
         /// </summary>
         [JsonPropertyName("updateIntervalHours")]
-        public int UpdateIntervalHours { get; set; } = 24;
+        public int UpdateIntervalHours { get; set; } = 168;
 
         /// <summary>
         /// Gets or sets whether built-in marketplaces are enabled. Defaults to true.
