@@ -431,7 +431,11 @@ namespace GitHubNode.Services.Marketplace
                     plugin.Assets.Add(asset);
                 }
 
-                // Scan for MCP servers (mcp.json)
+                // Scan for MCP servers (.mcp.json and mcp.json)
+                foreach (var file in Directory.GetFiles(pluginDir, ".mcp.json", SearchOption.AllDirectories))
+                {
+                    plugin.Assets.Add(CreateAsset(file, repoPath, AssetType.McpServer, plugin.Name, plugin.MarketplaceId));
+                }
                 foreach (var file in Directory.GetFiles(pluginDir, "mcp.json", SearchOption.AllDirectories))
                 {
                     plugin.Assets.Add(CreateAsset(file, repoPath, AssetType.McpServer, plugin.Name, plugin.MarketplaceId));

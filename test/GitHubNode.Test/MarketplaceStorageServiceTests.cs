@@ -65,6 +65,6 @@ public class MarketplaceStorageServiceTests
         Assert.IsNotNull(config);
         Assert.IsNotNull(config.Marketplaces);
         Assert.IsTrue(config.EnableBuiltInMarketplaces);
-        Assert.AreEqual(24, config.UpdateIntervalHours);
+        Assert.AreEqual(168, config.UpdateIntervalHours);
     }
 }

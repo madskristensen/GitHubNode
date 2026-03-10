@@ -63,6 +63,8 @@
     <Compile Include="Commands\DeleteCommand.cs" />
     <Compile Include="Commands\GitHubFileCommandBase.cs" />
     <Compile Include="Commands\InputDialog.cs" />
+    <Compile Include="Commands\InstallMcpServerCommand.cs" />
+    <Compile Include="Commands\InstallMcpServerDialog.cs" />
     <Compile Include="Commands\ManageMarketplacesCommand.cs" />
     <Compile Include="Commands\ManageMarketplacesDialog.cs" />
     <Compile Include="Commands\OpenInFileExplorerCommand.cs" />
@@ -110,6 +112,7 @@
     <Compile Include="Services\Marketplace\MarketplaceService.cs" />
     <Compile Include="Services\Marketplace\MarketplaceStorageService.cs" />
     <Compile Include="Services\Marketplace\MarketplaceTemplateAdapter.cs" />
+    <Compile Include="Services\McpInstallService.cs" />
     <Compile Include="Services\McpSettingsService.cs" />
     <Compile Include="Services\Providers\TemplateProviderRegistry.cs" />
     <Compile Include="Services\SyntaxColors.cs" />

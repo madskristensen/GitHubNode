@@ -408,6 +408,17 @@
             <CanonicalName>.GitHubNode.RefreshMcp</CanonicalName>
           </Strings>
         </Button>
+
+        <!-- Install MCP Server from Marketplace -->
+        <Button guid="GitHubNode" id="InstallMcpServer" priority="0x0200" type="Button">
+          <Parent guid="GitHubNode" id="McpRootAddGroup" />
+          <Icon guid="ImageCatalogGuid" id="DownloadNoColor" />
+          <CommandFlag>IconIsMoniker</CommandFlag>
+          <Strings>
+            <ButtonText>Install MCP Server from Marketplace...</ButtonText>
+            <CanonicalName>.GitHubNode.InstallMcpServer</CanonicalName>
+          </Strings>
+        </Button>
       </Buttons>
     </Commands>
 
@@ -499,6 +510,7 @@
             <IDSymbol name="RefreshMcp" value="0x0117" />
             <IDSymbol name="ToggleMcpServers" value="0x0118" />
             <IDSymbol name="ManageMarketplaces" value="0x0119" />
+            <IDSymbol name="InstallMcpServer" value="0x011A" />
           </GuidSymbol>
         </Symbols>
       </CommandTable>
