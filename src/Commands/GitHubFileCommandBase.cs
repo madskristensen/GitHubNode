@@ -132,11 +132,9 @@ namespace GitHubNode.Commands
             {
                 // Create preview generator that uses the subclass's GetFileContent method
                 Func<string, string> previewGenerator = GetFileContent;
-                var templateProviders = TemplateType.HasValue
-                    ? AwesomeCopilotService.GetProvidersForTemplateType(TemplateType.Value)
-                    : null;
 
-                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator, TemplateType, templateProviders);
+                // Marketplace providers are loaded asynchronously by the dialog
+                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator, TemplateType, marketplaceProviders: null);
                 if (dialog.ShowModal() != true || string.IsNullOrWhiteSpace(dialog.InputText))
                 {
                     return;

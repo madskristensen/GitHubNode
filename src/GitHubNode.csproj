@@ -52,6 +52,7 @@
     <Compile Include="Commands\AddFundingCommand.cs" />
     <Compile Include="Commands\AddGitHubSubMenuCommand.cs" />
     <Compile Include="Commands\AddIssueTemplateCommand.cs" />
+    <Compile Include="Commands\AddMarketplaceDialog.cs" />
     <Compile Include="Commands\AddPromptCommand.cs" />
     <Compile Include="Commands\AddPullRequestTemplateCommand.cs" />
     <Compile Include="Commands\AddSecurityCommand.cs" />
@@ -62,6 +63,8 @@
     <Compile Include="Commands\DeleteCommand.cs" />
     <Compile Include="Commands\GitHubFileCommandBase.cs" />
     <Compile Include="Commands\InputDialog.cs" />
+    <Compile Include="Commands\ManageMarketplacesCommand.cs" />
+    <Compile Include="Commands\ManageMarketplacesDialog.cs" />
     <Compile Include="Commands\OpenInFileExplorerCommand.cs" />
     <Compile Include="Commands\OpenOnGitHubCommand.cs" />
     <Compile Include="Commands\RenameCommand.cs" />
@@ -99,6 +102,15 @@
     <Compile Include="Services\GitHubUrlService.cs" />
     <Compile Include="Services\GitStatusService.cs" />
     <Compile Include="Services\MarkdownSyntaxHighlighter.cs" />
+    <Compile Include="Services\Marketplace\AssetType.cs" />
+    <Compile Include="Services\Marketplace\Marketplace.cs" />
+    <Compile Include="Services\Marketplace\MarketplaceConfig.cs" />
+    <Compile Include="Services\Marketplace\MarketplaceGitService.cs" />
+    <Compile Include="Services\Marketplace\MarketplaceParserService.cs" />
+    <Compile Include="Services\Marketplace\MarketplacePlugin.cs" />
+    <Compile Include="Services\Marketplace\MarketplaceService.cs" />
+    <Compile Include="Services\Marketplace\MarketplaceStorageService.cs" />
+    <Compile Include="Services\Marketplace\MarketplaceTemplateAdapter.cs" />
     <Compile Include="Services\McpSettingsService.cs" />
     <Compile Include="Services\Providers\AwesomeCopilotTemplateProvider.cs" />
     <Compile Include="Services\Providers\DotNetSkillsTemplateProvider.cs" />

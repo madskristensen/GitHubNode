@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Automation;
 using GitHubNode.Services;
+using GitHubNode.Services.Marketplace;
 using Microsoft.VisualStudio.PlatformUI;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -17,7 +18,7 @@ namespace GitHubNode.Commands
     /// <summary>
     /// A simple input dialog for prompting the user for text input.
     /// Uses Visual Studio theming for consistent appearance.
-    /// Supports optional template dropdown loaded from remote repositories.
+    /// Supports optional template dropdown loaded from marketplace repositories.
     /// </summary>
     internal sealed class InputDialog : DialogWindow
     {
@@ -37,9 +38,9 @@ namespace GitHubNode.Commands
         private readonly Button _copyButton;
         private readonly Func<string, string> _previewGenerator;
         private readonly TemplateType? _templateType;
-        private readonly List<TemplateProvider> _templateProviders;
         private readonly string _defaultFileName;
 
+        private List<MarketplaceAsProvider> _marketplaceProviders;
         private bool _userModifiedFileName;
         private List<TemplateInfo> _templates;
         private string _currentPreviewContent;
@@ -66,13 +67,13 @@ namespace GitHubNode.Commands
             string defaultValue = "",
             Func<string, string> previewGenerator = null,
             TemplateType? templateType = null,
-            IReadOnlyList<TemplateProvider> templateProviders = null)
+            IReadOnlyList<MarketplaceAsProvider> marketplaceProviders = null)
         {
             _previewGenerator = previewGenerator;
             _templateType = templateType;
-            _templateProviders = templateProviders == null
-                ? new List<TemplateProvider>()
-                : new List<TemplateProvider>(templateProviders);
+            _marketplaceProviders = marketplaceProviders == null
+                ? new List<MarketplaceAsProvider>()
+                : new List<MarketplaceAsProvider>(marketplaceProviders);
             _defaultFileName = defaultValue;
 
             Title = title;
@@ -107,7 +108,7 @@ namespace GitHubNode.Commands
 
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            var showProviderDropdown = templateType != null && _templateProviders.Count > 1;
+            var showProviderDropdown = templateType != null && _marketplaceProviders.Count > 1;
             if (showProviderDropdown)
             {
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -152,7 +153,7 @@ namespace GitHubNode.Commands
             {
                 var providerLabel = new TextBlock
                 {
-                    Text = "Provider:",
+                    Text = "Marketplace:",
                     Margin = new Thickness(0, 0, 0, 4)
                 };
                 providerLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
@@ -166,7 +167,7 @@ namespace GitHubNode.Commands
                 };
                 _providerComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
 
-                foreach (TemplateProvider provider in _templateProviders)
+                foreach (MarketplaceAsProvider provider in _marketplaceProviders)
                 {
                     _providerComboBox.Items.Add(provider);
                 }
@@ -549,17 +550,47 @@ namespace GitHubNode.Commands
 
             try
             {
-                TemplateProvider provider = GetSelectedProvider();
+                MarketplaceAsProvider provider = GetSelectedProvider();
+
+                // Load providers if not yet loaded (this clones marketplace repos on first run)
+                if (_marketplaceProviders.Count == 0)
+                {
+                    SetStatus("Initializing marketplaces (first run may take a moment)...");
+                    SetRefreshEnabled(false);
+
+                    _marketplaceProviders = await TemplateProviderRegistry.GetProvidersForTemplateTypeAsync(_templateType.Value, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // Update provider dropdown
+                    if (_providerComboBox != null)
+                    {
+                        _providerComboBox.Items.Clear();
+                        foreach (var p in _marketplaceProviders)
+                        {
+                            _providerComboBox.Items.Add(p);
+                        }
+
+                        if (_marketplaceProviders.Count > 0)
+                        {
+                            _providerComboBox.SelectedIndex = 0;
+                        }
+                    }
+
+                    provider = GetSelectedProvider();
+                }
+                else
+                {
+                    SetStatus("Loading templates...");
+                    SetRefreshEnabled(false);
+                }
+
                 if (provider == null)
                 {
-                    SetStatus("No providers available");
+                    SetStatus("No marketplaces available. Check your internet connection or use Manage Marketplaces.");
                     return;
                 }
 
-                SetStatus("Fetching templates from GitHub...");
-                SetRefreshEnabled(false);
-
-                _templates = await AwesomeCopilotService.GetTemplatesAsync(_templateType.Value, provider, forceRefresh, cancellationToken);
+                _templates = await TemplateProviderRegistry.GetTemplatesAsync(_templateType.Value, provider, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 while (_templateComboBox.Items.Count > 1)
@@ -574,15 +605,15 @@ namespace GitHubNode.Commands
 
                 if (_templates.Count > 0)
                 {
-                    SetStatus($"Loaded {_templates.Count} templates");
+                    SetStatus($"Loaded {_templates.Count} templates from {provider.DisplayName}");
                     _templateLabel.Text = $"Template ({_templates.Count} available):";
                 }
                 else
                 {
-                    string fetchIssue = AwesomeCopilotService.GetLastFetchIssue(_templateType.Value, provider);
-                    SetStatus(!string.IsNullOrWhiteSpace(fetchIssue)
-                        ? fetchIssue
-                        : "No templates available from GitHub for this provider.");
+                    string errorMessage = provider.HasError
+                        ? provider.ErrorMessage
+                        : $"No templates found in {provider.DisplayName}.";
+                    SetStatus(errorMessage);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -712,18 +743,22 @@ namespace GitHubNode.Commands
                 if (string.IsNullOrEmpty(template.Content))
                 {
                     SetStatus("Loading template content...");
-                    TemplateContentResult loadResult = await AwesomeCopilotService.GetTemplateContentResultAsync(template, cancellationToken);
+
+                    // For marketplace templates, content is loaded from local files
+                    await Task.Run(() =>
+                    {
+                        template.Content = TemplateProviderRegistry.GetTemplateContent(template);
+                    }, cancellationToken);
+
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (loadResult.HasError)
+                    if (string.IsNullOrEmpty(template.Content))
                     {
                         SelectedTemplateContent = null;
-                        SetStatus(loadResult.ErrorMessage);
+                        SetStatus("Failed to load template content.");
                         ClearPreviewContent();
                         return;
                     }
-
-                    template.Content = loadResult.Content;
                 }
 
                 SelectedTemplateContent = template.Content;
@@ -894,16 +929,16 @@ namespace GitHubNode.Commands
             return button;
         }
 
-        private TemplateProvider GetSelectedProvider()
+        private MarketplaceAsProvider GetSelectedProvider()
         {
-            if (_providerComboBox?.SelectedItem is TemplateProvider provider)
+            if (_providerComboBox?.SelectedItem is MarketplaceAsProvider provider)
             {
                 return provider;
             }
 
-            if (_templateProviders.Count > 0)
+            if (_marketplaceProviders.Count > 0)
             {
-                return _templateProviders[0];
+                return _marketplaceProviders[0];
             }
 
             return null;
@@ -916,10 +951,10 @@ namespace GitHubNode.Commands
                 return "Template";
             }
 
-            TemplateProvider provider = null;
+            MarketplaceAsProvider provider = null;
             if (!string.IsNullOrWhiteSpace(template.ProviderId))
             {
-                provider = _templateProviders.Find(candidate => candidate.Id == template.ProviderId);
+                provider = _marketplaceProviders.Find(candidate => candidate.Id == template.ProviderId);
             }
 
             provider ??= GetSelectedProvider();
@@ -935,16 +970,12 @@ namespace GitHubNode.Commands
                     : $"Template: {templateName}";
             }
 
-            var repository = string.IsNullOrWhiteSpace(provider.RepoOwner) || string.IsNullOrWhiteSpace(provider.RepoName)
-                ? provider.DisplayName
-                : $"{provider.RepoOwner}/{provider.RepoName}";
-
             if (string.IsNullOrWhiteSpace(templateName))
             {
-                return $"Source: {provider.DisplayName} ({repository})";
+                return $"Source: {provider.DisplayName}";
             }
 
-            return $"Template: {templateName} - Source: {provider.DisplayName} ({repository})";
+            return $"Template: {templateName} - Source: {provider.DisplayName}";
         }
     }
 }

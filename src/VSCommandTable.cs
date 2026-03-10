@@ -67,5 +67,6 @@ namespace GitHubNode
         public const int AddMcpConfig = 0x0116;
         public const int RefreshMcp = 0x0117;
         public const int ToggleMcpServers = 0x0118;
+        public const int ManageMarketplaces = 0x0119;
     }
 }

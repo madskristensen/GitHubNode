@@ -265,6 +265,17 @@
           <CanonicalName>.GitHubNode.ToggleMcpServers</CanonicalName>
         </Strings>
       </Button>
+
+      <!-- Manage Marketplaces -->
+      <Button guid="GitHubNode" id="ManageMarketplaces" priority="0x0300" type="Button">
+        <Parent guid="GitHubNode" id="RootActionsGroup" />
+        <Icon guid="ImageCatalogGuid" id="DownloadNoColor" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Manage Marketplaces...</ButtonText>
+          <CanonicalName>.GitHubNode.ManageMarketplaces</CanonicalName>
+        </Strings>
+      </Button>
       
       <!-- Open in File Explorer (Folder) -->
       <Button guid="GitHubNode" id="OpenInFileExplorerFolder" priority="0x0100" type="Button">
@@ -487,6 +498,7 @@
             <IDSymbol name="AddMcpConfig" value="0x0116" />
             <IDSymbol name="RefreshMcp" value="0x0117" />
             <IDSymbol name="ToggleMcpServers" value="0x0118" />
+            <IDSymbol name="ManageMarketplaces" value="0x0119" />
           </GuidSymbol>
         </Symbols>
       </CommandTable>
