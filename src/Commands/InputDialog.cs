@@ -32,7 +32,7 @@ namespace GitHubNode.Commands
 
         private readonly TextBox _textBox;
         private readonly RichTextBox _previewBox;
-        private readonly ComboBox _scopeComboBox;
+        private readonly CheckBox _userProfileCheckBox;
         private readonly ComboBox _providerComboBox;
         private readonly TextBox _searchBox;
         private readonly ComboBox _templateComboBox;
@@ -61,7 +61,7 @@ namespace GitHubNode.Commands
         /// Gets the selected installation scope.
         /// </summary>
         public Services.InstallScope SelectedScope =>
-            _scopeComboBox?.SelectedIndex == 1 ? Services.InstallScope.UserProfile : Services.InstallScope.Solution;
+            _userProfileCheckBox?.IsChecked == true ? Services.InstallScope.UserProfile : Services.InstallScope.Solution;
 
         /// <summary>
         /// Gets the content to use for the file.
@@ -115,93 +115,93 @@ namespace GitHubNode.Commands
             _allTemplates = new List<TemplateInfo>();
             _filteredTemplates = new List<TemplateInfo>();
 
+            // Constants for two-column layout
+            const double labelWidth = 100;
+            const double rowSpacing = 8;
+
             var grid = new Grid
             {
                 Margin = new Thickness(12)
             };
+
+            // Define two columns: fixed-width labels, remaining space for inputs
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(labelWidth) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Prompt
 
             // Always add rows for scope, marketplace, search, and template when templateType is set
             if (templateType != null)
             {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Scope label
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Scope dropdown
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace label
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace dropdown
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Search label
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Search box
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Template label
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Template dropdown
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Scope checkbox
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Search
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Template
             }
 
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // File name label
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // File name textbox
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // File name
 
             if (previewGenerator != null || templateType != null)
             {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Preview label
+                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Preview box
             }
 
             if (templateType != null)
             {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Status text
             }
 
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Buttons
 
             var currentRow = 0;
 
+            // Prompt spans both columns
             var label = new TextBlock
             {
                 Text = prompt,
-                Margin = new Thickness(0, 0, 0, 8),
+                Margin = new Thickness(0, 0, 0, rowSpacing),
                 TextWrapping = TextWrapping.Wrap
             };
             label.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-            Grid.SetRow(label, currentRow++);
+            Grid.SetRow(label, currentRow);
+            Grid.SetColumnSpan(label, 2);
             grid.Children.Add(label);
+            currentRow++;
 
             if (templateType != null)
             {
-                // Scope dropdown (first, before marketplace)
-                var scopeLabel = new TextBlock
+                // Scope checkbox (spans both columns)
+                _userProfileCheckBox = new CheckBox
                 {
-                    Text = "Install to:",
-                    Margin = new Thickness(0, 0, 0, 4)
+                    Content = "Install to User Profile (all solutions)",
+                    Margin = new Thickness(0, 0, 0, rowSpacing),
+                    VerticalContentAlignment = VerticalAlignment.Center
                 };
-                scopeLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-                Grid.SetRow(scopeLabel, currentRow++);
-                grid.Children.Add(scopeLabel);
+                _userProfileCheckBox.SetResourceReference(CheckBox.StyleProperty, VsResourceKeys.CheckBoxStyleKey);
+                _userProfileCheckBox.SetResourceReference(CheckBox.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+                AutomationProperties.SetName(_userProfileCheckBox, "Install to User Profile");
+                AutomationProperties.SetHelpText(_userProfileCheckBox, "Check to install to your User Profile for all solutions. Uncheck to install to Solution (shared with team).");
+                Grid.SetRow(_userProfileCheckBox, currentRow);
+                Grid.SetColumnSpan(_userProfileCheckBox, 2);
+                grid.Children.Add(_userProfileCheckBox);
+                currentRow++;
 
-                _scopeComboBox = new ComboBox
-                {
-                    Margin = new Thickness(0, 0, 0, 8),
-                    IsEditable = false
-                };
-                _scopeComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
-                _scopeComboBox.Items.Add("Solution (shared with team)");
-                _scopeComboBox.Items.Add("User Profile (all solutions)");
-                _scopeComboBox.SelectedIndex = 0;
-                AutomationProperties.SetName(_scopeComboBox, "Installation scope");
-                AutomationProperties.SetHelpText(_scopeComboBox, "Choose where to install: Solution for team-shared assets, or User Profile for personal global settings.");
-                Grid.SetRow(_scopeComboBox, currentRow++);
-                grid.Children.Add(_scopeComboBox);
-
-                // Marketplace dropdown (always shown for templates)
+                // Marketplace row
                 var providerLabel = new TextBlock
                 {
                     Text = "Marketplace:",
-                    Margin = new Thickness(0, 0, 0, 4)
+                    Margin = new Thickness(0, 0, 8, 0),
+                    VerticalAlignment = VerticalAlignment.Center
                 };
                 providerLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-                Grid.SetRow(providerLabel, currentRow++);
+                Grid.SetRow(providerLabel, currentRow);
+                Grid.SetColumn(providerLabel, 0);
                 grid.Children.Add(providerLabel);
 
                 _providerComboBox = new ComboBox
                 {
-                    Margin = new Thickness(0, 0, 0, 8),
+                    Margin = new Thickness(0, 0, 0, rowSpacing),
                     IsEditable = false
                 };
                 _providerComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
@@ -210,22 +210,26 @@ namespace GitHubNode.Commands
                 _providerComboBox.SelectionChanged += OnProviderSelectionChanged;
                 AutomationProperties.SetName(_providerComboBox, "Marketplace filter");
                 AutomationProperties.SetHelpText(_providerComboBox, "Filter templates by marketplace, or select 'All Marketplaces' to see all.");
-                Grid.SetRow(_providerComboBox, currentRow++);
+                Grid.SetRow(_providerComboBox, currentRow);
+                Grid.SetColumn(_providerComboBox, 1);
                 grid.Children.Add(_providerComboBox);
+                currentRow++;
 
-                // Search box
+                // Search row
                 var searchLabel = new TextBlock
                 {
                     Text = "Search:",
-                    Margin = new Thickness(0, 0, 0, 4)
+                    Margin = new Thickness(0, 0, 8, 0),
+                    VerticalAlignment = VerticalAlignment.Center
                 };
                 searchLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-                Grid.SetRow(searchLabel, currentRow++);
+                Grid.SetRow(searchLabel, currentRow);
+                Grid.SetColumn(searchLabel, 0);
                 grid.Children.Add(searchLabel);
 
                 _searchBox = new TextBox
                 {
-                    Margin = new Thickness(0, 0, 0, 8),
+                    Margin = new Thickness(0, 0, 0, rowSpacing),
                     Padding = new Thickness(4, 2, 4, 2)
                 };
                 _searchBox.SetResourceReference(TextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
@@ -234,22 +238,26 @@ namespace GitHubNode.Commands
                 _searchBox.TextChanged += OnSearchTextChanged;
                 AutomationProperties.SetName(_searchBox, "Search templates");
                 AutomationProperties.SetHelpText(_searchBox, "Type to filter templates by name.");
-                Grid.SetRow(_searchBox, currentRow++);
+                Grid.SetRow(_searchBox, currentRow);
+                Grid.SetColumn(_searchBox, 1);
                 grid.Children.Add(_searchBox);
+                currentRow++;
 
-                // Template dropdown
+                // Template row
                 _templateLabel = new TextBlock
                 {
                     Text = "Template:",
-                    Margin = new Thickness(0, 0, 0, 4)
+                    Margin = new Thickness(0, 0, 8, 0),
+                    VerticalAlignment = VerticalAlignment.Center
                 };
                 _templateLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-                Grid.SetRow(_templateLabel, currentRow++);
+                Grid.SetRow(_templateLabel, currentRow);
+                Grid.SetColumn(_templateLabel, 0);
                 grid.Children.Add(_templateLabel);
 
                 _templateComboBox = new ComboBox
                 {
-                    Margin = new Thickness(0, 0, 0, 12),
+                    Margin = new Thickness(0, 0, 0, rowSpacing),
                     IsEditable = false,
                     ItemTemplate = CreateTemplateItemTemplate()
                 };
@@ -259,23 +267,28 @@ namespace GitHubNode.Commands
                 _templateComboBox.SelectionChanged += OnTemplateSelectionChanged;
                 AutomationProperties.SetName(_templateComboBox, "Template selection");
                 AutomationProperties.SetHelpText(_templateComboBox, "Use Alt + Up or Alt + Down to move between templates.");
-                Grid.SetRow(_templateComboBox, currentRow++);
+                Grid.SetRow(_templateComboBox, currentRow);
+                Grid.SetColumn(_templateComboBox, 1);
                 grid.Children.Add(_templateComboBox);
+                currentRow++;
             }
 
+            // File name row
             var fileNameLabel = new TextBlock
             {
                 Text = "File name:",
-                Margin = new Thickness(0, 0, 0, 4)
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
             };
             fileNameLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-            Grid.SetRow(fileNameLabel, currentRow++);
+            Grid.SetRow(fileNameLabel, currentRow);
+            Grid.SetColumn(fileNameLabel, 0);
             grid.Children.Add(fileNameLabel);
 
             _textBox = new TextBox
             {
                 Text = defaultValue,
-                Margin = new Thickness(0, 0, 0, 12),
+                Margin = new Thickness(0, 0, 0, rowSpacing),
                 Padding = new Thickness(4, 2, 4, 2)
             };
             _textBox.SetResourceReference(TextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
@@ -284,8 +297,10 @@ namespace GitHubNode.Commands
             _textBox.TextChanged += OnFileNameTextChanged;
             AutomationProperties.SetName(_textBox, "File name");
             AutomationProperties.SetHelpText(_textBox, "Enter the name of the file to create.");
-            Grid.SetRow(_textBox, currentRow++);
+            Grid.SetRow(_textBox, currentRow);
+            Grid.SetColumn(_textBox, 1);
             grid.Children.Add(_textBox);
+            currentRow++;
 
             if (previewGenerator != null || templateType != null)
             {
@@ -295,8 +310,10 @@ namespace GitHubNode.Commands
                     Margin = new Thickness(0, 0, 0, 4)
                 };
                 previewLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-                Grid.SetRow(previewLabel, currentRow++);
+                Grid.SetRow(previewLabel, currentRow);
+                Grid.SetColumnSpan(previewLabel, 2);
                 grid.Children.Add(previewLabel);
+                currentRow++;
 
                 _previewBox = new RichTextBox
                 {
@@ -305,7 +322,7 @@ namespace GitHubNode.Commands
                     HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                     FontFamily = new FontFamily("Consolas"),
                     FontSize = 12,
-                    Margin = new Thickness(0, 0, 0, 12),
+                    Margin = new Thickness(0, 0, 0, rowSpacing),
                     Padding = new Thickness(4),
                     BorderThickness = new Thickness(1)
                 };
@@ -315,8 +332,10 @@ namespace GitHubNode.Commands
                 AutomationProperties.SetName(_previewBox, "Template preview");
                 AutomationProperties.SetHelpText(_previewBox, "Read-only preview of the selected template content.");
 
-                Grid.SetRow(_previewBox, currentRow++);
+                Grid.SetRow(_previewBox, currentRow);
+                Grid.SetColumnSpan(_previewBox, 2);
                 grid.Children.Add(_previewBox);
+                currentRow++;
             }
 
             if (templateType != null)
@@ -325,19 +344,22 @@ namespace GitHubNode.Commands
                 {
                     VerticalAlignment = VerticalAlignment.Center,
                     FontSize = 11,
-                    Margin = new Thickness(0, 0, 0, 8)
+                    Margin = new Thickness(0, 0, 0, rowSpacing)
                 };
                 _statusText.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
                 AutomationProperties.SetName(_statusText, "Template status");
 
-                Grid.SetRow(_statusText, currentRow++);
+                Grid.SetRow(_statusText, currentRow);
+                Grid.SetColumnSpan(_statusText, 2);
                 grid.Children.Add(_statusText);
+                currentRow++;
             }
 
             var buttonRowGrid = new Grid();
             buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             buttonRowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             Grid.SetRow(buttonRowGrid, currentRow);
+            Grid.SetColumnSpan(buttonRowGrid, 2);
 
             if (templateType != null)
             {
@@ -925,6 +947,11 @@ namespace GitHubNode.Commands
 
         private void SetInputControlsEnabled(bool enabled)
         {
+            if (_userProfileCheckBox != null)
+            {
+                _userProfileCheckBox.IsEnabled = enabled;
+            }
+
             if (_providerComboBox != null)
             {
                 _providerComboBox.IsEnabled = enabled;
