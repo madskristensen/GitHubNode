@@ -50,6 +50,7 @@ namespace GitHubNode.Commands
         private string _currentPreviewContent;
         private CancellationTokenSource _templateListCancellationTokenSource;
         private CancellationTokenSource _templateContentCancellationTokenSource;
+        private bool _isInitialLoad;
 
         /// <summary>
         /// Gets the text entered by the user.
@@ -383,12 +384,19 @@ namespace GitHubNode.Commands
             grid.Children.Add(buttonRowGrid);
             Content = grid;
 
-            Loaded += OnDialogLoaded;
+            ContentRendered += OnContentRendered;
             SourceInitialized += OnSourceInitialized;
             Closing += OnDialogClosing;
             KeyDown += OnKeyDown;
 
             RestoreDialogSize();
+
+            // Disable all input controls initially if we need to load marketplaces
+            if (templateType != null && _marketplaceProviders.Count == 0)
+            {
+                _isInitialLoad = true;
+                SetInputControlsEnabled(false);
+            }
         }
 
         [DllImport("dwmapi.dll")]
@@ -552,7 +560,7 @@ namespace GitHubNode.Commands
             }
         }
 
-        private async void OnDialogLoaded(object sender, RoutedEventArgs e)
+        private async void OnContentRendered(object sender, EventArgs e)
         {
             _textBox.Focus();
             _textBox.SelectAll();
@@ -632,6 +640,14 @@ namespace GitHubNode.Commands
                 {
                     _templateListCancellationTokenSource = null;
                     SetRefreshEnabled(true);
+
+                    // Re-enable input controls after initial load
+                    if (_isInitialLoad)
+                    {
+                        _isInitialLoad = false;
+                        SetInputControlsEnabled(true);
+                    }
+
                     currentRequestCancellation.Dispose();
                 }
             }
@@ -872,6 +888,34 @@ namespace GitHubNode.Commands
             if (_refreshButton != null)
             {
                 _refreshButton.IsEnabled = enabled;
+            }
+        }
+
+        private void SetInputControlsEnabled(bool enabled)
+        {
+            if (_providerComboBox != null)
+            {
+                _providerComboBox.IsEnabled = enabled;
+            }
+
+            if (_searchBox != null)
+            {
+                _searchBox.IsEnabled = enabled;
+            }
+
+            if (_templateComboBox != null)
+            {
+                _templateComboBox.IsEnabled = enabled;
+            }
+
+            if (_textBox != null)
+            {
+                _textBox.IsEnabled = enabled;
+            }
+
+            if (_copyButton != null)
+            {
+                _copyButton.IsEnabled = enabled;
             }
         }
 
