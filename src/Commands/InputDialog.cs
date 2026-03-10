@@ -128,7 +128,11 @@ namespace GitHubNode.Commands
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(labelWidth) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Prompt
+            // Only add prompt row for non-template dialogs
+            if (templateType == null)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Prompt
+            }
 
             // Always add rows for scope, marketplace, search, and template when templateType is set
             if (templateType != null)
@@ -156,18 +160,21 @@ namespace GitHubNode.Commands
 
             var currentRow = 0;
 
-            // Prompt spans both columns
-            var label = new TextBlock
+            // Only show prompt for non-template dialogs (template dialogs use descriptive title instead)
+            if (templateType == null)
             {
-                Text = prompt,
-                Margin = new Thickness(0, 0, 0, rowSpacing),
-                TextWrapping = TextWrapping.Wrap
-            };
-            label.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-            Grid.SetRow(label, currentRow);
-            Grid.SetColumnSpan(label, 2);
-            grid.Children.Add(label);
-            currentRow++;
+                var label = new TextBlock
+                {
+                    Text = prompt,
+                    Margin = new Thickness(0, 0, 0, rowSpacing),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                label.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+                Grid.SetRow(label, currentRow);
+                Grid.SetColumnSpan(label, 2);
+                grid.Children.Add(label);
+                currentRow++;
+            }
 
             if (templateType != null)
             {
@@ -807,7 +814,7 @@ namespace GitHubNode.Commands
             }
 
             _templateComboBox.SelectedIndex = 0;
-            _templateLabel.Text = $"Template ({_filteredTemplates.Count} available):";
+            _templateLabel.Text = "Template:";
         }
 
         /// <summary>

@@ -43,9 +43,9 @@ namespace GitHubNode.Services
     {
         public static TemplateContentResult Empty { get; } = new TemplateContentResult();
 
-        public string Content { get; private set; }
+        public string Content { get; init; }
 
-        public string ErrorMessage { get; private set; }
+        public string ErrorMessage { get; init; }
 
         public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
 

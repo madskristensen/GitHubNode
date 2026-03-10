@@ -58,6 +58,7 @@
     <Compile Include="Commands\AddSecurityCommand.cs" />
     <Compile Include="Commands\AddSkillCommand.cs" />
     <Compile Include="Commands\AddWorkflowCommand.cs" />
+    <Compile Include="Commands\AgentMarketplaceToolWindowCommand.cs" />
     <Compile Include="Commands\CommandHelpers.cs" />
     <Compile Include="Commands\CopyPathCommand.cs" />
     <Compile Include="Commands\DeleteCommand.cs" />
@@ -67,7 +68,6 @@
     <Compile Include="Commands\InstallMcpServerCommand.cs" />
     <Compile Include="Commands\InstallMcpServerDialog.cs" />
     <Compile Include="Commands\ManageMarketplacesCommand.cs" />
-    <Compile Include="Commands\ManageMarketplacesDialog.cs" />
     <Compile Include="Commands\OpenInFileExplorerCommand.cs" />
     <Compile Include="Commands\OpenOnGitHubCommand.cs" />
     <Compile Include="Commands\RenameCommand.cs" />
@@ -126,6 +126,8 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>source.extension.vsixmanifest</DependentUpon>
     </Compile>
+    <Compile Include="ToolWindows\AgentMarketplaceToolWindow.cs" />
+    <Compile Include="ToolWindows\AgentMarketplaceToolWindowControl.cs" />
     <Compile Include="VSCommandTable.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

@@ -8,8 +8,8 @@ namespace GitHubNode.Commands
     [Command(PackageIds.AddAgent)]
     internal sealed class AddAgentCommand : GitHubFileCommandBase<AddAgentCommand>
     {
-        protected override string DialogTitle => "New Custom Agent";
-        protected override string DialogPrompt => "Select a template or create a custom agent:";
+        protected override string DialogTitle => "Add Custom Agent";
+        protected override string DialogPrompt => "Enter agent name:";
         protected override string DialogDefaultValue => "my-agent.agent.md";
         protected override string ErrorMessagePrefix => "Failed to create agent";
         protected override TemplateType? TemplateType => Services.TemplateType.Agent;

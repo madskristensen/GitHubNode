@@ -7,7 +7,7 @@
   <Include href="VSGlobals.vsct"/>
 
   <Commands package="GitHubNode">
-    
+
     <!-- Context Menus -->
     <Menus>
       <!-- GitHub Root Node Context Menu -->
@@ -63,8 +63,13 @@
         </Strings>
       </Menu>
     </Menus>
-    
+
     <Groups>
+      <!-- Extensions menu group -->
+      <Group guid="GitHubNode" id="ExtensionsMenuGroup" priority="0x0600">
+        <Parent guid="VSMainMenu" id="Extensions"/>
+      </Group>
+
       <!-- Root context menu groups -->
       <Group guid="GitHubNode" id="RootAddGroup" priority="0x0100">
         <Parent guid="GitHubNode" id="GitHubRootContextMenu"/>
@@ -281,7 +286,7 @@
       <!-- Manage Marketplaces -->
       <Button guid="GitHubNode" id="ManageMarketplaces" priority="0x0300" type="Button">
         <Parent guid="GitHubNode" id="RootActionsGroup" />
-        <Icon guid="ImageCatalogGuid" id="DownloadNoColor" />
+        <Icon guid="ImageCatalogGuid" id="Spy" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
           <ButtonText>Manage Marketplaces...</ButtonText>
@@ -442,6 +447,17 @@
             <CanonicalName>.GitHubNode.DeleteMcpServer</CanonicalName>
           </Strings>
         </Button>
+
+        <!-- Agent Marketplace Tool Window (Extensions menu) -->
+        <Button guid="GitHubNode" id="AgentMarketplace" priority="0x0100" type="Button">
+          <Parent guid="GitHubNode" id="ExtensionsMenuGroup" />
+          <Icon guid="ImageCatalogGuid" id="Spy" />
+          <CommandFlag>IconIsMoniker</CommandFlag>
+          <Strings>
+            <ButtonText>Agent Marketplace</ButtonText>
+            <CanonicalName>.GitHubNode.AgentMarketplace</CanonicalName>
+          </Strings>
+        </Button>
       </Buttons>
     </Commands>
 
@@ -507,7 +523,8 @@
       <IDSymbol name="McpRootAddGroup" value="0x0060" />
       <IDSymbol name="McpRootActionsGroup" value="0x0061" />
       <IDSymbol name="McpServerEditGroup" value="0x0062" />
-      
+      <IDSymbol name="ExtensionsMenuGroup" value="0x0070" />
+
       <!-- Commands -->
             <IDSymbol name="AddCopilotInstructions" value="0x0100" />
             <IDSymbol name="AddAgent" value="0x0101" />
@@ -537,6 +554,7 @@
             <IDSymbol name="ManageMarketplaces" value="0x0119" />
             <IDSymbol name="InstallMcpServer" value="0x011A" />
             <IDSymbol name="DeleteMcpServer" value="0x011B" />
+            <IDSymbol name="AgentMarketplace" value="0x011C" />
           </GuidSymbol>
         </Symbols>
       </CommandTable>

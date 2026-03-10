@@ -7,23 +7,25 @@ using Microsoft.Internal.VisualStudio.PlatformUI;
 namespace GitHubNode.SolutionExplorer
 {
     /// <summary>
-    /// Base class for all GitHub nodes in Solution Explorer.
+    /// Shared base class for all Solution Explorer nodes (both GitHub and MCP).
+    /// Implements the common VS interfaces: ITreeDisplayItem, INotifyPropertyChanged,
+    /// ISupportDisposalNotification, and IInteractionPatternProvider.
     /// </summary>
-    internal abstract class GitHubNodeBase : ITreeDisplayItem, INotifyPropertyChanged, ISupportDisposalNotification, IInteractionPatternProvider
+    internal abstract class SolutionExplorerNodeBase : ITreeDisplayItem, INotifyPropertyChanged, ISupportDisposalNotification, IInteractionPatternProvider
     {
         private bool _isDisposed;
         private IAttachedCollectionSource _containedByCollection;
 
-        protected GitHubNodeBase(object parentItem)
+        protected SolutionExplorerNodeBase(object sourceItem, object parentItem)
         {
+            SourceItem = sourceItem;
             ParentItem = parentItem;
         }
 
         /// <summary>
-        /// Gets this item as the source for the attached collection (IAttachedCollectionSource).
-        /// For IAttachedCollectionSource semantics, SourceItem should be the item itself.
+        /// Gets the source item for IAttachedCollectionSource.
         /// </summary>
-        public object SourceItem => this;
+        public object SourceItem { get; }
 
         /// <summary>
         /// Gets the parent item for ContainedBy relationship support.
@@ -88,5 +90,23 @@ namespace GitHubNode.SolutionExplorer
             }
             return null;
         }
+    }
+
+    /// <summary>
+    /// Base class for all GitHub nodes in Solution Explorer.
+    /// SourceItem is always <c>this</c> - the node itself acts as its own IAttachedCollectionSource source.
+    /// </summary>
+    internal abstract class GitHubNodeBase : SolutionExplorerNodeBase
+    {
+        protected GitHubNodeBase(object parentItem)
+            : base(sourceItem: null, parentItem)
+        {
+            // SourceItem is overridden below to return `this`
+        }
+
+        /// <summary>
+        /// For GitHub nodes the source item is the node itself.
+        /// </summary>
+        public new object SourceItem => this;
     }
 }

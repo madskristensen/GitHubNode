@@ -5,6 +5,7 @@ global using Task = System.Threading.Tasks.Task;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using GitHubNode.ToolWindows;
 using Microsoft.VisualStudio;
 
 namespace GitHubNode
@@ -16,6 +17,7 @@ namespace GitHubNode
     [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionHasSingleProject_string, PackageAutoLoadFlags.BackgroundLoad)]
     [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionHasMultipleProjects_string, PackageAutoLoadFlags.BackgroundLoad)]
     [ProvideBindingPath()]
+    [ProvideToolWindow(typeof(AgentMarketplaceToolWindow), Style = VsDockStyle.Tabbed, DockedWidth = 800, DockedHeight = 600, Window = "DocumentWell")]
     public sealed class GitHubNodePackage : ToolkitPackage
     {
         /// <summary>

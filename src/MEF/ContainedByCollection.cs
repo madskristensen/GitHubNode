@@ -25,7 +25,7 @@ namespace GitHubNode.SolutionExplorer
         public ContainedByCollection(object child, object parent)
         {
             SourceItem = child;
-            _items = parent != null ? new[] { parent } : new object[0];
+            _items = parent != null ? new[] { parent } : Array.Empty<object>();
         }
 
         /// <summary>

@@ -5,33 +5,33 @@ namespace GitHubNode.Services.Marketplace
     /// <summary>
     /// Represents owner information in a MarketplaceInfo.json file.
     /// </summary>
-    internal sealed class MarketplaceOwner
+    internal sealed record MarketplaceOwner
     {
         /// <summary>
-        /// Gets or sets the owner name.
+        /// Gets the owner name.
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; init; }
 
         /// <summary>
-        /// Gets or sets the owner email.
+        /// Gets the owner email.
         /// </summary>
-        public string Email { get; set; }
+        public string Email { get; init; }
     }
 
     /// <summary>
     /// Represents metadata in a MarketplaceInfo.json file.
     /// </summary>
-    internal sealed class MarketplaceMetadata
+    internal sealed record MarketplaceMetadata
     {
         /// <summary>
-        /// Gets or sets the MarketplaceInfo description.
+        /// Gets the MarketplaceInfo description.
         /// </summary>
-        public string Description { get; set; }
+        public string Description { get; init; }
 
         /// <summary>
-        /// Gets or sets the MarketplaceInfo version.
+        /// Gets the MarketplaceInfo version.
         /// </summary>
-        public string Version { get; set; }
+        public string Version { get; init; }
     }
 
     /// <summary>
@@ -105,6 +105,11 @@ namespace GitHubNode.Services.Marketplace
         /// Gets or sets any error message from the last operation.
         /// </summary>
         public string ErrorMessage { get; set; }
+
+        /// <summary>
+        /// Gets or sets the path to the locally cached icon file.
+        /// </summary>
+        public string IconPath { get; set; }
 
         /// <summary>
         /// Gets or sets the plugins defined in this MarketplaceInfo.

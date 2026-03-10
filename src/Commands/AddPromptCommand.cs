@@ -8,8 +8,8 @@ namespace GitHubNode.Commands
     [Command(PackageIds.AddPrompt)]
     internal sealed class AddPromptCommand : GitHubFileCommandBase<AddPromptCommand>
     {
-        protected override string DialogTitle => "New Prompt File";
-        protected override string DialogPrompt => "Select a template or create a custom prompt:";
+        protected override string DialogTitle => "Add Prompt File";
+        protected override string DialogPrompt => "Enter prompt name:";
         protected override string DialogDefaultValue => "my-prompt.prompt.md";
         protected override string ErrorMessagePrefix => "Failed to create prompt file";
         protected override TemplateType? TemplateType => Services.TemplateType.Prompt;

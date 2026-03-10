@@ -48,6 +48,7 @@ namespace GitHubNode.Services.Marketplace
             public string description { get; set; }
             public string version { get; set; }
             public string pluginRoot { get; set; }
+            public string icon { get; set; }
         }
 
         /// <summary>
@@ -192,6 +193,9 @@ namespace GitHubNode.Services.Marketplace
                     ? new MarketplaceMetadata { Description = rawJson.metadata.description, Version = rawJson.metadata.version }
                     : null;
                 marketplaceInfo.Description = rawJson.metadata?.description;
+
+                // Copy icon to local storage if specified
+                marketplaceInfo.IconPath = CopyIconToStorage(owner, repo, localPath, rawJson.metadata?.icon);
 
                 // Get the plugin root directory (default to repo root if not specified)
                 // Only trim leading slashes, not dots (to preserve .github folder names)
@@ -672,6 +676,50 @@ namespace GitHubNode.Services.Marketplace
             catch (Exception ex)
             {
                 Debug.WriteLine($"MarketplaceParserService.TryParseMarketplaceJson failed for '{path}': {ex}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Copies the marketplace icon to local storage if specified and valid.
+        /// </summary>
+        private static string CopyIconToStorage(string owner, string repo, string localPath, string iconRelativePath)
+        {
+            if (string.IsNullOrWhiteSpace(iconRelativePath))
+            {
+                return null;
+            }
+
+            try
+            {
+                // Normalize path separators
+                var normalizedPath = iconRelativePath.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar);
+                var sourceIconPath = Path.Combine(localPath, normalizedPath);
+
+                if (!File.Exists(sourceIconPath))
+                {
+                    Debug.WriteLine($"MarketplaceParserService.CopyIconToStorage: Icon not found at '{sourceIconPath}'");
+                    return null;
+                }
+
+                var extension = Path.GetExtension(sourceIconPath);
+                var destIconPath = MarketplaceStorageService.GetIconPath(owner, repo, extension);
+
+                // Copy if source is newer or dest doesn't exist
+                var sourceInfo = new FileInfo(sourceIconPath);
+                var destInfo = new FileInfo(destIconPath);
+
+                if (!destInfo.Exists || sourceInfo.LastWriteTimeUtc > destInfo.LastWriteTimeUtc)
+                {
+                    File.Copy(sourceIconPath, destIconPath, overwrite: true);
+                    Debug.WriteLine($"MarketplaceParserService.CopyIconToStorage: Copied icon to '{destIconPath}'");
+                }
+
+                return destIconPath;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceParserService.CopyIconToStorage failed: {ex}");
                 return null;
             }
         }

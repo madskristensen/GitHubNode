@@ -48,7 +48,7 @@ namespace GitHubNode.SolutionExplorer
             SetupFileWatchers();
         }
 
-        private static ImageMoniker _mcpIcon => new() { Guid = new Guid("ae27a6b0-e345-4288-96df-5eaf394ee369"), Id = 4073 };
+        private static readonly ImageMoniker _mcpIcon = new() { Guid = new Guid("ae27a6b0-e345-4288-96df-5eaf394ee369"), Id = 4073 };
 
         /// <summary>
         /// Gets the solution directory path.

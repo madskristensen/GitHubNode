@@ -135,17 +135,19 @@ In addition to built-in template providers, you can register custom GitHub repos
 
 **Managing Marketplaces:**
 
-Right-click on the GitHub node and select **Manage Marketplaces** to open the marketplace management dialog. From here you can:
+Right-click on the GitHub node and select **Manage Marketplaces** to open the **Agent Marketplace** tool window. You can also open it from the **Extensions** menu. From there you can:
 
-- **View registered marketplaces** - See all built-in and user-added marketplace repositories
+- **View registered marketplaces** - See all built-in and user-added marketplace repositories with details, status, and available templates
 - **Add custom marketplaces** - Register any GitHub repository that follows the marketplace structure
 - **Remove user-added marketplaces** - Built-in marketplaces cannot be removed
-- **Refresh all** - Pull the latest changes from all marketplace repositories
+- **Refresh** - Pull the latest changes from a specific marketplace
+- **Refresh All** - Pull the latest changes from all marketplace repositories
+- **Open in Browser** - Navigate to a marketplace repository on GitHub.com
 
 **How it works:**
 
 - Marketplaces are GitHub repositories containing plugin definitions with agents, skills, instructions, and prompts
-- Repositories are cloned locally and updated automatically (configurable interval)
+- Repositories are cloned locally and updated automatically
 - When creating new files, templates from all registered marketplaces appear in the provider dropdown
 - Each marketplace can contain multiple plugins, each with various asset types
 

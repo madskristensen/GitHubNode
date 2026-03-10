@@ -111,18 +111,7 @@ namespace GitHubNode.Services
         /// <returns>List of existing MCP configuration locations.</returns>
         public static List<McpConfigLocation> GetExistingLocations(string solutionDirectory)
         {
-            List<McpConfigLocation> allLocations = GetAllLocations(solutionDirectory);
-            var existingLocations = new List<McpConfigLocation>();
-
-            foreach (McpConfigLocation location in allLocations)
-            {
-                if (location.Exists)
-                {
-                    existingLocations.Add(location);
-                }
-            }
-
-            return existingLocations;
+            return GetAllLocations(solutionDirectory).Where(l => l.Exists).ToList();
         }
 
         /// <summary>
@@ -176,39 +165,7 @@ namespace GitHubNode.Services
         /// <returns>List of server names, or empty list if parsing fails.</returns>
         public static List<string> ParseServerNames(string filePath)
         {
-            var serverNames = new List<string>();
-
-            if (!File.Exists(filePath))
-            {
-                return serverNames;
-            }
-
-            try
-            {
-                var json = File.ReadAllText(filePath);
-                JsonElement? servers = GetServersObject(json);
-                if (servers == null)
-                {
-                    return serverNames;
-                }
-
-                foreach (JsonProperty serverEntry in servers.Value.EnumerateObject())
-                {
-                    serverNames.Add(serverEntry.Name);
-                }
-            }
-            catch (JsonException ex)
-            {
-                _ = ex.LogAsync();
-                Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
-            }
-            catch (IOException ex)
-            {
-                _ = ex.LogAsync();
-                Debug.WriteLine($"McpConfigService.ParseServerNames failed for '{filePath}': {ex}");
-            }
-
-            return serverNames;
+            return new List<string>(ParseServerInfo(filePath).Keys);
         }
 
         /// <summary>

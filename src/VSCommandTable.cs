@@ -44,6 +44,7 @@ namespace GitHubNode
         public const int McpRootAddGroup = 0x0060;
         public const int McpRootActionsGroup = 0x0061;
         public const int McpServerEditGroup = 0x0062;
+        public const int ExtensionsMenuGroup = 0x0070;
         public const int AddCopilotInstructions = 0x0100;
         public const int AddAgent = 0x0101;
         public const int AddPrompt = 0x0102;
@@ -72,5 +73,6 @@ namespace GitHubNode
         public const int ManageMarketplaces = 0x0119;
         public const int InstallMcpServer = 0x011A;
         public const int DeleteMcpServer = 0x011B;
+        public const int AgentMarketplace = 0x011C;
     }
 }

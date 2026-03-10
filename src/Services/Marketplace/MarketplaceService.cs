@@ -16,7 +16,7 @@ namespace GitHubNode.Services.Marketplace
     {
         private static readonly object _cacheLock = new object();
         private static readonly Dictionary<string, MarketplaceInfo> _marketplaceCache = new Dictionary<string, MarketplaceInfo>(StringComparer.OrdinalIgnoreCase);
-        private static bool _initialLoadComplete;
+        private static volatile bool _initialLoadComplete;
 
         /// <summary>
         /// Gets all registered marketplaces (built-in and user-added).
@@ -133,7 +133,7 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Adds a new user MarketplaceInfo by GitHub URL or owner/repo format.
         /// </summary>
-        public static async Task<(bool success, string error, MarketplaceInfo MarketplaceInfo)> AddMarketplaceAsync(
+        public static async Task<(bool success, string error, MarketplaceInfo Marketplace)> AddMarketplaceAsync(
             string input,
             CancellationToken cancellationToken = default)
         {
@@ -152,21 +152,21 @@ namespace GitHubNode.Services.Marketplace
             }
 
             // Try to clone and validate
-            var MarketplaceInfo = await GetMarketplaceAsync(owner, repo, branch, forceRefresh: true, cancellationToken: cancellationToken);
+            var marketplace = await GetMarketplaceAsync(owner, repo, branch, forceRefresh: true, cancellationToken: cancellationToken);
 
-            if (!MarketplaceInfo.IsCloned)
+            if (!marketplace.IsCloned)
             {
-                return (false, MarketplaceInfo.ErrorMessage ?? "Failed to clone repository.", null);
+                return (false, marketplace.ErrorMessage ?? "Failed to clone repository.", null);
             }
 
             // Add to user config
             if (!MarketplaceStorageService.AddMarketplace(owner, repo, branch))
             {
                 // Already exists in config
-                return (true, null, MarketplaceInfo);
+                return (true, null, marketplace);
             }
 
-            return (true, null, MarketplaceInfo);
+            return (true, null, marketplace);
         }
 
         /// <summary>
@@ -209,9 +209,9 @@ namespace GitHubNode.Services.Marketplace
             var assets = new List<PluginAsset>();
             var marketplaces = await GetAllMarketplacesAsync(forceRefresh: false, cancellationToken);
 
-            foreach (var MarketplaceInfo in marketplaces)
+            foreach (var marketplace in marketplaces)
             {
-                foreach (var asset in MarketplaceInfo.GetAllAssets(type))
+                foreach (var asset in marketplace.GetAllAssets(type))
                 {
                     assets.Add(asset);
                 }
@@ -230,11 +230,11 @@ namespace GitHubNode.Services.Marketplace
             var result = new List<MarketplaceInfo>();
             var marketplaces = await GetAllMarketplacesAsync(forceRefresh: false, cancellationToken);
 
-            foreach (var MarketplaceInfo in marketplaces)
+            foreach (var marketplace in marketplaces)
             {
-                if (MarketplaceInfo.HasAssetType(type))
+                if (marketplace.HasAssetType(type))
                 {
-                    result.Add(MarketplaceInfo);
+                    result.Add(marketplace);
                 }
             }
 

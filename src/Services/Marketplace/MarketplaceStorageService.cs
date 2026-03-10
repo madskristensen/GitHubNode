@@ -52,6 +52,15 @@ namespace GitHubNode.Services.Marketplace
         }
 
         /// <summary>
+        /// Gets the path where the marketplace icon should be stored.
+        /// </summary>
+        public static string GetIconPath(string owner, string repo, string iconExtension)
+        {
+            var marketplaceDir = GetMarketplaceDirectory(owner, repo);
+            return Path.Combine(marketplaceDir, $"_icon{iconExtension}");
+        }
+
+        /// <summary>
         /// Gets the local directory for a linked repository within a parent marketplace.
         /// Linked repositories are stored in a _linked subfolder to keep them separate from the parent's content.
         /// </summary>

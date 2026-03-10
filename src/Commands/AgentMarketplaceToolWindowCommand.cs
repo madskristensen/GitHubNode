@@ -5,8 +5,8 @@ namespace GitHubNode.Commands
     /// <summary>
     /// Command to open the Agent Marketplace tool window.
     /// </summary>
-    [Command(PackageIds.ManageMarketplaces)]
-    internal sealed class ManageMarketplacesCommand : BaseCommand<ManageMarketplacesCommand>
+    [Command(PackageIds.AgentMarketplace)]
+    internal sealed class AgentMarketplaceToolWindowCommand : BaseCommand<AgentMarketplaceToolWindowCommand>
     {
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
