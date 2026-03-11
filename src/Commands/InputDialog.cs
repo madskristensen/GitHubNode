@@ -647,7 +647,7 @@ namespace GitHubNode.Commands
                     SetStatus("Initializing marketplaces (first run may take a moment)...");
                     SetRefreshEnabled(false);
 
-                    _marketplaceProviders = await TemplateProviderRegistry.GetProvidersForTemplateTypeAsync(_templateType.Value, cancellationToken);
+                    _marketplaceProviders = await MarketplaceTemplateAdapter.GetProvidersForTemplateTypeAsync(_templateType.Value, cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
 
                     // Update provider dropdown with "All Marketplaces" + individual marketplaces
@@ -678,7 +678,7 @@ namespace GitHubNode.Commands
 
                 // Load all templates from all providers in parallel for better performance
                 var templateTasks = _marketplaceProviders.Select(provider =>
-                    TemplateProviderRegistry.GetTemplatesAsync(_templateType.Value, provider, cancellationToken));
+                    MarketplaceTemplateAdapter.GetTemplatesAsync(_templateType.Value, provider?.Marketplace, cancellationToken));
 
                 var templateResults = await Task.WhenAll(templateTasks);
                 cancellationToken.ThrowIfCancellationRequested();
@@ -1052,7 +1052,7 @@ namespace GitHubNode.Commands
                     // For marketplace templates, content is loaded from local files
                     await Task.Run(() =>
                     {
-                        template.Content = TemplateProviderRegistry.GetTemplateContent(template);
+                        template.Content = MarketplaceTemplateAdapter.GetTemplateContent(template);
                     }, cancellationToken);
 
                     cancellationToken.ThrowIfCancellationRequested();

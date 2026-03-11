@@ -44,7 +44,7 @@ namespace GitHubNode.Services
         private static readonly ConcurrentDictionary<string, CachedStatus> _statusCache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly TimeSpan _cacheExpiration = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan _gitCommandTimeout = TimeSpan.FromSeconds(5);
-        private static readonly object _refreshLock = new();
+        private static readonly SemaphoreSlim _refreshSemaphore = new(1, 1);
         private static readonly ConcurrentDictionary<string, DateTime> _lastRefreshByRepo = new(StringComparer.OrdinalIgnoreCase);
 
         private sealed class CachedStatus
@@ -104,15 +104,11 @@ namespace GitHubNode.Services
                 return cached.Status;
             }
 
-            // Run Git operations on a background thread
-            return await Task.Run(() => GetFileStatusCore(filePath));
+            return await GetFileStatusCoreAsync(filePath).ConfigureAwait(false);
         }
 
-        private static GitFileStatus GetFileStatusCore(string filePath)
+        private static async Task<GitFileStatus> GetFileStatusCoreAsync(string filePath)
         {
-            // Normalize the file path for consistent cache lookups
-            filePath = Path.GetFullPath(filePath);
-
             // Find repo root
             var repoRoot = FindGitRoot(filePath);
             if (string.IsNullOrEmpty(repoRoot))
@@ -120,56 +116,10 @@ namespace GitHubNode.Services
                 return GitFileStatus.NotInRepo;
             }
 
-            EnsureStatusCacheFresh(repoRoot);
+            await EnsureStatusCacheFreshAsync(repoRoot).ConfigureAwait(false);
 
             // Return cached status or default to Unmodified
             if (TryGetFreshCachedStatus(filePath, out GitFileStatus cachedStatus))
-            {
-                return cachedStatus;
-            }
-
-            // Check if any parent directory has a status (e.g., git reports "?? folder/" for untracked folders)
-            GitFileStatus parentStatus = GetParentDirectoryStatus(filePath);
-            if (parentStatus != GitFileStatus.NotInRepo)
-            {
-                return parentStatus;
-            }
-
-            // If not in cache after refresh, it's likely unmodified (committed)
-            return GitFileStatus.Unmodified;
-        }
-
-        /// <summary>
-        /// Gets the Git status for a file synchronously.
-        /// Warning: This may block the UI thread. Prefer <see cref="GetFileStatusAsync"/> when possible.
-        /// </summary>
-        public static GitFileStatus GetFileStatus(string filePath)
-        {
-            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
-            {
-                return GitFileStatus.NotInRepo;
-            }
-
-            // Normalize the file path for consistent cache lookups
-            filePath = Path.GetFullPath(filePath);
-
-            // Check cache first
-            if (TryGetFreshCachedStatus(filePath, out GitFileStatus cachedStatus))
-            {
-                return cachedStatus;
-            }
-
-            // Find repo root
-            var repoRoot = FindGitRoot(filePath);
-            if (string.IsNullOrEmpty(repoRoot))
-            {
-                return GitFileStatus.NotInRepo;
-            }
-
-            EnsureStatusCacheFresh(repoRoot);
-
-            // Return cached status or default to Unmodified
-            if (TryGetFreshCachedStatus(filePath, out cachedStatus))
             {
                 return cachedStatus;
             }
@@ -263,7 +213,7 @@ namespace GitHubNode.Services
             return true;
         }
 
-        private static void EnsureStatusCacheFresh(string repoRoot)
+        private static async Task EnsureStatusCacheFreshAsync(string repoRoot)
         {
             if (string.IsNullOrWhiteSpace(repoRoot))
             {
@@ -276,7 +226,9 @@ namespace GitHubNode.Services
                 return;
             }
 
-            lock (_refreshLock)
+            // Serialize refreshes per repo to avoid duplicate git process spawns
+            await _refreshSemaphore.WaitAsync().ConfigureAwait(false);
+            try
             {
                 if (_lastRefreshByRepo.TryGetValue(repoRoot, out lastRefresh) &&
                     DateTime.UtcNow - lastRefresh <= _cacheExpiration)
@@ -284,19 +236,23 @@ namespace GitHubNode.Services
                     return;
                 }
 
-                RefreshStatusCache(repoRoot);
+                await RefreshStatusCacheAsync(repoRoot).ConfigureAwait(false);
                 _lastRefreshByRepo[repoRoot] = DateTime.UtcNow;
+            }
+            finally
+            {
+                _refreshSemaphore.Release();
             }
         }
 
-        private static void RefreshStatusCache(string repoRoot)
+        private static async Task RefreshStatusCacheAsync(string repoRoot)
         {
             try
             {
                 // Get status for all files using porcelain format for easy parsing
                 // --porcelain=v1 gives us: XY filename
                 // X = index status, Y = working tree status
-                var output = RunGitCommand(repoRoot, "status --porcelain=v1");
+                var output = await RunGitCommandAsync(repoRoot, "status --porcelain=v1").ConfigureAwait(false);
                 if (string.IsNullOrEmpty(output))
                 {
                     return;
@@ -426,26 +382,6 @@ namespace GitHubNode.Services
             }
 
             return null;
-        }
-
-        private static string RunGitCommand(string workingDirectory, string arguments)
-        {
-            try
-            {
-                return RunGitCommandAsync(workingDirectory, arguments).GetAwaiter().GetResult();
-            }
-            catch (InvalidOperationException ex)
-            {
-                _ = ex.LogAsync();
-                Debug.WriteLine($"GitStatusService.RunGitCommand failed in '{workingDirectory}': {ex}");
-                return null;
-            }
-            catch (System.ComponentModel.Win32Exception ex)
-            {
-                _ = ex.LogAsync();
-                Debug.WriteLine($"GitStatusService.RunGitCommand failed in '{workingDirectory}': {ex}");
-                return null;
-            }
         }
 
         private static async Task<string> RunGitCommandAsync(string workingDirectory, string arguments)
