@@ -564,6 +564,15 @@ namespace GitHubNode.ToolWindows
 
         private async void OnRefreshAllButtonClick(object sender, RoutedEventArgs e)
         {
+            var confirmed = await VS.MessageBox.ShowConfirmAsync(
+                "Refresh Marketplaces",
+                "This will re-clone all marketplace repositories from GitHub. Continue?");
+
+            if (!confirmed)
+            {
+                return;
+            }
+
             await LoadMarketplacesAsync(forceRefresh: true);
         }
 

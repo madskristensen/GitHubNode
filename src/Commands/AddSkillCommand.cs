@@ -15,6 +15,7 @@ namespace GitHubNode.Commands
         protected override string ErrorMessagePrefix => "Failed to create skill";
         protected override TemplateType? TemplateType => Services.TemplateType.Skill;
         protected override string SubfolderName => "skills";
+        protected override bool RequiresGitHubFolder => false;
 
         protected override string GetFilePath(string targetFolder, string userInput)
         {

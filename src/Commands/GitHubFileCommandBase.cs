@@ -63,7 +63,8 @@ namespace GitHubNode.Commands
 
         /// <summary>
         /// Controls visibility of the command in folder context menus.
-        /// Shows the command only when right-clicking the matching subfolder.
+        /// Shows the command only when right-clicking the matching subfolder,
+        /// the GitHub root node, or the User Profile node.
         /// </summary>
         protected override void BeforeQueryStatus(EventArgs e)
         {
@@ -82,20 +83,25 @@ namespace GitHubNode.Commands
                 }
             }
 
-            // Always visible in root menu (via submenus)
-            if (GitHubContextMenuController.CurrentItem is GitHubRootNode)
+            var currentItem = GitHubContextMenuController.CurrentItem;
+
+            // Always visible on the GitHub root node and User Profile node (commands appear via submenus there)
+            if (currentItem is GitHubRootNode || currentItem is GitHubUserProfileNode)
             {
                 Command.Visible = true;
                 return;
             }
 
-            // For folder context, show only if it's the matching subfolder
-            if (GitHubContextMenuController.CurrentItem is GitHubFolderNode folder &&
-                !string.IsNullOrEmpty(SubfolderName))
+            // For folder context, show only if it's the exact matching subfolder
+            if (currentItem is GitHubFolderNode folder && !string.IsNullOrEmpty(SubfolderName))
             {
                 var folderName = Path.GetFileName(folder.FolderPath);
                 Command.Visible = string.Equals(folderName, SubfolderName, StringComparison.OrdinalIgnoreCase);
+                return;
             }
+
+            // Hide for all other node types (file nodes, unrecognized nodes, sub-nodes of agents/skills/etc.)
+            Command.Visible = false;
         }
 
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
