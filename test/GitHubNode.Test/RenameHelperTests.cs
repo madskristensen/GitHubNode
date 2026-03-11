@@ -33,4 +33,22 @@ public class RenameHelperTests
 
         Assert.IsNull(renamedPath);
     }
+
+    [TestMethod]
+    public void BuildRenamedPath_PreservesExtension_WhenRequestedNameIncludesExtension()
+    {
+        string existingPath = Path.Combine("C:\\repo", ".github", "prompts", "old.prompt.md");
+
+        string renamedPath = RenameHelper.BuildRenamedPath(existingPath, "new-name.prompt.md");
+
+        Assert.AreEqual(Path.Combine("C:\\repo", ".github", "prompts", "new-name.prompt.md"), renamedPath);
+    }
+
+    [TestMethod]
+    public void BuildRenamedPath_ReturnsNameOnly_WhenExistingPathHasNoDirectory()
+    {
+        string renamedPath = RenameHelper.BuildRenamedPath("old.md", "New Name");
+
+        Assert.AreEqual("new-name", renamedPath);
+    }
 }

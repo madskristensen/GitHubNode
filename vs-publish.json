@@ -18,6 +18,10 @@
       "targetPath": "art/github-node.png"
     },
     {
+      "pathOnDisk": "art/marketplace-manager.png",
+      "targetPath": "art/marketplace-manager.png"
+    },
+    {
       "pathOnDisk": "art/solution-explorer.png",
       "targetPath": "art/solution-explorer.png"
     },

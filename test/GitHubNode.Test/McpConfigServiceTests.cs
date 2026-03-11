@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using GitHubNode.Services;
 
 namespace GitHubNode.Test;
@@ -100,6 +101,30 @@ public class McpConfigServiceTests
             var existing = McpConfigService.GetExistingLocations(solutionDirectory);
 
             Assert.IsTrue(existing.Exists(location => string.Equals(location.FilePath, expectedPath, StringComparison.OrdinalIgnoreCase)));
+        }
+        finally
+        {
+            if (Directory.Exists(solutionDirectory))
+            {
+                Directory.Delete(solutionDirectory, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void GetExistingLocations_ReturnsNoSolutionLocations_WhenNoSolutionConfigFilesExist()
+    {
+        var solutionDirectory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+
+        try
+        {
+            Directory.CreateDirectory(solutionDirectory);
+
+            var existing = McpConfigService.GetExistingLocations(solutionDirectory);
+            var solutionScoped = existing.Where(location =>
+                location.FilePath.StartsWith(solutionDirectory, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            Assert.AreEqual(0, solutionScoped.Count);
         }
         finally
         {

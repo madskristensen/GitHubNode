@@ -7,6 +7,22 @@ namespace GitHubNode.Test;
 public class GitHubUrlServiceTests
 {
     [TestMethod]
+    public void GetGitHubUrl_ReturnsNull_ForNullPath()
+    {
+        string result = GitHubUrlService.GetGitHubUrl(null);
+
+        Assert.IsNull(result);
+    }
+
+    [TestMethod]
+    public void GetGitHubUrl_ReturnsNull_ForEmptyPath()
+    {
+        string result = GitHubUrlService.GetGitHubUrl(string.Empty);
+
+        Assert.IsNull(result);
+    }
+
+    [TestMethod]
     public void ConvertToGitHubWebUrl_ReturnsHttpsUrl_ForSshRemote()
     {
         string result = InvokeConvertToGitHubWebUrl("git@github.com:owner/repo.git");

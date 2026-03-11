@@ -16,6 +16,9 @@ Adds **GitHub**, optional **Claude** and **Agents**, and **MCP Servers** nodes t
 
 ![GitHub Node in Solution Explorer](art/github-node.png)
 
+<!-- Screenshot: overview of the GitHub, Claude, Agents, and MCP Servers nodes visible in Solution Explorer -->
+![Solution Explorer overview](art/solution-explorer.png)
+
 ## Features
 
 ### AI Nodes in Solution Explorer
@@ -88,6 +91,8 @@ Files and folders display Git status icons, similar to Solution Explorer:
 
 Folders show an aggregate status based on their contents - for example, if any file in a folder is modified, the folder shows a modified icon.
 
+<!-- Screenshot: Solution Explorer showing files with modified, staged, and untracked Git status icons -->
+
 ### MCP Servers Node in Solution Explorer
 
 The extension adds an **MCP Servers** node that provides centralized access to all Model Context Protocol (MCP) server configurations in your solution:
@@ -104,6 +109,8 @@ The extension adds an **MCP Servers** node that provides centralized access to a
 - Shows a helpful hint when no MCP configurations exist
 
 The MCP Servers node appears directly below the GitHub node, making it easy to manage both GitHub-specific files and MCP server configurations from one place.
+
+<!-- Screenshot: MCP Servers node expanded in Solution Explorer showing multiple configuration file entries -->
 
 ### Community Templates with Provider Selection
 
@@ -143,6 +150,8 @@ Right-click on the GitHub node and select **Manage Marketplaces** to open the **
 - **Refresh** - Pull the latest changes from a specific marketplace
 - **Refresh All** - Pull the latest changes from all marketplace repositories
 - **Open in Browser** - Navigate to a marketplace repository on GitHub.com
+
+![Manage marketplace](art/marketplace-manager.png)
 
 **How it works:**
 
