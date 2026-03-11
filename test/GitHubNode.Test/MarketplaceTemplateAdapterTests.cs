@@ -77,4 +77,20 @@ public class MarketplaceTemplateAdapterTests
 
         Assert.IsNull(result);
     }
+
+    [TestMethod]
+    public void ToAssetType_ConvertsWorkflowCorrectly()
+    {
+        var result = MarketplaceTemplateAdapter.ToAssetType(TemplateType.Workflow);
+
+        Assert.AreEqual(AssetType.Workflow, result);
+    }
+
+    [TestMethod]
+    public void ToTemplateType_ConvertsWorkflowCorrectly()
+    {
+        var result = MarketplaceTemplateAdapter.ToTemplateType(AssetType.Workflow);
+
+        Assert.AreEqual(TemplateType.Workflow, result);
+    }
 }

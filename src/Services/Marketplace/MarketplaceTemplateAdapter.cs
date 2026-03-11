@@ -21,6 +21,7 @@ namespace GitHubNode.Services.Marketplace
                 AssetType.Skill => TemplateType.Skill,
                 AssetType.Instructions => TemplateType.Instructions,
                 AssetType.Prompt => TemplateType.Prompt,
+                AssetType.Workflow => TemplateType.Workflow,
                 _ => null // McpServer doesn't have a TemplateType equivalent
             };
         }
@@ -36,6 +37,7 @@ namespace GitHubNode.Services.Marketplace
                 TemplateType.Skill => AssetType.Skill,
                 TemplateType.Instructions => AssetType.Instructions,
                 TemplateType.Prompt => AssetType.Prompt,
+                TemplateType.Workflow => AssetType.Workflow,
                 _ => AssetType.Agent // Fallback
             };
         }

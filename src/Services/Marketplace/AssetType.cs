@@ -28,6 +28,11 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Prompt file (*.prompt.md).
         /// </summary>
-        Prompt
+        Prompt,
+
+        /// <summary>
+        /// GitHub Actions workflow (*.yml or *.yaml in a workflows/ folder).
+        /// </summary>
+        Workflow
     }
 }

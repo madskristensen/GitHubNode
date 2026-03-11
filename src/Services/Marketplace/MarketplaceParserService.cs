@@ -505,6 +505,13 @@ namespace GitHubNode.Services.Marketplace
             // Scan for MCP servers (.mcp.json and mcp.json) at root and in subdirectories
             ScanForMcpServers(directory, plugin);
 
+            // Scan workflows folder
+            var workflowsDir = Path.Combine(directory, "workflows");
+            if (Directory.Exists(workflowsDir))
+            {
+                ScanFolderForType(workflowsDir, directory, plugin, AssetType.Workflow, "*.yml", "*.yaml");
+            }
+
             return plugin;
         }
 

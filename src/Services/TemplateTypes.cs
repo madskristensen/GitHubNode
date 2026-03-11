@@ -8,7 +8,8 @@ namespace GitHubNode.Services
         Agent,
         Prompt,
         Skill,
-        Instructions
+        Instructions,
+        Workflow
     }
 
     /// <summary>

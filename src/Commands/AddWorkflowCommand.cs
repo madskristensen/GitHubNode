@@ -1,3 +1,5 @@
+using GitHubNode.Services;
+
 namespace GitHubNode.Commands
 {
     /// <summary>
@@ -11,6 +13,7 @@ namespace GitHubNode.Commands
         protected override string DialogPrompt => "Enter the workflow name:";
         protected override string DialogDefaultValue => "build";
         protected override string ErrorMessagePrefix => "Failed to create workflow";
+        protected override TemplateType? TemplateType => Services.TemplateType.Workflow;
         protected override string RequiredExtension => ".yml";
         protected override string SubfolderName => "workflows";
 
