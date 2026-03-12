@@ -101,6 +101,30 @@ public class CommandHelpersTests
     }
 
     [TestMethod]
+    public void GetOrCreateGitHubFolderPath_CreatesGitHubFolder_WhenPathHasNoSupportedRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        var expected = Path.Combine(root, ".github");
+
+        try
+        {
+            Directory.CreateDirectory(root);
+
+            string result = CommandHelpers.GetOrCreateGitHubFolderPath(root);
+
+            Assert.AreEqual(expected, result);
+            Assert.IsTrue(Directory.Exists(expected));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
     public void GetGitHubFolderPath_ReturnsChildClaudePath_WhenClaudeFolderExists()
     {
         var root = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());

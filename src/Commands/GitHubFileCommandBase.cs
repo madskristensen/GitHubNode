@@ -118,10 +118,33 @@ namespace GitHubNode.Commands
             string targetFolder;
             if (RequiresGitHubFolder)
             {
-                var gitHubFolder = CommandHelpers.GetGitHubFolderPath(basePath);
+                string gitHubFolder;
+                try
+                {
+                    gitHubFolder = CommandHelpers.GetOrCreateGitHubFolderPath(basePath);
+                }
+                catch (System.ArgumentException ex)
+                {
+                    await ex.LogAsync();
+                    await VS.MessageBox.ShowWarningAsync("Cannot create .github folder.");
+                    return;
+                }
+                catch (System.IO.IOException ex)
+                {
+                    await ex.LogAsync();
+                    await VS.MessageBox.ShowWarningAsync("Cannot create .github folder.");
+                    return;
+                }
+                catch (System.UnauthorizedAccessException ex)
+                {
+                    await ex.LogAsync();
+                    await VS.MessageBox.ShowWarningAsync("Cannot create .github folder.");
+                    return;
+                }
+
                 if (string.IsNullOrEmpty(gitHubFolder))
                 {
-                    await VS.MessageBox.ShowWarningAsync("Cannot find .github folder.");
+                    await VS.MessageBox.ShowWarningAsync("Cannot determine .github folder.");
                     return;
                 }
                 targetFolder = gitHubFolder;

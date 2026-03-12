@@ -18,6 +18,27 @@ namespace GitHubNode.Commands
         }
 
         /// <summary>
+        /// Gets a supported AI root folder path and ensures it exists.
+        /// When no supported root is found, creates and returns the solution's .github folder.
+        /// </summary>
+        public static string GetOrCreateGitHubFolderPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return null;
+            }
+
+            string rootFolderPath = GetGitHubFolderPath(path);
+            if (string.IsNullOrEmpty(rootFolderPath))
+            {
+                rootFolderPath = Path.Combine(path, AiRootFolders.GitHub.FolderName);
+            }
+
+            Directory.CreateDirectory(rootFolderPath);
+            return rootFolderPath;
+        }
+
+        /// <summary>
         /// Sanitizes a string to be used as a filename.
         /// </summary>
         public static string SanitizeFileName(string name)
