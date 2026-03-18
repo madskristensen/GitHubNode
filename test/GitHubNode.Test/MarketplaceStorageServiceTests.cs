@@ -33,6 +33,36 @@ public class MarketplaceStorageServiceTests
     }
 
     [TestMethod]
+    public void GetMarketplaceId_ReturnsHostAwareId_ForCustomHost()
+    {
+        string id = MarketplaceStorageService.GetMarketplaceId("myowner", "myrepo", "https://contoso.ghe.com/myowner/myrepo");
+
+        Assert.AreEqual("contoso.ghe.com/myowner/myrepo", id);
+    }
+
+    [TestMethod]
+    public void GetMarketplaceDirectory_ReturnsHostAwarePath_ForCustomHost()
+    {
+        string dir = MarketplaceStorageService.GetMarketplaceDirectory("owner", "repo", "https://contoso.ghe.com/owner/repo");
+
+        StringAssert.Contains(dir, "contoso.ghe.com_owner_repo");
+    }
+
+    [TestMethod]
+    public void GetLinkedRepositoryDirectory_ReturnsHostAwarePath_ForCustomHost()
+    {
+        string dir = MarketplaceStorageService.GetLinkedRepositoryDirectory(
+            "parent",
+            "marketplace",
+            "owner",
+            "repo",
+            parentRepositoryUrl: "https://contoso.ghe.com/parent/marketplace",
+            linkedRepositoryUrl: "git@bitbucket.example:team/repo.git");
+
+        StringAssert.Contains(dir, "bitbucket.example_owner_repo");
+    }
+
+    [TestMethod]
     public void IsBuiltIn_ReturnsTrueForBuiltInMarketplace()
     {
         bool result = MarketplaceStorageService.IsBuiltIn("github", "awesome-copilot");
@@ -54,6 +84,14 @@ public class MarketplaceStorageServiceTests
         bool result = MarketplaceStorageService.IsBuiltIn("GitHub", "Awesome-Copilot");
 
         Assert.IsTrue(result);
+    }
+
+    [TestMethod]
+    public void IsBuiltIn_ReturnsFalseForCustomHost()
+    {
+        bool result = MarketplaceStorageService.IsBuiltIn("github", "awesome-copilot", "https://contoso.ghe.com/github/awesome-copilot");
+
+        Assert.IsFalse(result);
     }
 
     [TestMethod]

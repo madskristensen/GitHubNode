@@ -109,7 +109,7 @@ namespace GitHubNode.ToolWindows
             _urlInputTextBox.SetResourceReference(ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
             _urlInputTextBox.SetResourceReference(BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
             AutomationProperties.SetName(_urlInputTextBox, "Marketplace repository URL");
-            AutomationProperties.SetHelpText(_urlInputTextBox, "Enter owner/repo or a GitHub URL");
+            AutomationProperties.SetHelpText(_urlInputTextBox, "Enter owner/repo or a repository URL");
             _urlInputTextBox.KeyDown += OnUrlInputKeyDown;
             _urlInputTextBox.TextChanged += OnUrlInputTextChanged;
             _urlInputTextBox.GotFocus += OnUrlInputGotFocus;
@@ -117,7 +117,7 @@ namespace GitHubNode.ToolWindows
 
             _placeholderText = new TextBlock
             {
-                Text = "Enter owner/repo or GitHub URL...",
+                Text = "Enter owner/repo or repository URL...",
                 Padding = new Thickness(8, 5, 6, 4),
                 VerticalAlignment = VerticalAlignment.Center,
                 IsHitTestVisible = false
@@ -521,7 +521,7 @@ namespace GitHubNode.ToolWindows
 
             try
             {
-                MarketplaceService.RemoveMarketplace(selected.Owner, selected.RepoName, deleteClone: true);
+                MarketplaceService.RemoveMarketplace(selected.Owner, selected.RepoName, selected.RepositoryUrl, deleteClone: true);
                 await LoadMarketplacesAsync();
                 SetStatus($"Removed {selected.DisplayName}");
             }
@@ -546,6 +546,7 @@ namespace GitHubNode.ToolWindows
                 await MarketplaceService.GetMarketplaceAsync(
                     selected.Owner,
                     selected.RepoName,
+                    repositoryUrl: selected.RepositoryUrl,
                     forceRefresh: true,
                     cancellationToken: _loadCancellationTokenSource?.Token ?? CancellationToken.None);
                 await LoadMarketplacesAsync();
@@ -777,6 +778,7 @@ namespace GitHubNode.ToolWindows
             public string DisplayName { get; }
             public string Owner { get; }
             public string RepoName { get; }
+            public string RepositoryUrl { get; }
             public bool IsBuiltIn { get; }
             public bool IsCloned { get; }
             public string ErrorMessage { get; }
@@ -840,14 +842,14 @@ namespace GitHubNode.ToolWindows
                 DisplayName = marketplace.DisplayName ?? marketplace.Id;
                 Owner = marketplace.Owner;
                 RepoName = marketplace.RepoName;
+                RepositoryUrl = marketplace.RepositoryUrl;
                 IsBuiltIn = marketplace.IsBuiltIn;
                 IsCloned = marketplace.IsCloned;
                 ErrorMessage = marketplace.ErrorMessage;
-                GitHubUrl = marketplace.GitHubUrl;
+                GitHubUrl = marketplace.GitHubUrl ?? marketplace.CloneUrl;
                 LastUpdated = marketplace.LastUpdated;
 
-                // Load GitHub avatar for the owner
-                AvatarImage = LoadAvatarImage(marketplace.Owner);
+                AvatarImage = LoadAvatarImage(marketplace.Owner, marketplace.GitHubUrl);
 
                 // Organize templates by category
                 TemplatesByCategory = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<TemplateListItem>>();
@@ -978,12 +980,18 @@ namespace GitHubNode.ToolWindows
                 return asset.PluginName ?? "MCP Server";
             }
 
-            private static BitmapImage LoadAvatarImage(string owner)
+            private static BitmapImage LoadAvatarImage(string owner, string repositoryUrl)
             {
                 try
                 {
-                    // GitHub avatar URL: https://github.com/{owner}.png?size=64
-                    var avatarUrl = $"https://github.com/{owner}.png?size=64";
+                    if (!Uri.TryCreate(repositoryUrl, UriKind.Absolute, out var repositoryUri) ||
+                        (!string.Equals(repositoryUri.Host, "github.com", StringComparison.OrdinalIgnoreCase) &&
+                         !repositoryUri.Host.EndsWith(".ghe.com", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return null;
+                    }
+
+                    var avatarUrl = $"https://{repositoryUri.Authority}/{owner}.png?size=64";
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
                     bitmap.UriSource = new Uri(avatarUrl, UriKind.Absolute);

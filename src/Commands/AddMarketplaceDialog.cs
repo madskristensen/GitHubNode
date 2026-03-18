@@ -9,9 +9,9 @@ using Microsoft.VisualStudio.PlatformUI;
 
 namespace GitHubNode.Commands
 {
-    /// <summary>
-    /// Dialog for adding a new marketplace by owner/repo or GitHub URL.
-    /// </summary>
+            /// <summary>
+            /// Dialog for adding a new marketplace by owner/repo or repository URL.
+            /// </summary>
     internal sealed class AddMarketplaceDialog : DialogWindow
     {
         private const int _dwmwaUseImmersiveDarkMode = 20;
@@ -58,7 +58,7 @@ namespace GitHubNode.Commands
             // Instructions
             var instructionText = new TextBlock
             {
-                Text = "Enter a GitHub repository in one of these formats:",
+                Text = "Enter a repository in one of these formats:",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -89,7 +89,7 @@ namespace GitHubNode.Commands
             _inputTextBox.SetResourceReference(TextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
             _inputTextBox.SetResourceReference(TextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
             AutomationProperties.SetName(_inputTextBox, "Marketplace repository");
-            AutomationProperties.SetHelpText(_inputTextBox, "Enter owner/repo or a GitHub URL");
+            AutomationProperties.SetHelpText(_inputTextBox, "Enter owner/repo or a repository URL");
             Grid.SetRow(_inputTextBox, 2);
             grid.Children.Add(_inputTextBox);
 
@@ -106,7 +106,7 @@ namespace GitHubNode.Commands
             {
                 if (string.IsNullOrWhiteSpace(_inputTextBox.Text))
                 {
-                    _ = VS.MessageBox.ShowWarningAsync("Invalid Input", "Please enter a repository in owner/repo format or a GitHub URL.");
+                    _ = VS.MessageBox.ShowWarningAsync("Invalid Input", "Please enter a repository in owner/repo format or use a repository URL.");
                     return;
                 }
                 DialogResult = true;

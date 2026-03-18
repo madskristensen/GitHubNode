@@ -75,7 +75,7 @@ When you right-click on a specific folder (e.g., `agents`, `prompts`, `skills`, 
 
 - **Open in File Explorer** - Open the folder in Windows File Explorer
 - **Open Containing Folder** - Open the parent folder and select the file in File Explorer
-- **Open on GitHub** - Open the file or folder directly on GitHub.com in your browser
+- **Open on GitHub** - Open the file or folder directly in your repository host in your browser
 
 ### Git Status Icons
 
@@ -138,24 +138,30 @@ The provider model is extensible, making it straightforward to add more template
 
 ### Agent Marketplaces
 
-In addition to built-in template providers, you can register custom GitHub repositories as "agent marketplaces" to provide your own templates for agents, skills, instructions, and prompts.
+In addition to built-in template providers, you can register custom Git repositories as "agent marketplaces" to provide your own templates for agents, skills, instructions, and prompts.
 
 **Managing Marketplaces:**
 
 Right-click on the GitHub node and select **Manage Marketplaces** to open the **Agent Marketplace** tool window. You can also open it from the **Extensions** menu. From there you can:
 
 - **View registered marketplaces** - See all built-in and user-added marketplace repositories with details, status, and available templates
-- **Add custom marketplaces** - Register any GitHub repository that follows the marketplace structure
+- **Add custom marketplaces** - Register any repository that follows the marketplace structure
 - **Remove user-added marketplaces** - Built-in marketplaces cannot be removed
 - **Refresh** - Pull the latest changes from a specific marketplace
 - **Refresh All** - Pull the latest changes from all marketplace repositories
-- **Open in Browser** - Navigate to a marketplace repository on GitHub.com
+- **Open in Browser** - Navigate to a marketplace repository in your browser
+
+Accepted marketplace inputs include:
+
+- **owner/repo** - shorthand for GitHub repositories
+- **HTTPS repository URLs** - for example `https://github.com/owner/repo.git`
+- **SSH repository URLs** - for example `git@host:owner/repo.git` or `ssh://git@host/owner/repo.git`
 
 ![Manage marketplace](art/marketplace-manager.png)
 
 **How it works:**
 
-- Marketplaces are GitHub repositories containing plugin definitions with agents, skills, instructions, and prompts
+- Marketplaces are Git repositories containing plugin definitions with agents, skills, instructions, and prompts
 - Repositories are cloned locally and updated automatically
 - When creating new files, templates from all registered marketplaces appear in the provider dropdown
 - Each marketplace can contain multiple plugins, each with various asset types

@@ -44,19 +44,22 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Gets the local clone directory for a MarketplaceInfo.
         /// </summary>
-        public static string GetMarketplaceDirectory(string owner, string repo)
+        public static string GetMarketplaceDirectory(string owner, string repo, string repositoryUrl = null)
         {
-            // Sanitize names for filesystem
-            var safeName = $"{SanitizePathComponent(owner)}_{SanitizePathComponent(repo)}";
+            var host = MarketplaceRepositoryUrl.GetHost(repositoryUrl);
+            var safeName = string.IsNullOrWhiteSpace(host)
+                ? $"{SanitizePathComponent(owner)}_{SanitizePathComponent(repo)}"
+                : $"{SanitizePathComponent(host)}_{SanitizePathComponent(owner)}_{SanitizePathComponent(repo)}";
+
             return Path.Combine(MarketplacesDirectory, safeName);
         }
 
         /// <summary>
         /// Gets the path where the marketplace icon should be stored.
         /// </summary>
-        public static string GetIconPath(string owner, string repo, string iconExtension)
+        public static string GetIconPath(string owner, string repo, string iconExtension, string repositoryUrl = null)
         {
-            var marketplaceDir = GetMarketplaceDirectory(owner, repo);
+            var marketplaceDir = GetMarketplaceDirectory(owner, repo, repositoryUrl);
             return Path.Combine(marketplaceDir, $"_icon{iconExtension}");
         }
 
@@ -68,19 +71,25 @@ namespace GitHubNode.Services.Marketplace
         /// <param name="parentRepo">Repository name of the parent marketplace.</param>
         /// <param name="linkedOwner">Owner of the linked repository.</param>
         /// <param name="linkedRepo">Repository name of the linked repository.</param>
-        public static string GetLinkedRepositoryDirectory(string parentOwner, string parentRepo, string linkedOwner, string linkedRepo)
+        public static string GetLinkedRepositoryDirectory(string parentOwner, string parentRepo, string linkedOwner, string linkedRepo, string parentRepositoryUrl = null, string linkedRepositoryUrl = null)
         {
-            var parentDir = GetMarketplaceDirectory(parentOwner, parentRepo);
-            var linkedSafeName = $"{SanitizePathComponent(linkedOwner)}_{SanitizePathComponent(linkedRepo)}";
+            var parentDir = GetMarketplaceDirectory(parentOwner, parentRepo, parentRepositoryUrl);
+            var linkedHost = MarketplaceRepositoryUrl.GetHost(linkedRepositoryUrl);
+            var linkedSafeName = string.IsNullOrWhiteSpace(linkedHost)
+                ? $"{SanitizePathComponent(linkedOwner)}_{SanitizePathComponent(linkedRepo)}"
+                : $"{SanitizePathComponent(linkedHost)}_{SanitizePathComponent(linkedOwner)}_{SanitizePathComponent(linkedRepo)}";
             return Path.Combine(parentDir, "_linked", linkedSafeName);
         }
 
         /// <summary>
         /// Gets the MarketplaceInfo ID from owner and repo.
         /// </summary>
-        public static string GetMarketplaceId(string owner, string repo)
+        public static string GetMarketplaceId(string owner, string repo, string repositoryUrl = null)
         {
-            return $"{owner}/{repo}";
+            var host = MarketplaceRepositoryUrl.GetHost(repositoryUrl);
+            return string.IsNullOrWhiteSpace(host)
+                ? $"{owner}/{repo}"
+                : $"{host}/{owner}/{repo}";
         }
 
         /// <summary>
@@ -145,7 +154,7 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Adds a MarketplaceInfo to the user's configuration.
         /// </summary>
-        public static bool AddMarketplace(string owner, string repo, string branch = "main")
+        public static bool AddMarketplace(string owner, string repo, string branch = "main", string repositoryUrl = null)
         {
             if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             {
@@ -153,31 +162,28 @@ namespace GitHubNode.Services.Marketplace
             }
 
             var config = LoadConfig();
+            var marketplaceId = GetMarketplaceId(owner, repo, repositoryUrl);
 
             // Check if already exists
             foreach (var existing in config.Marketplaces)
             {
-                if (string.Equals(existing.Owner, owner, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(existing.Repo, repo, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(GetMarketplaceId(existing.Owner, existing.Repo, existing.RepositoryUrl), marketplaceId, StringComparison.OrdinalIgnoreCase))
                 {
                     return false; // Already exists
                 }
             }
 
             // Check if it's a built-in (shouldn't add as user MarketplaceInfo)
-            foreach (var builtIn in BuiltInMarketplaces)
+            if (IsBuiltIn(owner, repo, repositoryUrl))
             {
-                if (string.Equals(builtIn.Owner, owner, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(builtIn.Repo, repo, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false; // Is built-in
-                }
+                return false; // Is built-in
             }
 
             config.Marketplaces.Add(new MarketplaceEntry
             {
                 Owner = owner,
                 Repo = repo,
+                RepositoryUrl = string.IsNullOrWhiteSpace(repositoryUrl) ? null : MarketplaceRepositoryUrl.GetRepositoryUrl(owner, repo, repositoryUrl),
                 Branch = string.IsNullOrWhiteSpace(branch) ? "main" : branch
             });
 
@@ -188,15 +194,15 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Removes a MarketplaceInfo from the user's configuration.
         /// </summary>
-        public static bool RemoveMarketplace(string owner, string repo)
+        public static bool RemoveMarketplace(string owner, string repo, string repositoryUrl = null)
         {
             var config = LoadConfig();
+            var marketplaceId = GetMarketplaceId(owner, repo, repositoryUrl);
 
             for (int i = config.Marketplaces.Count - 1; i >= 0; i--)
             {
                 var entry = config.Marketplaces[i];
-                if (string.Equals(entry.Owner, owner, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(entry.Repo, repo, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(GetMarketplaceId(entry.Owner, entry.Repo, entry.RepositoryUrl), marketplaceId, StringComparison.OrdinalIgnoreCase))
                 {
                     config.Marketplaces.RemoveAt(i);
                     SaveConfig(config);
@@ -210,9 +216,9 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Deletes the cloned repository for a MarketplaceInfo.
         /// </summary>
-        public static bool DeleteMarketplaceClone(string owner, string repo)
+        public static bool DeleteMarketplaceClone(string owner, string repo, string repositoryUrl = null)
         {
-            var directory = GetMarketplaceDirectory(owner, repo);
+            var directory = GetMarketplaceDirectory(owner, repo, repositoryUrl);
 
             if (!Directory.Exists(directory))
             {
@@ -254,8 +260,13 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Checks if a MarketplaceInfo is a built-in MarketplaceInfo.
         /// </summary>
-        public static bool IsBuiltIn(string owner, string repo)
+        public static bool IsBuiltIn(string owner, string repo, string repositoryUrl = null)
         {
+            if (!string.IsNullOrWhiteSpace(MarketplaceRepositoryUrl.GetHost(repositoryUrl)))
+            {
+                return false;
+            }
+
             foreach (var builtIn in BuiltInMarketplaces)
             {
                 if (string.Equals(builtIn.Owner, owner, StringComparison.OrdinalIgnoreCase) &&

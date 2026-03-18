@@ -30,6 +30,58 @@ public class MarketplaceInfoTests
     }
 
     [TestMethod]
+    public void GitHubUrl_ReturnsRepositoryUrl_ForCustomHost()
+    {
+        var marketplace = new MarketplaceInfo
+        {
+            Owner = "myowner",
+            RepoName = "myrepo",
+            RepositoryUrl = "https://contoso.ghe.com/myowner/myrepo"
+        };
+
+        Assert.AreEqual("https://contoso.ghe.com/myowner/myrepo", marketplace.GitHubUrl);
+    }
+
+    [TestMethod]
+    public void CloneUrl_AppendsGitSuffix_ForCustomHost()
+    {
+        var marketplace = new MarketplaceInfo
+        {
+            Owner = "myowner",
+            RepoName = "myrepo",
+            RepositoryUrl = "https://contoso.ghe.com/myowner/myrepo"
+        };
+
+        Assert.AreEqual("https://contoso.ghe.com/myowner/myrepo.git", marketplace.CloneUrl);
+    }
+
+    [TestMethod]
+    public void GitHubUrl_DerivesBrowserUrl_FromSshCloneUrl()
+    {
+        var marketplace = new MarketplaceInfo
+        {
+            Owner = "myowner",
+            RepoName = "myrepo",
+            RepositoryUrl = "git@contoso.example:team/myrepo.git"
+        };
+
+        Assert.AreEqual("https://contoso.example/team/myrepo", marketplace.GitHubUrl);
+    }
+
+    [TestMethod]
+    public void CloneUrl_PreservesSshCloneUrl()
+    {
+        var marketplace = new MarketplaceInfo
+        {
+            Owner = "myowner",
+            RepoName = "myrepo",
+            RepositoryUrl = "git@contoso.example:team/myrepo.git"
+        };
+
+        Assert.AreEqual("git@contoso.example:team/myrepo.git", marketplace.CloneUrl);
+    }
+
+    [TestMethod]
     public void HasAssetType_ReturnsTrueWhenPluginHasAsset()
     {
         var marketplace = new MarketplaceInfo

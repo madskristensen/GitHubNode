@@ -35,6 +35,7 @@ namespace GitHubNode.Services.Marketplace
                     entry.Owner,
                     entry.Repo,
                     entry.Branch,
+                    entry.RepositoryUrl,
                     forceRefresh,
                     config.UpdateIntervalHours,
                     cancellationToken));
@@ -52,12 +53,13 @@ namespace GitHubNode.Services.Marketplace
             string owner,
             string repo,
             string branch = null,
+            string repositoryUrl = null,
             bool forceRefresh = false,
             int updateIntervalHours = 24,
             CancellationToken cancellationToken = default)
         {
-            var id = MarketplaceStorageService.GetMarketplaceId(owner, repo);
-            var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo);
+            var id = MarketplaceStorageService.GetMarketplaceId(owner, repo, repositoryUrl);
+            var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo, repositoryUrl);
 
             // Check cache
             if (!forceRefresh)
@@ -74,19 +76,19 @@ namespace GitHubNode.Services.Marketplace
             // If branch is not specified, detect it from the remote
             if (string.IsNullOrEmpty(branch))
             {
-                branch = await MarketplaceGitService.GetDefaultBranchAsync(owner, repo, cancellationToken);
+                branch = await MarketplaceGitService.GetDefaultBranchAsync(owner, repo, repositoryUrl, cancellationToken);
             }
 
             // Determine if we need to clone/update
-            var needsUpdate = forceRefresh || !MarketplaceGitService.IsCloned(owner, repo);
+            var needsUpdate = forceRefresh || !MarketplaceGitService.IsCloned(owner, repo, repositoryUrl);
             if (!needsUpdate && _initialLoadComplete)
             {
-                needsUpdate = MarketplaceGitService.NeedsUpdate(owner, repo, updateIntervalHours);
+                needsUpdate = MarketplaceGitService.NeedsUpdate(owner, repo, repositoryUrl, updateIntervalHours);
             }
 
             if (needsUpdate)
             {
-                var gitResult = await MarketplaceGitService.CloneOrUpdateAsync(owner, repo, branch, cancellationToken);
+                var gitResult = await MarketplaceGitService.CloneOrUpdateAsync(owner, repo, branch, repositoryUrl, cancellationToken);
                 if (!gitResult.Success)
                 {
                     Debug.WriteLine($"MarketplaceService: Git operation failed for {id}: {gitResult.Error}");
@@ -107,9 +109,10 @@ namespace GitHubNode.Services.Marketplace
                         Id = id,
                         Owner = owner,
                         RepoName = repo,
+                        RepositoryUrl = string.IsNullOrWhiteSpace(repositoryUrl) ? null : MarketplaceRepositoryUrl.GetRepositoryUrl(owner, repo, repositoryUrl),
                         Branch = branch,
                         DisplayName = $"{owner}/{repo}",
-                        IsBuiltIn = MarketplaceStorageService.IsBuiltIn(owner, repo),
+                        IsBuiltIn = MarketplaceStorageService.IsBuiltIn(owner, repo, repositoryUrl),
                         IsCloned = false,
                         ErrorMessage = gitResult.Error
                     };
@@ -118,7 +121,7 @@ namespace GitHubNode.Services.Marketplace
 
             // Parse the MarketplaceInfo asynchronously (supports linked repos)
             var marketplaceInfo = await MarketplaceParserService.ParseMarketplaceAsync(
-                owner, repo, localPath, cloneLinkedRepos: true, cancellationToken);
+                owner, repo, localPath, repositoryUrl, cloneLinkedRepos: true, cancellationToken);
             marketplaceInfo.Branch = branch;
 
             // Update cache
@@ -138,21 +141,21 @@ namespace GitHubNode.Services.Marketplace
             CancellationToken cancellationToken = default)
         {
             // Parse input (supports "owner/repo" or "https://github.com/owner/repo")
-            var (owner, repo, branch) = ParseMarketplaceInput(input);
+            var (owner, repo, branch, repositoryUrl) = ParseMarketplaceInput(input);
 
             if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             {
-                return (false, "Invalid format. Use 'owner/repo' or a GitHub URL.", null);
+                return (false, "Invalid format. Use 'owner/repo' or a repository URL.", null);
             }
 
             // Check if it's a built-in
-            if (MarketplaceStorageService.IsBuiltIn(owner, repo))
+            if (MarketplaceStorageService.IsBuiltIn(owner, repo, repositoryUrl))
             {
                 return (false, $"{owner}/{repo} is a built-in MarketplaceInfo and is already available.", null);
             }
 
             // Try to clone and validate
-            var marketplace = await GetMarketplaceAsync(owner, repo, branch, forceRefresh: true, cancellationToken: cancellationToken);
+            var marketplace = await GetMarketplaceAsync(owner, repo, branch, repositoryUrl, forceRefresh: true, cancellationToken: cancellationToken);
 
             if (!marketplace.IsCloned)
             {
@@ -160,7 +163,7 @@ namespace GitHubNode.Services.Marketplace
             }
 
             // Add to user config
-            if (!MarketplaceStorageService.AddMarketplace(owner, repo, branch))
+            if (!MarketplaceStorageService.AddMarketplace(owner, repo, branch, repositoryUrl))
             {
                 // Already exists in config
                 return (true, null, marketplace);
@@ -172,19 +175,19 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Removes a user MarketplaceInfo.
         /// </summary>
-        public static bool RemoveMarketplace(string owner, string repo, bool deleteClone = true)
+        public static bool RemoveMarketplace(string owner, string repo, string repositoryUrl = null, bool deleteClone = true)
         {
             // Can't remove built-in marketplaces
-            if (MarketplaceStorageService.IsBuiltIn(owner, repo))
+            if (MarketplaceStorageService.IsBuiltIn(owner, repo, repositoryUrl))
             {
                 return false;
             }
 
             // Remove from config
-            MarketplaceStorageService.RemoveMarketplace(owner, repo);
+            MarketplaceStorageService.RemoveMarketplace(owner, repo, repositoryUrl);
 
             // Remove from cache
-            var id = MarketplaceStorageService.GetMarketplaceId(owner, repo);
+            var id = MarketplaceStorageService.GetMarketplaceId(owner, repo, repositoryUrl);
             lock (_cacheLock)
             {
                 _marketplaceCache.Remove(id);
@@ -193,7 +196,7 @@ namespace GitHubNode.Services.Marketplace
             // Optionally delete the clone
             if (deleteClone)
             {
-                MarketplaceStorageService.DeleteMarketplaceClone(owner, repo);
+                MarketplaceStorageService.DeleteMarketplaceClone(owner, repo, repositoryUrl);
             }
 
             return true;
@@ -272,18 +275,22 @@ namespace GitHubNode.Services.Marketplace
         public static async Task<MarketplaceInfo> RefreshMarketplaceAsync(
             string owner,
             string repo,
+            string repositoryUrl = null,
             CancellationToken cancellationToken = default)
         {
             // Get the branch from existing config or detect from remote
             var config = MarketplaceStorageService.LoadConfig();
             string branch = null;
+            string configuredRepositoryUrl = repositoryUrl;
 
             foreach (var entry in config.Marketplaces)
             {
-                if (string.Equals(entry.Owner, owner, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(entry.Repo, repo, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(MarketplaceStorageService.GetMarketplaceId(entry.Owner, entry.Repo, entry.RepositoryUrl),
+                        MarketplaceStorageService.GetMarketplaceId(owner, repo, repositoryUrl),
+                        StringComparison.OrdinalIgnoreCase))
                 {
                     branch = entry.Branch;
+                    configuredRepositoryUrl = entry.RepositoryUrl;
                     break;
                 }
             }
@@ -301,7 +308,7 @@ namespace GitHubNode.Services.Marketplace
                 }
             }
 
-            return await GetMarketplaceAsync(owner, repo, branch, forceRefresh: true, cancellationToken: cancellationToken);
+            return await GetMarketplaceAsync(owner, repo, branch, configuredRepositoryUrl, forceRefresh: true, cancellationToken: cancellationToken);
         }
 
         /// <summary>
@@ -319,72 +326,11 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Parses MarketplaceInfo input in various formats.
         /// </summary>
-        private static (string owner, string repo, string branch) ParseMarketplaceInput(string input)
+        private static (string owner, string repo, string branch, string repositoryUrl) ParseMarketplaceInput(string input)
         {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return (null, null, null);
-            }
-
-            input = input.Trim();
-
-            // Handle GitHub URLs
-            if (input.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) ||
-                input.StartsWith("http://github.com/", StringComparison.OrdinalIgnoreCase))
-            {
-                // Remove protocol and domain
-                var path = input;
-                if (path.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase))
-                {
-                    path = path.Substring("https://github.com/".Length);
-                }
-                else if (path.StartsWith("http://github.com/", StringComparison.OrdinalIgnoreCase))
-                {
-                    path = path.Substring("http://github.com/".Length);
-                }
-
-                // Remove .git suffix if present
-                if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
-                {
-                    path = path.Substring(0, path.Length - 4);
-                }
-
-                // Remove trailing slashes
-                path = path.TrimEnd('/');
-
-                input = path;
-            }
-
-            // Handle git@ URLs
-            if (input.StartsWith("git@github.com:", StringComparison.OrdinalIgnoreCase))
-            {
-                var path = input.Substring("git@github.com:".Length);
-                if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
-                {
-                    path = path.Substring(0, path.Length - 4);
-                }
-
-                input = path;
-            }
-
-            // Parse owner/repo format
-            var parts = input.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 2)
-            {
-                // Could have branch: owner/repo/tree/branch
-                var owner = parts[0];
-                var repo = parts[1];
-                string branch = null;
-
-                if (parts.Length >= 4 && string.Equals(parts[2], "tree", StringComparison.OrdinalIgnoreCase))
-                {
-                    branch = parts[3];
-                }
-
-                return (owner, repo, branch);
-            }
-
-            return (null, null, null);
+            return MarketplaceRepositoryUrl.TryParseInput(input, out var owner, out var repo, out var branch, out var repositoryUrl)
+                ? (owner, repo, branch, repositoryUrl)
+                : (null, null, null, null);
         }
     }
 }

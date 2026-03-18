@@ -33,10 +33,11 @@ namespace GitHubNode.Services.Marketplace
             string owner,
             string repo,
             string branch,
+            string repositoryUrl = null,
             CancellationToken cancellationToken = default)
         {
-            var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo);
-            var cloneUrl = $"https://github.com/{owner}/{repo}.git";
+            var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo, repositoryUrl);
+            var cloneUrl = MarketplaceRepositoryUrl.GetCloneUrl(owner, repo, repositoryUrl);
 
             MarketplaceStorageService.EnsureDirectoriesExist();
 
@@ -77,16 +78,18 @@ namespace GitHubNode.Services.Marketplace
             string linkedOwner,
             string linkedRepo,
             string branch = null,
+            string linkedRepositoryUrl = null,
+            string parentRepositoryUrl = null,
             CancellationToken cancellationToken = default)
         {
             var localPath = MarketplaceStorageService.GetLinkedRepositoryDirectory(
-                parentMarketplaceOwner, parentMarketplaceRepo, linkedOwner, linkedRepo);
-            var cloneUrl = $"https://github.com/{linkedOwner}/{linkedRepo}.git";
+                parentMarketplaceOwner, parentMarketplaceRepo, linkedOwner, linkedRepo, parentRepositoryUrl, linkedRepositoryUrl);
+            var cloneUrl = MarketplaceRepositoryUrl.GetCloneUrl(linkedOwner, linkedRepo, linkedRepositoryUrl);
 
             // If branch is not specified, detect it from the remote
             if (string.IsNullOrEmpty(branch))
             {
-                branch = await GetDefaultBranchAsync(linkedOwner, linkedRepo, cancellationToken);
+                branch = await GetDefaultBranchAsync(linkedOwner, linkedRepo, linkedRepositoryUrl, cancellationToken);
             }
 
             await _gitLock.WaitAsync(cancellationToken);
@@ -114,9 +117,9 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Checks if a MarketplaceInfo repository is cloned.
         /// </summary>
-        public static bool IsCloned(string owner, string repo)
+        public static bool IsCloned(string owner, string repo, string repositoryUrl = null)
         {
-            var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo);
+            var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo, repositoryUrl);
             return Directory.Exists(Path.Combine(localPath, ".git"));
         }
 
@@ -127,9 +130,10 @@ namespace GitHubNode.Services.Marketplace
         public static async Task<string> GetDefaultBranchAsync(
             string owner,
             string repo,
+            string repositoryUrl = null,
             CancellationToken cancellationToken = default)
         {
-            var repoUrl = $"https://github.com/{owner}/{repo}.git";
+            var repoUrl = MarketplaceRepositoryUrl.GetCloneUrl(owner, repo, repositoryUrl);
 
             try
             {
@@ -185,9 +189,9 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Gets the last update time for a cloned repository.
         /// </summary>
-        public static DateTime? GetLastUpdateTime(string owner, string repo)
+        public static DateTime? GetLastUpdateTime(string owner, string repo, string repositoryUrl = null)
         {
-            var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo);
+            var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo, repositoryUrl);
             var fetchHead = Path.Combine(localPath, ".git", "FETCH_HEAD");
 
             if (File.Exists(fetchHead))
@@ -208,9 +212,9 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Checks if a repository needs updating based on the configured interval.
         /// </summary>
-        public static bool NeedsUpdate(string owner, string repo, int intervalHours = 24)
+        public static bool NeedsUpdate(string owner, string repo, string repositoryUrl = null, int intervalHours = 24)
         {
-            var lastUpdate = GetLastUpdateTime(owner, repo);
+            var lastUpdate = GetLastUpdateTime(owner, repo, repositoryUrl);
             if (!lastUpdate.HasValue)
             {
                 return true;

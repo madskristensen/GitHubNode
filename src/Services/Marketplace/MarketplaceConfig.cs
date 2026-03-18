@@ -21,6 +21,12 @@ namespace GitHubNode.Services.Marketplace
         public string Repo { get; set; }
 
         /// <summary>
+        /// Gets or sets the repository URL when the marketplace is not hosted on github.com.
+        /// </summary>
+        [JsonPropertyName("url")]
+        public string RepositoryUrl { get; set; }
+
+        /// <summary>
         /// Gets or sets the branch to use. Defaults to "main".
         /// </summary>
         [JsonPropertyName("branch")]

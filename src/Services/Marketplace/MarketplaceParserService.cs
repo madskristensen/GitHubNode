@@ -135,7 +135,7 @@ namespace GitHubNode.Services.Marketplace
         /// </summary>
         public static MarketplaceInfo ParseMarketplace(string owner, string repo, string localPath)
         {
-            return ParseMarketplaceAsync(owner, repo, localPath, cloneLinkedRepos: false, CancellationToken.None)
+            return ParseMarketplaceAsync(owner, repo, localPath, repositoryUrl: null, cloneLinkedRepos: false, cancellationToken: CancellationToken.None)
                 .GetAwaiter().GetResult();
         }
 
@@ -147,18 +147,20 @@ namespace GitHubNode.Services.Marketplace
             string owner,
             string repo,
             string localPath,
+            string repositoryUrl = null,
             bool cloneLinkedRepos = true,
             CancellationToken cancellationToken = default)
         {
             var marketplaceInfo = new MarketplaceInfo
             {
-                Id = MarketplaceStorageService.GetMarketplaceId(owner, repo),
+                Id = MarketplaceStorageService.GetMarketplaceId(owner, repo, repositoryUrl),
                 Owner = owner,
                 RepoName = repo,
+                RepositoryUrl = string.IsNullOrWhiteSpace(repositoryUrl) ? null : MarketplaceRepositoryUrl.GetRepositoryUrl(owner, repo, repositoryUrl),
                 LocalPath = localPath,
-                IsBuiltIn = MarketplaceStorageService.IsBuiltIn(owner, repo),
+                IsBuiltIn = MarketplaceStorageService.IsBuiltIn(owner, repo, repositoryUrl),
                 IsCloned = Directory.Exists(Path.Combine(localPath, ".git")),
-                LastUpdated = MarketplaceGitService.GetLastUpdateTime(owner, repo)
+                LastUpdated = MarketplaceGitService.GetLastUpdateTime(owner, repo, repositoryUrl)
             };
 
             if (!marketplaceInfo.IsCloned)
@@ -195,7 +197,7 @@ namespace GitHubNode.Services.Marketplace
                 marketplaceInfo.Description = rawJson.metadata?.description;
 
                 // Copy icon to local storage if specified
-                marketplaceInfo.IconPath = CopyIconToStorage(owner, repo, localPath, rawJson.metadata?.icon);
+                marketplaceInfo.IconPath = CopyIconToStorage(owner, repo, localPath, rawJson.metadata?.icon, repositoryUrl);
 
                 // Get the plugin root directory (default to repo root if not specified)
                 // Only trim leading slashes, not dots (to preserve .github folder names)
@@ -208,7 +210,7 @@ namespace GitHubNode.Services.Marketplace
                     {
                         cancellationToken.ThrowIfCancellationRequested();
 
-                        var plugin = await ParsePluginAsync(rawPlugin, localPath, pluginRoot, marketplaceInfo.Id, cloneLinkedRepos, cancellationToken);
+                        var plugin = await ParsePluginAsync(rawPlugin, localPath, pluginRoot, marketplaceInfo.Id, owner, repo, repositoryUrl, cloneLinkedRepos, cancellationToken);
                         if (plugin != null)
                         {
                             marketplaceInfo.Plugins.Add(plugin);
@@ -239,6 +241,9 @@ namespace GitHubNode.Services.Marketplace
             string repoPath,
             string pluginRoot,
             string marketplaceId,
+            string parentOwner,
+            string parentRepo,
+            string parentRepositoryUrl,
             bool cloneLinkedRepos,
             CancellationToken cancellationToken)
         {
@@ -259,70 +264,63 @@ namespace GitHubNode.Services.Marketplace
 
             // Check if this is a linked (external) repository source
             RawPluginSource linkedSource = raw.GetLinkedSource();
-            if (linkedSource != null && 
-                !string.IsNullOrWhiteSpace(linkedSource.repo) &&
-                string.Equals(linkedSource.source, "github", StringComparison.OrdinalIgnoreCase))
+            if (linkedSource != null && !string.IsNullOrWhiteSpace(linkedSource.repo))
             {
-                // Parse owner/repo from "owner/repo" format
-                string[] repoParts = linkedSource.repo.Split('/');
-                if (repoParts.Length == 2)
+                if (MarketplaceRepositoryUrl.TryParseInput(linkedSource.repo, out var linkedOwner, out var linkedRepo, out _, out var linkedRepositoryUrl))
                 {
-                    string linkedOwner = repoParts[0];
-                    string linkedRepo = repoParts[1];
-
-                    // Extract parent marketplace owner/repo from marketplaceId
-                    string[] parentParts = marketplaceId.Split('/');
-                    if (parentParts.Length == 2)
+                    if (linkedRepositoryUrl == null &&
+                        !string.IsNullOrWhiteSpace(linkedSource.source) &&
+                        !string.Equals(linkedSource.source, "github", StringComparison.OrdinalIgnoreCase))
                     {
-                        string parentOwner = parentParts[0];
-                        string parentRepo = parentParts[1];
+                        return plugin;
+                    }
 
-                        // Check if linked repo is already cloned (fast path)
-                        string linkedLocalPath = MarketplaceStorageService.GetLinkedRepositoryDirectory(
-                            parentOwner, parentRepo, linkedOwner, linkedRepo);
+                    string linkedLocalPath = MarketplaceStorageService.GetLinkedRepositoryDirectory(
+                        parentOwner, parentRepo, linkedOwner, linkedRepo, parentRepositoryUrl, linkedRepositoryUrl);
 
-                        bool needsClone = !Directory.Exists(Path.Combine(linkedLocalPath, ".git"));
+                    bool needsClone = !Directory.Exists(Path.Combine(linkedLocalPath, ".git"));
 
-                        if (needsClone && cloneLinkedRepos)
+                    if (needsClone && cloneLinkedRepos)
+                    {
+                        // Clone the linked repository asynchronously
+                        try
                         {
-                            // Clone the linked repository asynchronously
-                            try
-                            {
-                                var (result, clonedPath) = await MarketplaceGitService.CloneLinkedRepositoryAsync(
-                                    parentOwner, parentRepo, linkedOwner, linkedRepo, cancellationToken: cancellationToken);
+                            var (result, clonedPath) = await MarketplaceGitService.CloneLinkedRepositoryAsync(
+                                parentOwner, parentRepo, linkedOwner, linkedRepo, linkedRepositoryUrl: linkedRepositoryUrl, parentRepositoryUrl: parentRepositoryUrl, cancellationToken: cancellationToken);
 
-                                if (!result.Success)
-                                {
-                                    Debug.WriteLine($"MarketplaceParserService: Failed to clone linked repo {linkedSource.repo}: {result.Error}");
-                                }
+                            if (!result.Success)
+                            {
+                                Debug.WriteLine($"MarketplaceParserService: Failed to clone linked repo {linkedSource.repo}: {result.Error}");
+                            }
 
-                                linkedLocalPath = clonedPath;
-                            }
-                            catch (OperationCanceledException)
-                            {
-                                throw;
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"MarketplaceParserService: Exception cloning linked repo {linkedSource.repo}: {ex.Message}");
-                            }
+                            linkedLocalPath = clonedPath;
                         }
-
-                        // Scan if the linked repo directory exists
-                        if (Directory.Exists(linkedLocalPath))
+                        catch (OperationCanceledException)
                         {
-                            // Determine the plugin directory within the linked repo
-                            // Only trim leading slashes, not dots (to preserve .github folder names)
-                            string linkedPluginPath = string.IsNullOrWhiteSpace(linkedSource.path)
-                                ? linkedLocalPath
-                                : Path.Combine(linkedLocalPath, linkedSource.path.TrimStart('/', '\\'));
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"MarketplaceParserService: Exception cloning linked repo {linkedSource.repo}: {ex.Message}");
+                        }
+                    }
 
-                            if (Directory.Exists(linkedPluginPath))
-                            {
-                                // Scan the linked plugin directory for assets
-                                ScanPluginDirectory(linkedPluginPath, plugin, linkedLocalPath);
-                                plugin.Source = $"{linkedSource.repo}:{linkedSource.path}";
-                            }
+                    // Scan if the linked repo directory exists
+                    if (Directory.Exists(linkedLocalPath))
+                    {
+                        // Determine the plugin directory within the linked repo
+                        // Only trim leading slashes, not dots (to preserve .github folder names)
+                        string linkedPluginPath = string.IsNullOrWhiteSpace(linkedSource.path)
+                            ? linkedLocalPath
+                            : Path.Combine(linkedLocalPath, linkedSource.path.TrimStart('/', '\\'));
+
+                        if (Directory.Exists(linkedPluginPath))
+                        {
+                            // Scan the linked plugin directory for assets
+                            ScanPluginDirectory(linkedPluginPath, plugin, linkedLocalPath);
+                            plugin.Source = string.IsNullOrWhiteSpace(linkedSource.path)
+                                ? linkedSource.repo
+                                : $"{linkedSource.repo}:{linkedSource.path}";
                         }
                     }
                 }
@@ -683,7 +681,7 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Copies the marketplace icon to local storage if specified and valid.
         /// </summary>
-        private static string CopyIconToStorage(string owner, string repo, string localPath, string iconRelativePath)
+        private static string CopyIconToStorage(string owner, string repo, string localPath, string iconRelativePath, string repositoryUrl)
         {
             if (string.IsNullOrWhiteSpace(iconRelativePath))
             {
@@ -703,7 +701,7 @@ namespace GitHubNode.Services.Marketplace
                 }
 
                 var extension = Path.GetExtension(sourceIconPath);
-                var destIconPath = MarketplaceStorageService.GetIconPath(owner, repo, extension);
+                var destIconPath = MarketplaceStorageService.GetIconPath(owner, repo, extension, repositoryUrl);
 
                 // Copy if source is newer or dest doesn't exist
                 var sourceInfo = new FileInfo(sourceIconPath);
