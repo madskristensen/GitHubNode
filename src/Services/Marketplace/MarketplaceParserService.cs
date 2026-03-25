@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -611,11 +610,92 @@ namespace GitHubNode.Services.Marketplace
             {
                 Type = type,
                 Name = name,
+                Description = GetAssetDescription(filePath, type),
                 LocalPath = filePath,
                 RelativePath = relativePath,
                 PluginName = pluginName,
                 MarketplaceId = marketplaceId
             };
+        }
+
+        private static string GetAssetDescription(string filePath, AssetType type)
+        {
+            if (type == AssetType.McpServer || !filePath.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            try
+            {
+                var content = File.ReadAllText(filePath);
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    return null;
+                }
+
+                return ExtractDescriptionFromMarkdown(content);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceParserService.GetAssetDescription failed for '{filePath}': {ex}");
+                return null;
+            }
+        }
+
+        private static string ExtractDescriptionFromMarkdown(string content)
+        {
+            var lines = content.Replace("\r\n", "\n").Split('\n');
+            var bodyStartIndex = 0;
+
+            if (lines.Length > 0 && string.Equals(lines[0].Trim(), "---", StringComparison.Ordinal))
+            {
+                for (var i = 1; i < lines.Length; i++)
+                {
+                    var line = lines[i];
+                    if (string.Equals(line.Trim(), "---", StringComparison.Ordinal))
+                    {
+                        bodyStartIndex = i + 1;
+                        break;
+                    }
+
+                    var trimmedLine = line.Trim();
+                    if (trimmedLine.StartsWith("description:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var description = trimmedLine.Substring("description:".Length).Trim().Trim('"', '\'');
+                        if (!string.IsNullOrWhiteSpace(description))
+                        {
+                            return description;
+                        }
+                    }
+                }
+            }
+
+            var paragraphLines = new List<string>();
+            for (var i = bodyStartIndex; i < lines.Length; i++)
+            {
+                var trimmed = lines[i].Trim();
+
+                if (string.IsNullOrWhiteSpace(trimmed))
+                {
+                    if (paragraphLines.Count > 0)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (trimmed.StartsWith("#", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                paragraphLines.Add(trimmed);
+            }
+
+            return paragraphLines.Count == 0
+                ? null
+                : string.Join(" ", paragraphLines);
         }
 
         private static string GetAssetName(string filePath, AssetType type)

@@ -31,7 +31,7 @@ namespace GitHubNode.ToolWindows
         private TextBlock _detailsAuthor;
         private TextBlock _detailsUrl;
         private TextBlock _detailsStatus;
-        private StackPanel _templatesContainer;
+        private TreeView _templatesTree;
         private Button _refreshButton;
         private Button _openInBrowserButton;
         private Button _removeButton;
@@ -370,17 +370,22 @@ namespace GitHubNode.ToolWindows
             templatesHeader.SetResourceReference(ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
             _detailsPanel.Children.Add(templatesHeader);
 
-            // Scrollable container for categorized templates
-            var templatesScroll = new ScrollViewer
+            _templatesTree = new TreeView
             {
+                BorderThickness = new Thickness(0),
                 MaxHeight = 300,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Margin = new Thickness(0, 0, 0, 16)
             };
+            _templatesTree.SetResourceReference(BackgroundProperty, EnvironmentColors.ToolWindowBackgroundBrushKey);
+            _templatesTree.SetResourceReference(ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+            _templatesTree.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
+            _templatesTree.SetValue(ScrollViewer.CanContentScrollProperty, true);
+            _templatesTree.SetValue(VirtualizingStackPanel.IsVirtualizingProperty, true);
+            _templatesTree.SetValue(VirtualizingStackPanel.VirtualizationModeProperty, VirtualizationMode.Recycling);
+            _templatesTree.ItemContainerStyle = CreateMarketplaceTreeItemStyle();
+            AutomationProperties.SetName(_templatesTree, "Marketplace templates tree");
 
-            _templatesContainer = new StackPanel();
-            templatesScroll.Content = _templatesContainer;
-            _detailsPanel.Children.Add(templatesScroll);
+            _detailsPanel.Children.Add(_templatesTree);
 
             // Action buttons
             var actionsPanel = new StackPanel
@@ -424,6 +429,32 @@ namespace GitHubNode.ToolWindows
             };
             button.SetResourceReference(StyleProperty, VsResourceKeys.ButtonStyleKey);
             return button;
+        }
+
+        private static Style CreateMarketplaceTreeItemStyle()
+        {
+            var baseStyle = Application.Current?.TryFindResource(typeof(TreeViewItem)) as Style;
+            var style = new Style(typeof(TreeViewItem), baseStyle);
+            var selectedBackgroundBrush = new SolidColorBrush(Color.FromArgb(96, 192, 192, 192));
+            selectedBackgroundBrush.Freeze();
+
+            style.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension(EnvironmentColors.ToolWindowTextBrushKey)));
+
+            var activeSelectionTrigger = new MultiTrigger();
+            activeSelectionTrigger.Conditions.Add(new Condition(TreeViewItem.IsSelectedProperty, true));
+            activeSelectionTrigger.Conditions.Add(new Condition(System.Windows.Controls.Primitives.Selector.IsSelectionActiveProperty, true));
+            activeSelectionTrigger.Setters.Add(new Setter(Control.BackgroundProperty, selectedBackgroundBrush));
+            activeSelectionTrigger.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension(EnvironmentColors.ToolWindowTextBrushKey)));
+            style.Triggers.Add(activeSelectionTrigger);
+
+            var inactiveSelectionTrigger = new MultiTrigger();
+            inactiveSelectionTrigger.Conditions.Add(new Condition(TreeViewItem.IsSelectedProperty, true));
+            inactiveSelectionTrigger.Conditions.Add(new Condition(System.Windows.Controls.Primitives.Selector.IsSelectionActiveProperty, false));
+            inactiveSelectionTrigger.Setters.Add(new Setter(Control.BackgroundProperty, selectedBackgroundBrush));
+            inactiveSelectionTrigger.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension(EnvironmentColors.ToolWindowTextBrushKey)));
+            style.Triggers.Add(inactiveSelectionTrigger);
+
+            return style;
         }
 
         private async void OnControlLoaded(object sender, RoutedEventArgs e)
@@ -549,7 +580,7 @@ namespace GitHubNode.ToolWindows
                     repositoryUrl: selected.RepositoryUrl,
                     forceRefresh: true,
                     cancellationToken: _loadCancellationTokenSource?.Token ?? CancellationToken.None);
-                await LoadMarketplacesAsync();
+                await LoadMarketplacesAsync(selectionToRestore: selected);
                 SetStatus($"Refreshed {selected.DisplayName}");
             }
             catch (Exception ex)
@@ -632,7 +663,7 @@ namespace GitHubNode.ToolWindows
 
         private void PopulateTemplateCategories(System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<TemplateListItem>> templatesByCategory)
         {
-            _templatesContainer.Children.Clear();
+            _templatesTree.Items.Clear();
 
             // Define the display order and friendly names for categories
             var categoryOrder = new[] { "Agents", "Skills", "Instructions", "MCP Servers", "Prompts" };
@@ -644,10 +675,10 @@ namespace GitHubNode.ToolWindows
                     continue;
                 }
 
-                var expander = new Expander
+                var categoryNode = new TreeViewItem
                 {
                     IsExpanded = true,
-                    Margin = new Thickness(0, 0, 0, 8)
+                    Margin = new Thickness(0, 0, 0, 2)
                 };
 
                 // Header with count
@@ -656,60 +687,93 @@ namespace GitHubNode.ToolWindows
                     Text = $"{categoryName} ({templates.Count})",
                     FontWeight = FontWeights.SemiBold
                 };
-                header.SetResourceReference(ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-                expander.Header = header;
-
-                // Content - list of templates in this category
-                var itemsPanel = new StackPanel { Margin = new Thickness(16, 4, 0, 0) };
+                header.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+                categoryNode.Header = header;
 
                 foreach (var template in templates)
                 {
-                    var itemPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
+                    var itemNode = new TreeViewItem
+                    {
+                        Margin = new Thickness(0, 2, 0, 2)
+                    };
 
                     var nameText = new TextBlock
                     {
                         Text = template.DisplayName
                     };
-                    nameText.SetResourceReference(ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-                    itemPanel.Children.Add(nameText);
-
-                    if (!string.IsNullOrEmpty(template.Description))
-                    {
-                        var descText = new TextBlock
-                        {
-                            Text = template.Description,
-                            FontSize = 11,
-                            TextTrimming = TextTrimming.CharacterEllipsis
-                        };
-                        descText.SetResourceReference(ForegroundProperty, EnvironmentColors.SystemGrayTextBrushKey);
-                        itemPanel.Children.Add(descText);
-                    }
-
-                    itemsPanel.Children.Add(itemPanel);
+                    nameText.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+                    itemNode.Header = nameText;
+                    itemNode.ToolTip = CreateTemplateTooltip(template);
+                    categoryNode.Items.Add(itemNode);
                 }
 
-                expander.Content = itemsPanel;
-                _templatesContainer.Children.Add(expander);
+                _templatesTree.Items.Add(categoryNode);
             }
 
             // If no templates at all, show a message
-            if (_templatesContainer.Children.Count == 0)
+            if (_templatesTree.Items.Count == 0)
             {
-                var noTemplatesText = new TextBlock
+                var noTemplatesNode = new TreeViewItem
                 {
-                    Text = "No templates available",
-                    FontStyle = FontStyles.Italic
+                    Header = new TextBlock
+                    {
+                        Text = "No templates available",
+                        FontStyle = FontStyles.Italic
+                    },
+                    IsEnabled = false
                 };
-                noTemplatesText.SetResourceReference(ForegroundProperty, EnvironmentColors.SystemGrayTextBrushKey);
-                _templatesContainer.Children.Add(noTemplatesText);
+                if (noTemplatesNode.Header is TextBlock noTemplatesText)
+                {
+                    noTemplatesText.SetResourceReference(ForegroundProperty, EnvironmentColors.SystemGrayTextBrushKey);
+                }
+
+                _templatesTree.Items.Add(noTemplatesNode);
             }
         }
 
-        private async Task LoadMarketplacesAsync(bool forceRefresh = false)
+        private static ToolTip CreateTemplateTooltip(TemplateListItem template)
+        {
+            if (template == null)
+            {
+                return null;
+            }
+
+            var description = string.IsNullOrWhiteSpace(template.Description)
+                ? "No description available."
+                : template.Description;
+
+            var stack = new StackPanel
+            {
+                MaxWidth = 250
+            };
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = template.DisplayName,
+                FontWeight = FontWeights.Bold,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = description,
+                Margin = new Thickness(0, 4, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            return new ToolTip
+            {
+                Content = stack,
+                MaxWidth = 250
+            };
+        }
+
+        private async Task LoadMarketplacesAsync(bool forceRefresh = false, MarketplaceListItem selectionToRestore = null)
         {
             _loadCancellationTokenSource?.Cancel();
             _loadCancellationTokenSource = new CancellationTokenSource();
             var cancellationToken = _loadCancellationTokenSource.Token;
+            var selectedMarketplace = selectionToRestore ?? (_marketplaceList?.SelectedItem as MarketplaceListItem);
 
             try
             {
@@ -723,6 +787,8 @@ namespace GitHubNode.ToolWindows
                 {
                     _marketplaces.Add(new MarketplaceListItem(marketplace));
                 }
+
+                RestoreMarketplaceSelection(selectedMarketplace);
 
                 var clonedCount = 0;
                 var totalCount = marketplaces.Count;
@@ -749,6 +815,46 @@ namespace GitHubNode.ToolWindows
             {
                 SetLoading(false);
             }
+        }
+
+        private void RestoreMarketplaceSelection(MarketplaceListItem selectedMarketplace)
+        {
+            if (_marketplaceList == null)
+            {
+                return;
+            }
+
+            if (selectedMarketplace == null)
+            {
+                if (_marketplaces.Count > 0)
+                {
+                    _marketplaceList.SelectedIndex = 0;
+                }
+
+                return;
+            }
+
+            foreach (var item in _marketplaces)
+            {
+                if (IsMatchingMarketplace(item, selectedMarketplace))
+                {
+                    _marketplaceList.SelectedItem = item;
+                    _marketplaceList.ScrollIntoView(item);
+                    return;
+                }
+            }
+
+            if (_marketplaces.Count > 0)
+            {
+                _marketplaceList.SelectedIndex = 0;
+            }
+        }
+
+        private static bool IsMatchingMarketplace(MarketplaceListItem candidate, MarketplaceListItem selectedMarketplace)
+        {
+            return string.Equals(candidate.Owner, selectedMarketplace.Owner, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(candidate.RepoName, selectedMarketplace.RepoName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(candidate.RepositoryUrl, selectedMarketplace.RepositoryUrl, StringComparison.OrdinalIgnoreCase);
         }
 
         private void SetLoading(bool isLoading, string message = null)

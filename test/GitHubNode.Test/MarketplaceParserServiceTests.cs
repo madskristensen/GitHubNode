@@ -1,6 +1,8 @@
 using GitHubNode.Services.Marketplace;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using System.IO;
+using System.Linq;
 
 namespace GitHubNode.Test
 {
@@ -98,6 +100,76 @@ namespace GitHubNode.Test
             Assert.IsTrue(linkedDir.Contains("_linked"), "Path should contain _linked folder");
             Assert.IsTrue(linkedDir.Contains("microsoft_azure-skills"), "Path should contain linked repo name");
             Assert.IsTrue(linkedDir.Contains("github_awesome-copilot"), "Path should contain parent repo name");
+        }
+
+        [TestMethod]
+        public void ParseMarketplace_UsesFrontmatterDescription_ForMarkdownAsset()
+        {
+            var repoPath = CreateTempRepository();
+
+            try
+            {
+                var agentsDir = Path.Combine(repoPath, "agents");
+                Directory.CreateDirectory(agentsDir);
+
+                var agentPath = Path.Combine(agentsDir, "review.agent.md");
+                File.WriteAllText(agentPath,
+                    "---\r\ndescription: Reviews pull requests quickly\r\n---\r\n\r\n# Reviewer\r\n\r\nBody text.");
+
+                var marketplace = MarketplaceParserService.ParseMarketplace("owner", "repo", repoPath);
+                var asset = marketplace.GetAllAssets(AssetType.Agent).FirstOrDefault();
+
+                Assert.IsNotNull(asset, "Expected an agent asset to be discovered");
+                Assert.AreEqual("Reviews pull requests quickly", asset.Description);
+            }
+            finally
+            {
+                DeleteDirectory(repoPath);
+            }
+        }
+
+        [TestMethod]
+        public void ParseMarketplace_UsesFirstParagraphDescription_WhenFrontmatterMissing()
+        {
+            var repoPath = CreateTempRepository();
+
+            try
+            {
+                var promptsDir = Path.Combine(repoPath, "prompts");
+                Directory.CreateDirectory(promptsDir);
+
+                var promptPath = Path.Combine(promptsDir, "draft.prompt.md");
+                File.WriteAllText(promptPath,
+                    "# Draft Prompt\r\n\r\nThis prompt drafts concise release notes.\r\nIt keeps the summary action-focused.\r\n\r\n## Details\r\nMore content.");
+
+                var marketplace = MarketplaceParserService.ParseMarketplace("owner", "repo", repoPath);
+                var asset = marketplace.GetAllAssets(AssetType.Prompt).FirstOrDefault();
+
+                Assert.IsNotNull(asset, "Expected a prompt asset to be discovered");
+                Assert.AreEqual(
+                    "This prompt drafts concise release notes. It keeps the summary action-focused.",
+                    asset.Description);
+            }
+            finally
+            {
+                DeleteDirectory(repoPath);
+            }
+        }
+
+        private static string CreateTempRepository()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "GitHubNodeTest_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(path);
+            Directory.CreateDirectory(Path.Combine(path, ".git"));
+            return path;
+        }
+
+        private static void DeleteDirectory(string path)
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
         }
     }
 }
