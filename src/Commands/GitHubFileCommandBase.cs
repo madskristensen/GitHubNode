@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using GitHubNode.Services;
 using GitHubNode.SolutionExplorer;
 
@@ -157,6 +159,7 @@ namespace GitHubNode.Commands
             // Get user input if dialog is configured
             string userInput = null;
             string selectedTemplateContent = null;
+            var selectedTemplates = new System.Collections.Generic.List<TemplateSelectionResult>();
             InstallScope selectedScope = InstallScope.Solution;
             if (DialogTitle != null)
             {
@@ -165,16 +168,23 @@ namespace GitHubNode.Commands
 
                 // Marketplace providers are loaded asynchronously by the dialog
                 var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator, TemplateType, marketplaceProviders: null);
-                if (dialog.ShowModal() != true || string.IsNullOrWhiteSpace(dialog.InputText))
+                if (dialog.ShowModal() != true)
                 {
                     return;
                 }
+
                 userInput = dialog.InputText;
                 selectedTemplateContent = dialog.SelectedTemplateContent;
+                selectedTemplates = dialog.SelectedTemplates?.ToList() ?? new System.Collections.Generic.List<TemplateSelectionResult>();
                 selectedScope = dialog.SelectedScope;
 
+                if (string.IsNullOrWhiteSpace(userInput) && selectedTemplates.Count == 0)
+                {
+                    return;
+                }
+
                 // Allow subclasses to validate the input
-                if (!await ValidateInputAsync(userInput))
+                if (selectedTemplates.Count == 0 && !await ValidateInputAsync(userInput))
                 {
                     return;
                 }
@@ -189,38 +199,94 @@ namespace GitHubNode.Commands
                 targetFolder = userProfileCopilot;
             }
 
-            // Get the file path from the subclass
-            var filePath = GetFilePath(targetFolder, userInput);
-            var fileName = Path.GetFileName(filePath);
-
-            // Ensure parent directory exists
-            var parentDir = Path.GetDirectoryName(filePath);
-            if (!string.IsNullOrEmpty(parentDir))
+            if (selectedTemplates.Count > 0)
             {
-                Directory.CreateDirectory(parentDir);
+                var createdFiles = new System.Collections.Generic.List<string>();
+                var skippedFiles = new System.Collections.Generic.List<string>();
+
+                foreach (var templateSelection in selectedTemplates)
+                {
+                    var templateFileName = templateSelection.FileName;
+                    if (string.IsNullOrWhiteSpace(templateFileName))
+                    {
+                        continue;
+                    }
+
+                    if (!await ValidateInputAsync(templateFileName))
+                    {
+                        skippedFiles.Add(templateFileName);
+                        continue;
+                    }
+
+                    var filePath = GetFilePath(targetFolder, templateFileName);
+                    var fileName = Path.GetFileName(filePath);
+
+                    var parentDir = Path.GetDirectoryName(filePath);
+                    if (!string.IsNullOrEmpty(parentDir))
+                    {
+                        Directory.CreateDirectory(parentDir);
+                    }
+
+                    if (File.Exists(filePath))
+                    {
+                        skippedFiles.Add(fileName);
+                        continue;
+                    }
+
+                    try
+                    {
+                        var content = templateSelection.Content ?? GetFileContent(templateFileName);
+                        File.WriteAllText(filePath, content);
+                        createdFiles.Add(filePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        await ex.LogAsync();
+                        await VS.MessageBox.ShowErrorAsync("Error", $"{ErrorMessagePrefix}: {ex.Message}");
+                        return;
+                    }
+                }
+
+                if (createdFiles.Count > 0)
+                {
+                    await VS.Documents.OpenAsync(createdFiles[0]);
+                }
+
+                if (skippedFiles.Count > 0)
+                {
+                    await VS.MessageBox.ShowWarningAsync("Some files were skipped", $"Skipped {skippedFiles.Count} item(s) because files already exist or names are invalid.");
+                }
+
+                return;
             }
 
-            // Check if file already exists
-            if (File.Exists(filePath))
+            var singleFilePath = GetFilePath(targetFolder, userInput);
+            var singleFileName = Path.GetFileName(singleFilePath);
+
+            var singleParentDir = Path.GetDirectoryName(singleFilePath);
+            if (!string.IsNullOrEmpty(singleParentDir))
+            {
+                Directory.CreateDirectory(singleParentDir);
+            }
+
+            if (File.Exists(singleFilePath))
             {
                 var result = await VS.MessageBox.ShowConfirmAsync(
                     "File Exists",
-                    $"{fileName} already exists. Do you want to open it?");
+                    $"{singleFileName} already exists. Do you want to open it?");
 
                 if (result)
                 {
-                    await VS.Documents.OpenAsync(filePath);
+                    await VS.Documents.OpenAsync(singleFilePath);
                 }
                 return;
             }
 
-            // Create the file
             try
             {
-                // Use selected template content if available, otherwise use default content
                 var content = selectedTemplateContent ?? GetFileContent(userInput);
-                File.WriteAllText(filePath, content);
-                await VS.Documents.OpenAsync(filePath);
+                File.WriteAllText(singleFilePath, content);
+                await VS.Documents.OpenAsync(singleFilePath);
             }
             catch (Exception ex)
             {

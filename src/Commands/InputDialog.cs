@@ -26,7 +26,6 @@ namespace GitHubNode.Commands
         private const int _dwmwaUseImmersiveDarkMode = 20;
         private const int _dwmwaCaptionColor = 35;
         private const int _dwmwaTextColor = 36;
-        private const string _blankTemplateText = "<blank>";
         private const string _allMarketplacesText = "All Marketplaces";
         private const string _settingsKey = "InputDialog";
 
@@ -35,11 +34,10 @@ namespace GitHubNode.Commands
         private readonly CheckBox _userProfileCheckBox;
         private readonly ComboBox _providerComboBox;
         private readonly TextBox _searchBox;
-        private readonly ComboBox _templateComboBox;
+        private readonly TreeView _templateTreeView;
         private readonly TextBlock _templateLabel;
         private readonly TextBlock _statusText;
         private readonly Button _refreshButton;
-        private readonly Button _copyButton;
         private readonly Func<string, string> _previewGenerator;
         private readonly TemplateType? _templateType;
         private readonly string _defaultFileName;
@@ -47,7 +45,10 @@ namespace GitHubNode.Commands
         private List<MarketplaceAsProvider> _marketplaceProviders;
         private List<TemplateInfo> _allTemplates;
         private List<TemplateInfo> _filteredTemplates;
-        private string _currentPreviewContent;
+        private List<TemplateListItemModel> _templateListItems;
+        private readonly Dictionary<string, bool> _collapsedTemplateGroups;
+        private readonly Dictionary<TemplateInfo, ToolTip> _templateTooltipCache;
+        private bool _isUpdatingTemplateChecks;
         private CancellationTokenSource _templateListCancellationTokenSource;
         private CancellationTokenSource _templateContentCancellationTokenSource;
         private bool _isInitialLoad;
@@ -68,6 +69,11 @@ namespace GitHubNode.Commands
         /// Returns the selected template content, or null if using custom/default template.
         /// </summary>
         public string SelectedTemplateContent { get; private set; }
+
+        /// <summary>
+        /// Gets the selected templates to create.
+        /// </summary>
+        public IReadOnlyList<TemplateSelectionResult> SelectedTemplates { get; private set; } = [];
 
         /// <summary>
         /// Creates a new input dialog.
@@ -114,6 +120,9 @@ namespace GitHubNode.Commands
 
             _allTemplates = new List<TemplateInfo>();
             _filteredTemplates = new List<TemplateInfo>();
+            _templateListItems = new List<TemplateListItemModel>();
+            _collapsedTemplateGroups = new Dictionary<string, bool>(System.StringComparer.OrdinalIgnoreCase);
+            _templateTooltipCache = new Dictionary<TemplateInfo, ToolTip>();
 
             // Constants for two-column layout
             const double labelWidth = 100;
@@ -140,12 +149,13 @@ namespace GitHubNode.Commands
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Scope checkbox
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Search
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Template
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Template label
+                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Template list
             }
 
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // File name
 
-            if (previewGenerator != null || templateType != null)
+            if (previewGenerator != null && templateType == null)
             {
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Preview label
                 grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Preview box
@@ -253,7 +263,7 @@ namespace GitHubNode.Commands
                 // Template row
                 _templateLabel = new TextBlock
                 {
-                    Text = "Template:",
+                    Text = "Templates:",
                     Margin = new Thickness(0, 0, 8, 0),
                     VerticalAlignment = VerticalAlignment.Center
                 };
@@ -261,22 +271,22 @@ namespace GitHubNode.Commands
                 Grid.SetRow(_templateLabel, currentRow);
                 Grid.SetColumn(_templateLabel, 0);
                 grid.Children.Add(_templateLabel);
+                currentRow++;
 
-                _templateComboBox = new ComboBox
+                _templateTreeView = new TreeView
                 {
                     Margin = new Thickness(0, 0, 0, rowSpacing),
-                    IsEditable = false,
-                    ItemTemplate = CreateTemplateItemTemplate()
+                    MinHeight = 160,
+                    BorderThickness = new Thickness(1)
                 };
-                _templateComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
-                _templateComboBox.Items.Add(_blankTemplateText);
-                _templateComboBox.SelectedIndex = 0;
-                _templateComboBox.SelectionChanged += OnTemplateSelectionChanged;
-                AutomationProperties.SetName(_templateComboBox, "Template selection");
-                AutomationProperties.SetHelpText(_templateComboBox, "Use Alt + Up or Alt + Down to move between templates.");
-                Grid.SetRow(_templateComboBox, currentRow);
-                Grid.SetColumn(_templateComboBox, 1);
-                grid.Children.Add(_templateComboBox);
+                _templateTreeView.SetResourceReference(TreeView.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
+                _templateTreeView.SetResourceReference(TreeView.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+                _templateTreeView.SetResourceReference(TreeView.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+                AutomationProperties.SetName(_templateTreeView, "Template selection tree");
+                AutomationProperties.SetHelpText(_templateTreeView, "Check one or more templates to add. Expand a marketplace group to select individual templates, or use the group checkbox to select or clear all templates in that marketplace.");
+                Grid.SetRow(_templateTreeView, currentRow);
+                Grid.SetColumnSpan(_templateTreeView, 2);
+                grid.Children.Add(_templateTreeView);
                 currentRow++;
             }
 
@@ -303,13 +313,13 @@ namespace GitHubNode.Commands
             _textBox.SetResourceReference(TextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
             _textBox.TextChanged += OnFileNameTextChanged;
             AutomationProperties.SetName(_textBox, "File name");
-            AutomationProperties.SetHelpText(_textBox, "Enter the name of the file to create.");
+            AutomationProperties.SetHelpText(_textBox, "Enter the name of the file to create. Leave all templates unchecked to create a scaffolded file from this name.");
             Grid.SetRow(_textBox, currentRow);
             Grid.SetColumn(_textBox, 1);
             grid.Children.Add(_textBox);
             currentRow++;
 
-            if (previewGenerator != null || templateType != null)
+            if (previewGenerator != null && templateType == null)
             {
                 var previewLabel = new TextBlock
                 {
@@ -393,22 +403,6 @@ namespace GitHubNode.Commands
                 AutomationProperties.SetHelpText(_refreshButton, "Fetch templates again from GitHub.");
                 actionPanel.Children.Add(_refreshButton);
 
-                _copyButton = new Button
-                {
-                    Content = "Copy",
-                    Width = 40,
-                    Height = 20,
-                    Padding = new Thickness(0),
-                    FontSize = 10,
-                    ToolTip = "Copy preview content to clipboard (Ctrl+Shift+C)",
-                    Margin = new Thickness(0, 0, 8, 0)
-                };
-                _copyButton.SetResourceReference(StyleProperty, VsResourceKeys.ButtonStyleKey);
-                _copyButton.Click += OnCopyButtonClick;
-                AutomationProperties.SetName(_copyButton, "Copy template preview");
-                AutomationProperties.SetHelpText(_copyButton, "Copy the full preview text to the clipboard.");
-                actionPanel.Children.Add(_copyButton);
-
                 Grid.SetColumn(actionPanel, 0);
                 buttonRowGrid.Children.Add(actionPanel);
             }
@@ -425,6 +419,11 @@ namespace GitHubNode.Commands
             AutomationProperties.SetName(okButton, "OK");
             okButton.Click += (s, e) =>
             {
+                if (!TryFinalizeSelection())
+                {
+                    return;
+                }
+
                 DialogResult = true;
                 Close();
             };
@@ -565,59 +564,6 @@ namespace GitHubNode.Commands
             {
                 OnRefreshButtonClick(_refreshButton, new RoutedEventArgs());
                 e.Handled = true;
-                return;
-            }
-
-            if (_templateComboBox != null && _templateComboBox.Items.Count > 0)
-            {
-                if ((Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
-                {
-                    if (e.Key == Key.Up)
-                    {
-                        MoveTemplateSelection(-1);
-                        e.Handled = true;
-                        return;
-                    }
-
-                    if (e.Key == Key.Down)
-                    {
-                        MoveTemplateSelection(1);
-                        e.Handled = true;
-                        return;
-                    }
-                }
-            }
-
-            if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift)
-                && e.Key == Key.C
-                && _copyButton != null
-                && _copyButton.IsEnabled)
-            {
-                OnCopyButtonClick(_copyButton, new RoutedEventArgs());
-                e.Handled = true;
-            }
-        }
-
-        private void MoveTemplateSelection(int offset)
-        {
-            if (_templateComboBox == null || _templateComboBox.Items.Count == 0)
-            {
-                return;
-            }
-
-            var nextIndex = _templateComboBox.SelectedIndex + offset;
-            if (nextIndex < 0)
-            {
-                nextIndex = 0;
-            }
-            else if (nextIndex >= _templateComboBox.Items.Count)
-            {
-                nextIndex = _templateComboBox.Items.Count - 1;
-            }
-
-            if (nextIndex != _templateComboBox.SelectedIndex)
-            {
-                _templateComboBox.SelectedIndex = nextIndex;
             }
         }
 
@@ -627,7 +573,7 @@ namespace GitHubNode.Commands
             _textBox.SelectAll();
             UpdatePreview();
 
-            if (_templateType != null && _templateComboBox != null)
+            if (_templateType != null && _templateTreeView != null)
             {
                 await ExecuteUiActionAsync(() => LoadTemplatesAsync(), "Failed to load templates");
             }
@@ -716,31 +662,27 @@ namespace GitHubNode.Commands
 
         private void ApplyFilters()
         {
-            // Get selected marketplace filter
             string selectedMarketplaceId = null;
             if (_providerComboBox?.SelectedItem is MarketplaceAsProvider selectedProvider)
             {
                 selectedMarketplaceId = selectedProvider.Id;
             }
 
-            // Get search text
             string searchText = _searchBox?.Text?.Trim() ?? "";
-
-            // Filter templates
             _filteredTemplates = _allTemplates
                 .Where(t =>
                 {
-                    // Filter by marketplace
                     if (selectedMarketplaceId != null && !string.Equals(t.ProviderId, selectedMarketplaceId, StringComparison.OrdinalIgnoreCase))
                     {
                         return false;
                     }
 
-                    // Filter by search text
                     if (!string.IsNullOrEmpty(searchText))
                     {
                         var name = t.DisplayName ?? t.Name ?? t.FileName ?? "";
-                        if (name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)
+                        var category = t.Category ?? "";
+                        if (name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0
+                            && category.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)
                         {
                             return false;
                         }
@@ -750,24 +692,31 @@ namespace GitHubNode.Commands
                 })
                 .ToList();
 
-            // Update template dropdown (grouped when showing all marketplaces)
             bool showGrouped = selectedMarketplaceId == null;
-            UpdateTemplateDropdown(showGrouped);
+            UpdateTemplateList(showGrouped);
         }
 
-        private void UpdateTemplateDropdown(bool groupByMarketplace)
+        private void UpdateTemplateList(bool groupByMarketplace)
         {
-            if (_templateComboBox == null)
+            if (_templateTreeView == null)
             {
                 return;
             }
 
-            _templateComboBox.Items.Clear();
-            _templateComboBox.Items.Add(_blankTemplateText);
-
-            if (groupByMarketplace && _filteredTemplates.Count > 0)
+            foreach (var existingHeader in _templateListItems.Where(item => item.IsGroupHeader && !string.IsNullOrEmpty(item.GroupKey)))
             {
-                // Build a lookup for marketplace ordering (preserve the order from provider list)
+                _collapsedTemplateGroups[existingHeader.GroupKey] = existingHeader.IsCollapsed;
+            }
+
+            var checkedTemplates = _templateListItems
+                .Where(item => !item.IsGroupHeader && item.IsChecked && item.Template != null)
+                .Select(item => item.Template)
+                .ToHashSet();
+
+            var nextItems = new List<TemplateListItemModel>();
+
+            if (_filteredTemplates.Count > 0)
+            {
                 var marketplaceOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 0; i < _marketplaceProviders.Count; i++)
                 {
@@ -778,75 +727,43 @@ namespace GitHubNode.Commands
                     }
                 }
 
-                // Group by marketplace and preserve original marketplace order
                 var grouped = _filteredTemplates
                     .GroupBy(t => t.ProviderId ?? "unknown")
                     .OrderBy(g => marketplaceOrder.TryGetValue(g.Key, out int order) ? order : int.MaxValue);
 
                 foreach (var group in grouped)
                 {
-                    var marketplaceName = GetMarketplaceDisplayName(group.Key);
+                    var templatesInGroup = group
+                        .OrderBy(t => t.DisplayName ?? t.Name ?? t.FileName)
+                        .ToList();
 
-                    // Add group header (disabled separator item)
-                    var header = new ComboBoxItem
-                    {
-                        Content = $"── {marketplaceName} ──",
-                        IsEnabled = false,
-                        FontWeight = FontWeights.SemiBold,
-                        Foreground = new SolidColorBrush(Colors.Gray)
-                    };
-                    _templateComboBox.Items.Add(header);
+                    var groupItems = templatesInGroup
+                        .Select(template => new TemplateListItemModel
+                        {
+                            IsGroupHeader = false,
+                            GroupKey = group.Key,
+                            GroupDisplayName = GetMarketplaceDisplayName(group.Key),
+                            Template = template,
+                            IsChecked = checkedTemplates.Contains(template)
+                        })
+                        .ToList();
 
-                    // Add templates in this group, sorted by name
-                    foreach (var template in group.OrderBy(t => t.DisplayName ?? t.Name ?? t.FileName))
+                    nextItems.Add(new TemplateListItemModel
                     {
-                        _templateComboBox.Items.Add(new TemplateDisplayItem(template));
-                    }
+                        IsGroupHeader = true,
+                        GroupKey = group.Key,
+                        GroupDisplayName = GetMarketplaceDisplayName(group.Key),
+                        IsCollapsed = _collapsedTemplateGroups.TryGetValue(group.Key, out var isCollapsed) && isCollapsed,
+                        IsChecked = groupItems.Count > 0 && groupItems.All(item => item.IsChecked)
+                    });
+
+                    nextItems.AddRange(groupItems);
                 }
             }
-            else
-            {
-                // Simple list sorted by name
-                foreach (var template in _filteredTemplates.OrderBy(t => t.DisplayName ?? t.Name ?? t.FileName))
-                {
-                    _templateComboBox.Items.Add(new TemplateDisplayItem(template));
-                }
-            }
 
-            _templateComboBox.SelectedIndex = 0;
-            _templateLabel.Text = "Template:";
-        }
-
-        /// <summary>
-        /// Creates a DataTemplate for template dropdown items with name and category styling.
-        /// </summary>
-        private static DataTemplate CreateTemplateItemTemplate()
-        {
-            var template = new DataTemplate();
-
-            // Use DockPanel for simpler layout: category docked right, name fills remaining space
-            var factory = new FrameworkElementFactory(typeof(DockPanel));
-            factory.SetValue(DockPanel.LastChildFillProperty, true);
-
-            // Category TextBlock (dimmed, docked right)
-            var categoryBlock = new FrameworkElementFactory(typeof(TextBlock));
-            categoryBlock.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Category"));
-            categoryBlock.SetValue(TextBlock.OpacityProperty, 0.6);
-            categoryBlock.SetValue(TextBlock.MarginProperty, new Thickness(12, 0, 0, 0));
-            categoryBlock.SetValue(TextBlock.FontSizeProperty, 11.0);
-            categoryBlock.SetValue(DockPanel.DockProperty, Dock.Right);
-
-            // Name TextBlock (fills remaining space)
-            var nameBlock = new FrameworkElementFactory(typeof(TextBlock));
-            nameBlock.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Name"));
-            nameBlock.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
-
-            // Add category first (docked right), then name (fills)
-            factory.AppendChild(categoryBlock);
-            factory.AppendChild(nameBlock);
-
-            template.VisualTree = factory;
-            return template;
+            _templateListItems = nextItems;
+            RenderTemplateListItems();
+            UpdateTemplateLabelSelectionCount();
         }
 
         private string GetMarketplaceDisplayName(string marketplaceId)
@@ -862,37 +779,8 @@ namespace GitHubNode.Commands
             return provider?.DisplayName ?? marketplaceId;
         }
 
-        /// <summary>
-        /// Gets the template for the currently selected dropdown item, accounting for group headers.
-        /// </summary>
-        private TemplateInfo GetSelectedTemplate()
-        {
-            if (_templateComboBox == null || _templateComboBox.SelectedIndex <= 0)
-            {
-                return null;
-            }
-
-            var selectedItem = _templateComboBox.SelectedItem;
-
-            // If it's a ComboBoxItem (header), return null
-            if (selectedItem is ComboBoxItem)
-            {
-                return null;
-            }
-
-            // If it's a TemplateDisplayItem, return the associated template
-            if (selectedItem is TemplateDisplayItem displayItem)
-            {
-                return displayItem.Template;
-            }
-
-            // It's a string (e.g., "<Custom>") - return null
-            return null;
-        }
-
         private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
         {
-            // Apply filters when search text changes
             if (_allTemplates != null && _allTemplates.Count > 0)
             {
                 ApplyFilters();
@@ -901,12 +789,10 @@ namespace GitHubNode.Commands
 
         private void OnProviderSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            // Apply filters when marketplace selection changes
             if (_allTemplates != null && _allTemplates.Count > 0)
             {
                 ApplyFilters();
 
-                // Update status with filter info
                 string selectedName = _providerComboBox?.SelectedItem is MarketplaceAsProvider provider
                     ? provider.DisplayName
                     : _allMarketplacesText;
@@ -919,21 +805,297 @@ namespace GitHubNode.Commands
             await ExecuteUiActionAsync(() => LoadTemplatesAsync(forceRefresh: true), "Failed to refresh templates");
         }
 
-        private void OnCopyButtonClick(object sender, RoutedEventArgs e)
+        private void RenderTemplateListItems()
         {
-            if (!string.IsNullOrEmpty(_currentPreviewContent))
+            if (_templateTreeView == null)
             {
-                try
+                return;
+            }
+
+            _templateTreeView.Items.Clear();
+            var groups = _templateListItems
+                .Where(item => item.IsGroupHeader)
+                .ToList();
+
+            foreach (var group in groups)
+            {
+                var groupItem = new TreeViewItem
                 {
-                    Clipboard.SetText(_currentPreviewContent);
-                    SetStatus("Copied to clipboard");
+                    Header = CreateTemplateCheckBox(group),
+                    IsExpanded = !IsTemplateGroupCollapsed(group.GroupKey),
+                    Tag = group
+                };
+
+                groupItem.Expanded += OnTemplateGroupExpanded;
+                groupItem.Collapsed += OnTemplateGroupCollapsed;
+
+                var children = _templateListItems
+                    .Where(item => !item.IsGroupHeader && string.Equals(item.GroupKey, group.GroupKey, StringComparison.OrdinalIgnoreCase));
+
+                foreach (var child in children)
+                {
+                    groupItem.Items.Add(new TreeViewItem
+                    {
+                        Header = CreateTemplateCheckBox(child),
+                        IsExpanded = false
+                    });
                 }
-                catch (Exception ex)
+
+                _templateTreeView.Items.Add(groupItem);
+            }
+        }
+
+        private bool IsTemplateGroupCollapsed(string groupKey)
+        {
+            return !string.IsNullOrWhiteSpace(groupKey)
+                && _collapsedTemplateGroups.TryGetValue(groupKey, out var isCollapsed)
+                && isCollapsed;
+        }
+
+        private void OnTemplateGroupExpanded(object sender, RoutedEventArgs e)
+        {
+            if (sender is not TreeViewItem treeItem || treeItem.Tag is not TemplateListItemModel group)
+            {
+                return;
+            }
+
+            group.IsCollapsed = false;
+            _collapsedTemplateGroups[group.GroupKey] = false;
+        }
+
+        private void OnTemplateGroupCollapsed(object sender, RoutedEventArgs e)
+        {
+            if (sender is not TreeViewItem treeItem || treeItem.Tag is not TemplateListItemModel group)
+            {
+                return;
+            }
+
+            group.IsCollapsed = true;
+            _collapsedTemplateGroups[group.GroupKey] = true;
+        }
+
+        private CheckBox CreateTemplateCheckBox(TemplateListItemModel item)
+        {
+            var checkBox = new CheckBox
+            {
+                IsChecked = item.IsChecked,
+                Tag = item,
+                Margin = item.IsGroupHeader ? new Thickness(0, 6, 0, 0) : new Thickness(16, 1, 0, 1),
+                FontWeight = item.IsGroupHeader ? FontWeights.Bold : FontWeights.Normal,
+                Opacity = item.IsGroupHeader ? 0.9 : 1.0,
+                ToolTip = item.IsGroupHeader ? null : GetTemplateTooltip(item)
+            };
+
+            checkBox.SetResourceReference(CheckBox.StyleProperty, VsResourceKeys.CheckBoxStyleKey);
+            checkBox.Checked += OnTemplateItemCheckedChanged;
+            checkBox.Unchecked += OnTemplateItemCheckedChanged;
+
+            if (item.IsGroupHeader)
+            {
+                checkBox.Content = item.GroupDisplayName;
+            }
+            else if (!string.IsNullOrEmpty(item.Category))
+            {
+                checkBox.Content = $"{item.Name} ({item.Category})";
+            }
+            else
+            {
+                checkBox.Content = item.Name;
+            }
+
+            return checkBox;
+        }
+
+        private ToolTip GetTemplateTooltip(TemplateListItemModel item)
+        {
+            if (item == null || item.IsGroupHeader || item.Template == null)
+            {
+                return null;
+            }
+
+            if (_templateTooltipCache.TryGetValue(item.Template, out var tooltip))
+            {
+                return tooltip;
+            }
+
+            var title = item.Template.DisplayName ?? item.Template.Name ?? item.Template.FileName ?? "Template";
+            var description = item.Template.Description;
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                description = string.IsNullOrWhiteSpace(item.Template.Category)
+                    ? "No description available."
+                    : item.Template.Category;
+            }
+
+            var stack = new StackPanel
+            {
+                MaxWidth = 250
+            };
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontWeight = FontWeights.Bold,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = description,
+                Margin = new Thickness(0, 4, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            tooltip = new ToolTip
+            {
+                Content = stack,
+                MaxWidth = 250
+            };
+
+            _templateTooltipCache[item.Template] = tooltip;
+            return tooltip;
+        }
+
+        private void OnTemplateItemCheckedChanged(object sender, RoutedEventArgs e)
+        {
+            if (_isUpdatingTemplateChecks || sender is not CheckBox checkBox || checkBox.Tag is not TemplateListItemModel item)
+            {
+                return;
+            }
+
+            var isChecked = checkBox.IsChecked == true;
+            _isUpdatingTemplateChecks = true;
+
+            try
+            {
+                if (item.IsGroupHeader)
                 {
-                    _ = ex.LogAsync();
-                    SetStatus("Failed to copy");
+                    foreach (var child in _templateListItems.Where(candidate => !candidate.IsGroupHeader && string.Equals(candidate.GroupKey, item.GroupKey, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        child.IsChecked = isChecked;
+                    }
+
+                    item.IsChecked = isChecked;
+                }
+                else
+                {
+                    item.IsChecked = isChecked;
+                    UpdateGroupHeaderCheckState(item.GroupKey);
+                }
+
+                UpdateTemplateLabelSelectionCount();
+                CollectSelectedTemplates();
+            }
+            finally
+            {
+                _isUpdatingTemplateChecks = false;
+            }
+
+            RenderTemplateListItems();
+        }
+
+        private void UpdateGroupHeaderCheckState(string groupKey)
+        {
+            var header = _templateListItems.FirstOrDefault(item => item.IsGroupHeader && string.Equals(item.GroupKey, groupKey, StringComparison.OrdinalIgnoreCase));
+            if (header == null)
+            {
+                return;
+            }
+
+            var children = _templateListItems
+                .Where(item => !item.IsGroupHeader && string.Equals(item.GroupKey, groupKey, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            header.IsChecked = children.Count > 0 && children.All(item => item.IsChecked);
+        }
+
+        private void UpdateTemplateLabelSelectionCount()
+        {
+            if (_templateLabel == null)
+            {
+                return;
+            }
+
+            var selectedCount = _templateListItems.Count(item => !item.IsGroupHeader && item.IsChecked);
+            _templateLabel.Text = selectedCount > 0
+                ? $"Templates ({selectedCount} selected):"
+                : "Templates:";
+
+            if (_templateType != null && _statusText != null && _allTemplates.Count > 0)
+            {
+                if (selectedCount == 0)
+                {
+                    _statusText.Text = "No template selected. Enter a file name to create a scaffolded file.";
+                }
+                else
+                {
+                    _statusText.Text = $"{selectedCount} template(s) selected.";
                 }
             }
+
+            UpdateFileNameInputState();
+        }
+
+        private void UpdateFileNameInputState()
+        {
+            if (_templateType == null || _textBox == null)
+            {
+                return;
+            }
+
+            var hasCheckedTemplates = _templateListItems.Any(item => !item.IsGroupHeader && item.IsChecked);
+            _textBox.IsReadOnly = hasCheckedTemplates;
+        }
+
+        private void CollectSelectedTemplates()
+        {
+            if (_templateType == null)
+            {
+                SelectedTemplates = [];
+                return;
+            }
+
+            var selected = _templateListItems
+                .Where(item => !item.IsGroupHeader && item.IsChecked && item.Template != null)
+                .Select(item =>
+                {
+                    var content = item.Template.Content;
+                    if (string.IsNullOrEmpty(content))
+                    {
+                        content = MarketplaceTemplateAdapter.GetTemplateContent(item.Template);
+                        item.Template.Content = content;
+                    }
+
+                    return new TemplateSelectionResult
+                    {
+                        Template = item.Template,
+                        FileName = item.Template.FileName,
+                        Content = content
+                    };
+                })
+                .Where(item => !string.IsNullOrEmpty(item.Content))
+                .ToList();
+
+            SelectedTemplates = selected;
+            SelectedTemplateContent = selected.Count == 1 ? selected[0].Content : null;
+        }
+
+        private bool TryFinalizeSelection()
+        {
+            CollectSelectedTemplates();
+
+            if (_templateType != null && SelectedTemplates.Count > 0)
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_textBox?.Text))
+            {
+                return true;
+            }
+
+            _ = VS.MessageBox.ShowWarningAsync("Invalid Input", "Please enter a file name or select one or more templates.");
+            return false;
         }
 
         private void SetStatus(string message)
@@ -969,120 +1131,23 @@ namespace GitHubNode.Commands
                 _searchBox.IsEnabled = enabled;
             }
 
-            if (_templateComboBox != null)
+            if (_templateTreeView != null)
             {
-                _templateComboBox.IsEnabled = enabled;
+                _templateTreeView.IsEnabled = enabled;
             }
 
             if (_textBox != null)
             {
                 _textBox.IsEnabled = enabled;
-            }
-
-            if (_copyButton != null)
-            {
-                _copyButton.IsEnabled = enabled;
+                UpdateFileNameInputState();
             }
         }
 
         private void OnFileNameTextChanged(object sender, TextChangedEventArgs e)
         {
-            // Only update preview when blank template is selected (textbox is editable)
-            if (_templateComboBox == null || _templateComboBox.SelectedIndex == 0)
+            if (_templateType == null)
             {
                 UpdatePreview();
-            }
-        }
-
-        private async void OnTemplateSelectionChanged(object sender, RoutedEventArgs e)
-        {
-            // Skip if a header item was selected
-            if (_templateComboBox?.SelectedItem is ComboBoxItem)
-            {
-                // Move to next non-header item
-                var currentIndex = _templateComboBox.SelectedIndex;
-                for (int i = currentIndex + 1; i < _templateComboBox.Items.Count; i++)
-                {
-                    if (!(_templateComboBox.Items[i] is ComboBoxItem))
-                    {
-                        _templateComboBox.SelectedIndex = i;
-                        return;
-                    }
-                }
-
-                // No valid item found, go back to Custom
-                _templateComboBox.SelectedIndex = 0;
-                return;
-            }
-
-            await ExecuteUiActionAsync(OnTemplateSelectionChangedAsync, "Failed to load template content");
-        }
-
-        private async Task OnTemplateSelectionChangedAsync()
-        {
-            CancellationTokenSource currentRequestCancellation = ReplaceCancellationTokenSource(ref _templateContentCancellationTokenSource);
-            CancellationToken cancellationToken = currentRequestCancellation.Token;
-
-            try
-            {
-                if (_templateComboBox.SelectedIndex == 0)
-                {
-                    SelectedTemplateContent = null;
-                    _textBox.Text = _defaultFileName;
-                    _textBox.IsEnabled = true;
-
-                    UpdatePreview();
-                    SetStatus("Blank template");
-                    return;
-                }
-
-                TemplateInfo template = GetSelectedTemplate();
-                if (template == null)
-                {
-                    return;
-                }
-
-                _textBox.Text = template.FileName;
-                _textBox.IsEnabled = false;
-
-                if (string.IsNullOrEmpty(template.Content))
-                {
-                    SetStatus("Loading template content...");
-
-                    // For marketplace templates, content is loaded from local files
-                    await Task.Run(() =>
-                    {
-                        template.Content = MarketplaceTemplateAdapter.GetTemplateContent(template);
-                    }, cancellationToken);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (string.IsNullOrEmpty(template.Content))
-                    {
-                        SelectedTemplateContent = null;
-                        SetStatus("Failed to load template content.");
-                        ClearPreviewContent();
-                        return;
-                    }
-                }
-
-                SelectedTemplateContent = template.Content;
-                UpdatePreviewWithContent(template.Content);
-
-                var sizeKb = (template.Content?.Length ?? 0) / 1024.0;
-                var sizeText = sizeKb >= 1.0 ? $"{sizeKb:F1} KB" : $"{template.Content?.Length ?? 0} bytes";
-                SetStatus($"{GetTemplateSourceSummary(template)} - {sizeText}");
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-            }
-            finally
-            {
-                if (ReferenceEquals(_templateContentCancellationTokenSource, currentRequestCancellation))
-                {
-                    _templateContentCancellationTokenSource = null;
-                    currentRequestCancellation.Dispose();
-                }
             }
         }
 
@@ -1146,18 +1211,11 @@ namespace GitHubNode.Commands
             }
 
             _previewBox.Document.Blocks.Clear();
-            _currentPreviewContent = null;
-            SetCopyEnabled(false);
         }
 
         private void UpdatePreview()
         {
             if (_previewBox == null)
-            {
-                return;
-            }
-
-            if (_templateComboBox != null && _templateComboBox.SelectedIndex > 0)
             {
                 return;
             }
@@ -1178,8 +1236,6 @@ namespace GitHubNode.Commands
                 _ = ex.LogAsync();
                 _previewBox.Document.Blocks.Clear();
                 _previewBox.Document.Blocks.Add(new Paragraph(new Run("(Preview unavailable)")));
-                _currentPreviewContent = null;
-                SetCopyEnabled(false);
             }
         }
 
@@ -1189,9 +1245,6 @@ namespace GitHubNode.Commands
             {
                 return;
             }
-
-            _currentPreviewContent = content;
-            SetCopyEnabled(true);
 
             string[] lines = content.Split('\n');
             string displayContent;
@@ -1208,14 +1261,6 @@ namespace GitHubNode.Commands
             }
 
             _previewBox.Document = MarkdownSyntaxHighlighter.CreateHighlightedDocument(displayContent, truncated);
-        }
-
-        private void SetCopyEnabled(bool enabled)
-        {
-            if (_copyButton != null)
-            {
-                _copyButton.IsEnabled = enabled;
-            }
         }
 
         private static Button CreateThemedButton(string content, bool isDefault = false, bool isCancel = false)
@@ -1303,6 +1348,38 @@ namespace GitHubNode.Commands
         public override string ToString() => string.IsNullOrEmpty(Category)
             ? Name
             : $"{Name} ({Category})";
+    }
+
+    internal sealed class TemplateSelectionResult
+    {
+        public TemplateInfo Template { get; init; }
+
+        public string FileName { get; init; }
+
+        public string Content { get; init; }
+    }
+
+    internal sealed class TemplateListItemModel
+    {
+        public bool IsGroupHeader { get; set; }
+
+        public bool IsCollapsed { get; set; }
+
+        public string GroupKey { get; set; }
+
+        public string GroupDisplayName { get; set; }
+
+        public TemplateInfo Template { get; set; }
+
+        public string Name => IsGroupHeader
+            ? GroupDisplayName
+            : Template?.DisplayName ?? Template?.Name ?? Template?.FileName ?? "Unknown";
+
+        public string Category => Template?.Category;
+
+        public bool IsChecked { get; set; }
+
+        public string Tooltip { get; set; }
     }
 }
 

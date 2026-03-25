@@ -67,6 +67,12 @@ namespace GitHubNode.Services.Marketplace
 
             var assetType = ToAssetType(templateType);
             var assets = new List<PluginAsset>(marketplace.GetAllAssets(assetType));
+
+            if (assets.Count == 0 && templateType == TemplateType.Instructions)
+            {
+                assets.AddRange(DiscoverInstructionAssetsFromRepository(marketplace));
+            }
+
             return ConvertToTemplateInfos(assets, templateType);
         }
 
@@ -81,6 +87,11 @@ namespace GitHubNode.Services.Marketplace
             var assetType = ToAssetType(templateType);
             var marketplaces = await MarketplaceService.GetMarketplacesWithAssetTypeAsync(assetType, cancellationToken);
 
+            if (marketplaces.Count == 0)
+            {
+                marketplaces = await MarketplaceService.GetAllMarketplacesAsync(forceRefresh: false, cancellationToken);
+            }
+
             var providers = new List<MarketplaceAsProvider>();
             foreach (var marketplace in marketplaces)
             {
@@ -88,6 +99,70 @@ namespace GitHubNode.Services.Marketplace
             }
 
             return providers;
+        }
+
+        private static IEnumerable<PluginAsset> DiscoverInstructionAssetsFromRepository(MarketplaceInfo marketplace)
+        {
+            if (marketplace == null || string.IsNullOrWhiteSpace(marketplace.LocalPath) || !System.IO.Directory.Exists(marketplace.LocalPath))
+            {
+                return new List<PluginAsset>();
+            }
+
+            var discovered = new List<PluginAsset>();
+            var addedPaths = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+
+            foreach (var file in System.IO.Directory.GetFiles(marketplace.LocalPath, "*.instructions.md", System.IO.SearchOption.AllDirectories))
+            {
+                AddInstructionAsset(discovered, addedPaths, marketplace, file);
+            }
+
+            foreach (var file in System.IO.Directory.GetFiles(marketplace.LocalPath, "instructions.md", System.IO.SearchOption.AllDirectories))
+            {
+                AddInstructionAsset(discovered, addedPaths, marketplace, file);
+            }
+
+            foreach (var file in System.IO.Directory.GetFiles(marketplace.LocalPath, "copilot-instructions.md", System.IO.SearchOption.AllDirectories))
+            {
+                AddInstructionAsset(discovered, addedPaths, marketplace, file);
+            }
+
+            return discovered;
+        }
+
+        private static void AddInstructionAsset(
+            List<PluginAsset> assets,
+            HashSet<string> addedPaths,
+            MarketplaceInfo marketplace,
+            string file)
+        {
+            if (string.IsNullOrWhiteSpace(file) || !addedPaths.Add(file))
+            {
+                return;
+            }
+
+            var name = System.IO.Path.GetFileNameWithoutExtension(file);
+            if (name != null && name.EndsWith(".instructions", System.StringComparison.OrdinalIgnoreCase))
+            {
+                name = name.Substring(0, name.Length - ".instructions".Length);
+            }
+
+            var pluginName = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(file));
+            if (string.IsNullOrWhiteSpace(pluginName))
+            {
+                pluginName = marketplace.DisplayName;
+            }
+
+            assets.Add(new PluginAsset
+            {
+                Name = string.IsNullOrWhiteSpace(name) ? System.IO.Path.GetFileName(file) : name,
+                Type = AssetType.Instructions,
+                RelativePath = file.StartsWith(marketplace.LocalPath, System.StringComparison.OrdinalIgnoreCase)
+                    ? file.Substring(marketplace.LocalPath.Length).TrimStart('\\', '/')
+                    : file,
+                LocalPath = file,
+                PluginName = pluginName,
+                MarketplaceId = marketplace.Id
+            });
         }
 
         /// <summary>
@@ -127,6 +202,7 @@ namespace GitHubNode.Services.Marketplace
                     Name = asset.Name,
                     FileName = fileName,
                     DisplayName = asset.Name,
+                    Description = asset.Description,
                     Category = asset.PluginName,
                     DownloadUrl = asset.LocalPath, // Local path since we're using git clone
                     TemplateType = templateType,

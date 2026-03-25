@@ -29,6 +29,11 @@ namespace GitHubNode.Services
         public string Category { get; set; }
 
         /// <summary>
+        /// Short description for the template.
+        /// </summary>
+        public string Description { get; set; }
+
+        /// <summary>
         /// Local file path to the template content.
         /// </summary>
         public string LocalPath { get; set; }

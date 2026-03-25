@@ -54,7 +54,7 @@ namespace GitHubNode.Commands
 
             // Show the MCP server picker dialog
             var dialog = new InstallMcpServerDialog(mcpAssets, solutionDirectory);
-            if (dialog.ShowDialog() != true || dialog.SelectedAsset == null || string.IsNullOrEmpty(dialog.SelectedServerName))
+            if (dialog.ShowDialog() != true || dialog.SelectedServers == null || dialog.SelectedServers.Count == 0)
             {
                 return;
             }
@@ -72,21 +72,37 @@ namespace GitHubNode.Commands
                 targetPath = McpInstallService.GetTargetConfigPath(solutionDirectory);
             }
 
-            // Install the selected MCP server
-            McpInstallResult result = McpInstallService.InstallFromMarketplace(
-                dialog.SelectedAsset.LocalPath,
-                dialog.SelectedServerName,
-                solutionDirectory,
-                targetPath);
+            var installedServers = new List<string>();
+            var skippedServers = new List<string>();
 
-            if (result.Success)
+            foreach (var selection in dialog.SelectedServers)
             {
-                // Open the configuration file (no confirmation dialog needed)
-                await VS.Documents.OpenAsync(result.TargetFilePath);
+                McpInstallResult result = McpInstallService.InstallFromMarketplace(
+                    selection.Asset.LocalPath,
+                    selection.ServerName,
+                    solutionDirectory,
+                    targetPath);
+
+                if (result.Success)
+                {
+                    installedServers.AddRange(result.InstalledServers);
+                    skippedServers.AddRange(result.SkippedServers);
+                }
+                else
+                {
+                    await VS.MessageBox.ShowWarningAsync("Installation Failed", result.Message);
+                    return;
+                }
             }
-            else
+
+            if (installedServers.Count > 0)
             {
-                await VS.MessageBox.ShowWarningAsync("Installation Failed", result.Message);
+                await VS.Documents.OpenAsync(targetPath);
+            }
+
+            if (skippedServers.Count > 0)
+            {
+                await VS.MessageBox.ShowWarningAsync("Some servers were skipped", $"Skipped {skippedServers.Count} server(s) that already exist.");
             }
         }
     }

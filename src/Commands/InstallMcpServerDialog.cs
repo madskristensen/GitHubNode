@@ -27,8 +27,8 @@ namespace GitHubNode.Commands
 
         private readonly ComboBox _scopeComboBox;
         private readonly ComboBox _marketplaceComboBox;
-        private readonly ComboBox _serverComboBox;
-        private readonly RichTextBox _previewBox;
+        private readonly TextBox _searchBox;
+        private readonly ListBox _serverListBox;
         private readonly TextBlock _statusText;
         private readonly TextBlock _targetPathText;
         private readonly Button _refreshButton;
@@ -36,17 +36,14 @@ namespace GitHubNode.Commands
         private readonly string _solutionDirectory;
 
         private List<McpServerItem> _allServerItems;
+        private List<McpServerListItem> _serverListItems;
         private List<MarketplaceInfo> _marketplaces;
+        private bool _isUpdatingServerChecks;
 
         /// <summary>
-        /// Gets the selected MCP server asset, or null if cancelled.
+        /// Gets the selected MCP servers to install.
         /// </summary>
-        public PluginAsset SelectedAsset { get; private set; }
-
-        /// <summary>
-        /// Gets the selected server name to install.
-        /// </summary>
-        public string SelectedServerName { get; private set; }
+        public IReadOnlyList<McpServerSelection> SelectedServers { get; private set; } = [];
 
         /// <summary>
         /// Gets the selected installation scope.
@@ -61,6 +58,7 @@ namespace GitHubNode.Commands
 
             // Parse the actual server info from each .mcp.json file
             _allServerItems = ParseServerItems(mcpAssets);
+            _serverListItems = new List<McpServerListItem>();
 
             // Get unique marketplaces
             _marketplaces = _allServerItems
@@ -101,10 +99,10 @@ namespace GitHubNode.Commands
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Scope dropdown
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace label
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Marketplace dropdown
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Search label
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Search box
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Server label
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Server dropdown
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Preview label
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Preview box
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Server list
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Target info
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Status
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Buttons
@@ -173,6 +171,27 @@ namespace GitHubNode.Commands
             Grid.SetRow(_marketplaceComboBox, currentRow++);
             grid.Children.Add(_marketplaceComboBox);
 
+            var searchLabel = new TextBlock
+            {
+                Text = "Search:",
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            searchLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+            Grid.SetRow(searchLabel, currentRow++);
+            grid.Children.Add(searchLabel);
+
+            _searchBox = new TextBox
+            {
+                Margin = new Thickness(0, 0, 0, 8),
+                Padding = new Thickness(4, 2, 4, 2)
+            };
+            _searchBox.SetResourceReference(TextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
+            _searchBox.SetResourceReference(TextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+            _searchBox.SetResourceReference(TextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+            _searchBox.TextChanged += OnSearchTextChanged;
+            Grid.SetRow(_searchBox, currentRow++);
+            grid.Children.Add(_searchBox);
+
             // Server label
             var serverLabel = new TextBlock
             {
@@ -183,44 +202,18 @@ namespace GitHubNode.Commands
             Grid.SetRow(serverLabel, currentRow++);
             grid.Children.Add(serverLabel);
 
-            // Server dropdown
-            _serverComboBox = new ComboBox
+            // Server checklist
+            _serverListBox = new ListBox
             {
                 Margin = new Thickness(0, 0, 0, 12),
-                IsEditable = false
+                BorderThickness = new Thickness(1),
+                MinHeight = 180
             };
-            _serverComboBox.SetResourceReference(ComboBox.StyleProperty, VsResourceKeys.ComboBoxStyleKey);
-            _serverComboBox.SelectionChanged += OnServerSelectionChanged;
-            Grid.SetRow(_serverComboBox, currentRow++);
-            grid.Children.Add(_serverComboBox);
-
-            // Preview label
-            var previewLabel = new TextBlock
-            {
-                Text = "Preview:",
-                Margin = new Thickness(0, 0, 0, 4)
-            };
-            previewLabel.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
-            Grid.SetRow(previewLabel, currentRow++);
-            grid.Children.Add(previewLabel);
-
-            // Preview box
-            _previewBox = new RichTextBox
-            {
-                IsReadOnly = true,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 12,
-                Margin = new Thickness(0, 0, 0, 12),
-                Padding = new Thickness(4),
-                BorderThickness = new Thickness(1)
-            };
-            _previewBox.SetResourceReference(RichTextBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
-            _previewBox.SetResourceReference(RichTextBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
-            _previewBox.SetResourceReference(RichTextBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
-            Grid.SetRow(_previewBox, currentRow++);
-            grid.Children.Add(_previewBox);
+            _serverListBox.SetResourceReference(ListBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
+            _serverListBox.SetResourceReference(ListBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
+            _serverListBox.SetResourceReference(ListBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+            Grid.SetRow(_serverListBox, currentRow++);
+            grid.Children.Add(_serverListBox);
 
             // Target path info
             var targetPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
@@ -426,6 +419,11 @@ namespace GitHubNode.Commands
             UpdateServerList();
         }
 
+        private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
+        {
+            UpdateServerList();
+        }
+
         private void OnScopeSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             UpdateTargetPath();
@@ -445,45 +443,87 @@ namespace GitHubNode.Commands
             }
 
             _targetPathText.Text = _targetConfigPath ?? "No workspace configuration found";
-            UpdateStatusText(_serverComboBox.Items.Count);
-        }
-
-        private void OnServerSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        {
-            UpdatePreview();
+            UpdateStatusText(_serverListItems.Count(item => !item.IsGroupHeader));
         }
 
         private void UpdateServerList()
         {
-            _serverComboBox.Items.Clear();
-
             string selectedMarketplace = _marketplaceComboBox.SelectedItem as string;
             bool showAll = selectedMarketplace == _allMarketplacesText;
+            string searchText = _searchBox?.Text?.Trim() ?? string.Empty;
 
             var filteredServers = showAll
                 ? _allServerItems
                 : _allServerItems.Where(s => s.Asset.MarketplaceId == selectedMarketplace).ToList();
 
-            foreach (var server in filteredServers)
+            if (!string.IsNullOrEmpty(searchText))
             {
-                string transportInfo = server.TransportType == "http" ? " (HTTP)" : " (stdio)";
-                string displayText = showAll
-                    ? $"{server.ServerName}{transportInfo} - {server.PluginName}"
-                    : $"{server.ServerName}{transportInfo}";
+                filteredServers = filteredServers
+                    .Where(server => server.ServerName.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0
+                        || (server.PluginName?.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+                        || (server.Asset?.MarketplaceId?.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0))
+                    .ToList();
+            }
 
-                var item = new ComboBoxItem
+            var checkedServers = _serverListItems
+                .Where(item => !item.IsGroupHeader && item.IsChecked && item.Server != null)
+                .Select(item => item.Server)
+                .ToHashSet();
+
+            var nextItems = new List<McpServerListItem>();
+            if (showAll)
+            {
+                var grouped = filteredServers
+                    .GroupBy(server => server.Asset?.MarketplaceId ?? "unknown")
+                    .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var group in grouped)
                 {
-                    Content = displayText,
-                    Tag = server
-                };
-                _serverComboBox.Items.Add(item);
-            }
+                    var groupServers = group
+                        .OrderBy(server => server.ServerName, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(server => server.PluginName, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
 
-            if (_serverComboBox.Items.Count > 0)
+                    var children = groupServers
+                        .Select(server => new McpServerListItem
+                        {
+                            IsGroupHeader = false,
+                            GroupKey = group.Key,
+                            GroupDisplayName = group.Key,
+                            Server = server,
+                            IsChecked = checkedServers.Contains(server)
+                        })
+                        .ToList();
+
+                    nextItems.Add(new McpServerListItem
+                    {
+                        IsGroupHeader = true,
+                        GroupKey = group.Key,
+                        GroupDisplayName = group.Key,
+                        IsChecked = children.Count > 0 && children.All(item => item.IsChecked)
+                    });
+                    nextItems.AddRange(children);
+                }
+            }
+            else
             {
-                _serverComboBox.SelectedIndex = 0;
+                foreach (var server in filteredServers
+                    .OrderBy(item => item.ServerName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(item => item.PluginName, StringComparer.OrdinalIgnoreCase))
+                {
+                    nextItems.Add(new McpServerListItem
+                    {
+                        IsGroupHeader = false,
+                        GroupKey = server.Asset?.MarketplaceId ?? "unknown",
+                        GroupDisplayName = server.Asset?.MarketplaceId,
+                        Server = server,
+                        IsChecked = checkedServers.Contains(server)
+                    });
+                }
             }
 
+            _serverListItems = nextItems;
+            RenderServerListItems();
             UpdateStatusText(filteredServers.Count);
         }
 
@@ -497,32 +537,157 @@ namespace GitHubNode.Commands
             _statusText.Text = $"{count} server(s) available. {configNote}";
         }
 
-        private void UpdatePreview()
+        private void RenderServerListItems()
         {
-            _previewBox.Document.Blocks.Clear();
-
-            if (_serverComboBox.SelectedItem is ComboBoxItem item && item.Tag is McpServerItem serverItem)
+            if (_serverListBox == null)
             {
-                // Show just this server's configuration
-                string jsonContent = serverItem.ServerConfigJson ?? "// No configuration available";
-
-                var paragraph = new Paragraph(new Run(jsonContent))
-                {
-                    Margin = new Thickness(0)
-                };
-                _previewBox.Document.Blocks.Add(paragraph);
+                return;
             }
+
+            _serverListBox.Items.Clear();
+            foreach (var item in _serverListItems)
+            {
+                var checkBox = new CheckBox
+                {
+                    IsChecked = item.IsChecked,
+                    Tag = item,
+                    Margin = item.IsGroupHeader ? new Thickness(0, 6, 0, 0) : new Thickness(16, 1, 0, 1),
+                    FontWeight = item.IsGroupHeader ? FontWeights.SemiBold : FontWeights.Normal,
+                    Content = item.IsGroupHeader ? item.GroupDisplayName : item.DisplayName,
+                    ToolTip = item.IsGroupHeader ? null : CreateServerToolTip(item)
+                };
+                checkBox.SetResourceReference(CheckBox.StyleProperty, VsResourceKeys.CheckBoxStyleKey);
+                checkBox.Checked += OnServerItemCheckedChanged;
+                checkBox.Unchecked += OnServerItemCheckedChanged;
+
+                var listItem = new ListBoxItem
+                {
+                    Content = checkBox,
+                    Padding = new Thickness(0)
+                };
+                _serverListBox.Items.Add(listItem);
+            }
+        }
+
+        private static ToolTip CreateServerToolTip(McpServerListItem item)
+        {
+            if (item?.Server == null)
+            {
+                return null;
+            }
+
+            var description = item.Server.Asset?.Description;
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                var transport = string.Equals(item.Server.TransportType, "HTTP", StringComparison.OrdinalIgnoreCase)
+                    ? "HTTP"
+                    : "stdio";
+                description = string.IsNullOrWhiteSpace(item.Server.PluginName)
+                    ? $"Transport: {transport}"
+                    : $"{item.Server.PluginName} - Transport: {transport}";
+            }
+
+            var stack = new StackPanel
+            {
+                MaxWidth = 250
+            };
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = item.Server.ServerName,
+                FontWeight = FontWeights.Bold,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = description,
+                Margin = new Thickness(0, 4, 0, 0),
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            return new ToolTip
+            {
+                Content = stack,
+                MaxWidth = 250
+            };
+        }
+
+        private void OnServerItemCheckedChanged(object sender, RoutedEventArgs e)
+        {
+            if (_isUpdatingServerChecks || sender is not CheckBox checkBox || checkBox.Tag is not McpServerListItem item)
+            {
+                return;
+            }
+
+            _isUpdatingServerChecks = true;
+
+            try
+            {
+                var isChecked = checkBox.IsChecked == true;
+                if (item.IsGroupHeader)
+                {
+                    foreach (var child in _serverListItems.Where(candidate => !candidate.IsGroupHeader && string.Equals(candidate.GroupKey, item.GroupKey, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        child.IsChecked = isChecked;
+                    }
+
+                    item.IsChecked = isChecked;
+                }
+                else
+                {
+                    item.IsChecked = isChecked;
+                    UpdateServerGroupHeaderState(item.GroupKey);
+                }
+
+                CollectSelectedServers();
+            }
+            finally
+            {
+                _isUpdatingServerChecks = false;
+            }
+
+            RenderServerListItems();
+        }
+
+        private void UpdateServerGroupHeaderState(string groupKey)
+        {
+            var header = _serverListItems.FirstOrDefault(item => item.IsGroupHeader && string.Equals(item.GroupKey, groupKey, StringComparison.OrdinalIgnoreCase));
+            if (header == null)
+            {
+                return;
+            }
+
+            var children = _serverListItems
+                .Where(item => !item.IsGroupHeader && string.Equals(item.GroupKey, groupKey, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            header.IsChecked = children.Count > 0 && children.All(item => item.IsChecked);
+        }
+
+        private void CollectSelectedServers()
+        {
+            SelectedServers = _serverListItems
+                .Where(item => !item.IsGroupHeader && item.IsChecked && item.Server != null)
+                .Select(item => new McpServerSelection
+                {
+                    Asset = item.Server.Asset,
+                    ServerName = item.Server.ServerName
+                })
+                .ToList();
         }
 
         private void OnInstallClicked()
         {
-            if (_serverComboBox.SelectedItem is ComboBoxItem item && item.Tag is McpServerItem serverItem)
+            CollectSelectedServers();
+            if (SelectedServers.Count == 0)
             {
-                SelectedAsset = serverItem.Asset;
-                SelectedServerName = serverItem.ServerName;
-                DialogResult = true;
-                Close();
+                _ = VS.MessageBox.ShowWarningAsync("No selection", "Select at least one MCP server to install.");
+                return;
             }
+
+            DialogResult = true;
+            Close();
         }
 
         /// <summary>
@@ -674,6 +839,44 @@ namespace GitHubNode.Commands
         private sealed class MarketplaceInfo
         {
             public string Id { get; set; }
+        }
+
+        internal sealed class McpServerSelection
+        {
+            public PluginAsset Asset { get; init; }
+
+            public string ServerName { get; init; }
+        }
+
+        private sealed class McpServerListItem
+        {
+            public bool IsGroupHeader { get; set; }
+
+            public string GroupKey { get; set; }
+
+            public string GroupDisplayName { get; set; }
+
+            public McpServerItem Server { get; set; }
+
+            public bool IsChecked { get; set; }
+
+            public string DisplayName
+            {
+                get
+                {
+                    if (Server == null)
+                    {
+                        return string.Empty;
+                    }
+
+                    string transport = string.Equals(Server.TransportType, "HTTP", StringComparison.OrdinalIgnoreCase)
+                        ? "HTTP"
+                        : "stdio";
+                    return string.IsNullOrEmpty(Server.PluginName)
+                        ? $"{Server.ServerName} ({transport})"
+                        : $"{Server.ServerName} ({transport}) - {Server.PluginName}";
+                }
+            }
         }
     }
 }
