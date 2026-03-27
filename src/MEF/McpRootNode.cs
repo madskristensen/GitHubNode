@@ -206,6 +206,7 @@ namespace GitHubNode.SolutionExplorer
             lock (_debounceLock)
             {
                 _debounceCts?.Cancel();
+                _debounceCts?.Dispose();
                 _debounceCts = new CancellationTokenSource();
                 CancellationToken token = _debounceCts.Token;
 

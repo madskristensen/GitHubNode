@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Imaging;
@@ -24,6 +25,7 @@ namespace GitHubNode.SolutionExplorer
         private string _fileName;
         private GitFileStatus _cachedGitStatus = GitFileStatus.NotInRepo;
         private bool _gitStatusLoaded;
+        private CancellationTokenSource _disposeCts = new CancellationTokenSource();
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -154,27 +156,40 @@ namespace GitHubNode.SolutionExplorer
                 return;
             }
 
-            GitFileStatus status = await GitStatusService.GetFileStatusAsync(FilePath);
-
-            if (IsDisposed)
+            try
             {
-                return;
-            }
+                GitFileStatus status = await GitStatusService.GetFileStatusAsync(FilePath, _disposeCts.Token);
 
-            var statusChanged = _cachedGitStatus != status || !_gitStatusLoaded;
-            _cachedGitStatus = status;
-            _gitStatusLoaded = true;
-
-            if (statusChanged)
-            {
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-                if (!IsDisposed)
+                if (IsDisposed)
                 {
-                    RaisePropertyChanged(nameof(StateIconMoniker));
-                    RaisePropertyChanged(nameof(StateToolTipText));
+                    return;
+                }
+
+                var statusChanged = _cachedGitStatus != status || !_gitStatusLoaded;
+                _cachedGitStatus = status;
+                _gitStatusLoaded = true;
+
+                if (statusChanged)
+                {
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                    if (!IsDisposed)
+                    {
+                        RaisePropertyChanged(nameof(StateIconMoniker));
+                        RaisePropertyChanged(nameof(StateToolTipText));
+                    }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // Node was disposed while loading git status - expected
+            }
+        }
+
+        protected override void OnDisposing()
+        {
+            _disposeCts.Cancel();
+            _disposeCts.Dispose();
         }
 
         private string GetGitStatusTooltip()

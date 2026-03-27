@@ -42,8 +42,9 @@ namespace GitHubNode.Services
     internal static class GitStatusService
     {
         private static readonly ConcurrentDictionary<string, CachedStatus> _statusCache = new(StringComparer.OrdinalIgnoreCase);
-        private static readonly TimeSpan _cacheExpiration = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan _cacheExpiration = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan _gitCommandTimeout = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan _minRefreshInterval = TimeSpan.FromSeconds(3);
         private static readonly SemaphoreSlim _refreshSemaphore = new(1, 1);
         private static readonly ConcurrentDictionary<string, DateTime> _lastRefreshByRepo = new(StringComparer.OrdinalIgnoreCase);
 
@@ -87,7 +88,7 @@ namespace GitHubNode.Services
         /// <summary>
         /// Gets the Git status for a file asynchronously.
         /// </summary>
-        public static async Task<GitFileStatus> GetFileStatusAsync(string filePath)
+        public static async Task<GitFileStatus> GetFileStatusAsync(string filePath, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
             {
@@ -104,10 +105,10 @@ namespace GitHubNode.Services
                 return cached.Status;
             }
 
-            return await GetFileStatusCoreAsync(filePath).ConfigureAwait(false);
+            return await GetFileStatusCoreAsync(filePath, cancellationToken).ConfigureAwait(false);
         }
 
-        private static async Task<GitFileStatus> GetFileStatusCoreAsync(string filePath)
+        private static async Task<GitFileStatus> GetFileStatusCoreAsync(string filePath, CancellationToken cancellationToken)
         {
             // Find repo root
             var repoRoot = FindGitRoot(filePath);
@@ -116,7 +117,7 @@ namespace GitHubNode.Services
                 return GitFileStatus.NotInRepo;
             }
 
-            await EnsureStatusCacheFreshAsync(repoRoot).ConfigureAwait(false);
+            await EnsureStatusCacheFreshAsync(repoRoot, cancellationToken).ConfigureAwait(false);
 
             // Return cached status or default to Unmodified
             if (TryGetFreshCachedStatus(filePath, out GitFileStatus cachedStatus))
@@ -194,6 +195,36 @@ namespace GitHubNode.Services
             _lastRefreshByRepo.Clear();
         }
 
+        /// <summary>
+        /// Invalidates cache entries for a specific directory and its descendants only.
+        /// Prefer this over <see cref="InvalidateCache"/> to avoid excessive git process spawning.
+        /// </summary>
+        public static void InvalidateCacheForDirectory(string directoryPath)
+        {
+            if (string.IsNullOrEmpty(directoryPath))
+            {
+                return;
+            }
+
+            string prefix = directoryPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+            foreach (string key in _statusCache.Keys)
+            {
+                if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(key, directoryPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _statusCache.TryRemove(key, out _);
+                }
+            }
+
+            // Find and invalidate only the repo that contains this directory
+            string repoRoot = FindGitRoot(directoryPath);
+            if (!string.IsNullOrEmpty(repoRoot))
+            {
+                _lastRefreshByRepo.TryRemove(repoRoot, out _);
+            }
+        }
+
         private static bool TryGetFreshCachedStatus(string filePath, out GitFileStatus status)
         {
             status = GitFileStatus.NotInRepo;
@@ -213,7 +244,7 @@ namespace GitHubNode.Services
             return true;
         }
 
-        private static async Task EnsureStatusCacheFreshAsync(string repoRoot)
+        private static async Task EnsureStatusCacheFreshAsync(string repoRoot, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(repoRoot))
             {
@@ -227,7 +258,7 @@ namespace GitHubNode.Services
             }
 
             // Serialize refreshes per repo to avoid duplicate git process spawns
-            await _refreshSemaphore.WaitAsync().ConfigureAwait(false);
+            await _refreshSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 if (_lastRefreshByRepo.TryGetValue(repoRoot, out lastRefresh) &&
@@ -236,7 +267,15 @@ namespace GitHubNode.Services
                     return;
                 }
 
-                await RefreshStatusCacheAsync(repoRoot).ConfigureAwait(false);
+                // Enforce minimum interval between refreshes to prevent rapid git spawning
+                if (_lastRefreshByRepo.TryGetValue(repoRoot, out lastRefresh) &&
+                    DateTime.UtcNow - lastRefresh < _minRefreshInterval)
+                {
+                    return;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                await RefreshStatusCacheAsync(repoRoot, cancellationToken).ConfigureAwait(false);
                 _lastRefreshByRepo[repoRoot] = DateTime.UtcNow;
             }
             finally
@@ -245,14 +284,14 @@ namespace GitHubNode.Services
             }
         }
 
-        private static async Task RefreshStatusCacheAsync(string repoRoot)
+        private static async Task RefreshStatusCacheAsync(string repoRoot, CancellationToken cancellationToken)
         {
             try
             {
                 // Get status for all files using porcelain format for easy parsing
                 // --porcelain=v1 gives us: XY filename
                 // X = index status, Y = working tree status
-                var output = await RunGitCommandAsync(repoRoot, "status --porcelain=v1").ConfigureAwait(false);
+                var output = await RunGitCommandAsync(repoRoot, "status --porcelain=v1", cancellationToken).ConfigureAwait(false);
                 if (string.IsNullOrEmpty(output))
                 {
                     return;
@@ -384,8 +423,10 @@ namespace GitHubNode.Services
             return null;
         }
 
-        private static async Task<string> RunGitCommandAsync(string workingDirectory, string arguments)
+        private static async Task<string> RunGitCommandAsync(string workingDirectory, string arguments, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = "git",
@@ -408,13 +449,15 @@ namespace GitHubNode.Services
                 Task<string> errorTask = process.StandardError.ReadToEndAsync();
                 Task completionTask = Task.WhenAll(outputTask, errorTask, WaitForExitAsync(process));
 
-                using (var timeoutCancellation = new CancellationTokenSource(_gitCommandTimeout))
+                using (var timeoutCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
+                    timeoutCancellation.CancelAfter(_gitCommandTimeout);
                     Task timeoutTask = Task.Delay(Timeout.InfiniteTimeSpan, timeoutCancellation.Token);
                     Task finishedTask = await Task.WhenAny(completionTask, timeoutTask).ConfigureAwait(false);
                     if (!ReferenceEquals(finishedTask, completionTask))
                     {
                         TryTerminateProcess(process);
+                        cancellationToken.ThrowIfCancellationRequested();
                         return null;
                     }
 

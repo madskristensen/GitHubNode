@@ -149,7 +149,7 @@ namespace GitHubNode.SolutionExplorer
                     }
 
                     SetupFolderWatcher();
-                    GitStatusService.InvalidateCache();
+                    GitStatusService.InvalidateCacheForDirectory(_folderPath);
                     RefreshChildren();
                 }
                 catch (Exception ex)
@@ -210,14 +210,14 @@ namespace GitHubNode.SolutionExplorer
                 {
                     try
                     {
-                        await System.Threading.Tasks.Task.Delay(100, token);
+                        await System.Threading.Tasks.Task.Delay(300, token);
 
                         if (token.IsCancellationRequested)
                         {
                             return;
                         }
 
-                        GitStatusService.InvalidateCache();
+                        GitStatusService.InvalidateCacheForDirectory(_folderPath);
                         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(token);
                         RefreshChildren();
                     }
@@ -249,7 +249,7 @@ namespace GitHubNode.SolutionExplorer
                 return;
             }
 
-            GitStatusService.InvalidateCache();
+            GitStatusService.InvalidateCacheForDirectory(_folderPath);
 
 #pragma warning disable VSSDK007 // Use ThreadHelper.JoinableTaskFactory.RunAsync (fire and forget)
             _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
