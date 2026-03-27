@@ -208,9 +208,13 @@ namespace GitHubNode.Services.Marketplace
                 return normalizedUrl;
             }
 
-            return normalizedUrl.EndsWith(".git", StringComparison.OrdinalIgnoreCase)
-                ? normalizedUrl
-                : $"{normalizedUrl}.git";
+            if (normalizedUrl.EndsWith(".git", StringComparison.OrdinalIgnoreCase) ||
+                IsAzureDevOpsUrl(normalizedUrl))
+            {
+                return normalizedUrl;
+            }
+
+            return $"{normalizedUrl}.git";
         }
 
         public static string GetHost(string repositoryUrl)
@@ -412,6 +416,15 @@ namespace GitHubNode.Services.Marketplace
         {
             return string.Equals(scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Determines whether the URL is an Azure DevOps Git URL.
+        /// Azure DevOps clone URLs use the /_git/ path segment and do not require a .git suffix.
+        /// </summary>
+        private static bool IsAzureDevOpsUrl(string url)
+        {
+            return url.IndexOf("/_git/", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static string TrimRepositoryPath(string path)

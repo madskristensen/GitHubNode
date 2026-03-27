@@ -82,6 +82,32 @@ public class MarketplaceInfoTests
     }
 
     [TestMethod]
+    public void CloneUrl_DoesNotAppendGitSuffix_ForAzureDevOpsUrl()
+    {
+        var marketplace = new MarketplaceInfo
+        {
+            Owner = "orgname",
+            RepoName = "reponame",
+            RepositoryUrl = "https://orgname@dev.azure.com/orgname/projname/_git/reponame"
+        };
+
+        Assert.AreEqual("https://orgname@dev.azure.com/orgname/projname/_git/reponame", marketplace.CloneUrl);
+    }
+
+    [TestMethod]
+    public void CloneUrl_PreservesGitSuffix_ForAzureDevOpsUrl()
+    {
+        var marketplace = new MarketplaceInfo
+        {
+            Owner = "orgname",
+            RepoName = "reponame",
+            RepositoryUrl = "https://orgname@dev.azure.com/orgname/projname/_git/reponame.git"
+        };
+
+        Assert.AreEqual("https://orgname@dev.azure.com/orgname/projname/_git/reponame.git", marketplace.CloneUrl);
+    }
+
+    [TestMethod]
     public void HasAssetType_ReturnsTrueWhenPluginHasAsset()
     {
         var marketplace = new MarketplaceInfo
