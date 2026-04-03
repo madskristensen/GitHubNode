@@ -238,6 +238,12 @@ namespace GitHubNode.Commands
                         var content = templateSelection.Content ?? GetFileContent(templateFileName);
                         File.WriteAllText(filePath, content);
                         createdFiles.Add(filePath);
+
+                        var sourceFilePath = templateSelection.Template?.DownloadUrl;
+                        if (!string.IsNullOrEmpty(sourceFilePath))
+                        {
+                            CopySupportingFiles(sourceFilePath, parentDir);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -374,5 +380,16 @@ namespace GitHubNode.Commands
         /// </summary>
         /// <param name="userInput">The user input from the dialog, or null if no dialog was shown.</param>
         protected abstract string GetFileContent(string userInput);
+
+        /// <summary>
+        /// Copies supporting files from the source template directory to the destination directory.
+        /// Override in subclasses that need to copy additional files beyond the main template file
+        /// (e.g., skills with scripts/, references/, and assets/ folders).
+        /// </summary>
+        /// <param name="sourceFilePath">The full path to the source template file in the cloned repository.</param>
+        /// <param name="destinationDirectory">The destination directory where supporting files should be copied.</param>
+        protected virtual void CopySupportingFiles(string sourceFilePath, string destinationDirectory)
+        {
+        }
     }
 }

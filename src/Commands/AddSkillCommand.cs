@@ -27,5 +27,49 @@ namespace GitHubNode.Commands
 
         protected override string GetFileContent(string userInput)
             => string.Format(FileTemplates.AgentSkill, userInput);
+
+        protected override void CopySupportingFiles(string sourceFilePath, string destinationDirectory)
+        {
+            if (string.IsNullOrEmpty(sourceFilePath) || string.IsNullOrEmpty(destinationDirectory))
+            {
+                return;
+            }
+
+            var sourceDirectory = Path.GetDirectoryName(sourceFilePath);
+            if (string.IsNullOrEmpty(sourceDirectory) || !Directory.Exists(sourceDirectory))
+            {
+                return;
+            }
+
+            var sourceFileName = Path.GetFileName(sourceFilePath);
+            CopyDirectoryContents(sourceDirectory, destinationDirectory, sourceFileName);
+        }
+
+        private static void CopyDirectoryContents(string sourceDir, string destinationDir, string excludeFileName)
+        {
+            Directory.CreateDirectory(destinationDir);
+
+            foreach (var file in Directory.GetFiles(sourceDir))
+            {
+                var fileName = Path.GetFileName(file);
+                if (string.Equals(fileName, excludeFileName, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var destFile = Path.Combine(destinationDir, fileName);
+                if (!File.Exists(destFile))
+                {
+                    File.Copy(file, destFile);
+                }
+            }
+
+            foreach (var subDir in Directory.GetDirectories(sourceDir))
+            {
+                var dirName = Path.GetFileName(subDir);
+                var destSubDir = Path.Combine(destinationDir, dirName);
+                CopyDirectoryContents(subDir, destSubDir, excludeFileName: null);
+            }
+        }
     }
 }
