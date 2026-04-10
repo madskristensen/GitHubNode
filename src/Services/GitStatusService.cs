@@ -47,6 +47,7 @@ namespace GitHubNode.Services
         private static readonly TimeSpan _minRefreshInterval = TimeSpan.FromSeconds(3);
         private static readonly SemaphoreSlim _refreshSemaphore = new(1, 1);
         private static readonly ConcurrentDictionary<string, DateTime> _lastRefreshByRepo = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, DateTime> _lastThrottledRefreshByRepo = new(StringComparer.OrdinalIgnoreCase);
 
         private sealed class CachedStatus
         {
@@ -193,6 +194,7 @@ namespace GitHubNode.Services
         {
             _statusCache.Clear();
             _lastRefreshByRepo.Clear();
+            _lastThrottledRefreshByRepo.Clear();
         }
 
         /// <summary>
@@ -268,15 +270,17 @@ namespace GitHubNode.Services
                 }
 
                 // Enforce minimum interval between refreshes to prevent rapid git spawning
-                if (_lastRefreshByRepo.TryGetValue(repoRoot, out lastRefresh) &&
-                    DateTime.UtcNow - lastRefresh < _minRefreshInterval)
+                if (_lastThrottledRefreshByRepo.TryGetValue(repoRoot, out DateTime lastAttempt) &&
+                    DateTime.UtcNow - lastAttempt < _minRefreshInterval)
                 {
                     return;
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
                 await RefreshStatusCacheAsync(repoRoot, cancellationToken).ConfigureAwait(false);
-                _lastRefreshByRepo[repoRoot] = DateTime.UtcNow;
+                DateTime now = DateTime.UtcNow;
+                _lastRefreshByRepo[repoRoot] = now;
+                _lastThrottledRefreshByRepo[repoRoot] = now;
             }
             finally
             {
