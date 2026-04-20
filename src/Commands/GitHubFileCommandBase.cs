@@ -321,9 +321,20 @@ namespace GitHubNode.Commands
         /// </summary>
         protected string GetSubfolderPath(string targetFolder)
         {
-            return string.IsNullOrEmpty(SubfolderName)
-                ? targetFolder
-                : Path.Combine(targetFolder, SubfolderName);
+            if (string.IsNullOrEmpty(SubfolderName))
+            {
+                return targetFolder;
+            }
+
+            // Avoid double-nesting when targetFolder already ends with the subfolder name
+            // (e.g., when invoked from the context menu of the subfolder node itself)
+            var folderName = Path.GetFileName(targetFolder);
+            if (string.Equals(folderName, SubfolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                return targetFolder;
+            }
+
+            return Path.Combine(targetFolder, SubfolderName);
         }
 
         /// <summary>
