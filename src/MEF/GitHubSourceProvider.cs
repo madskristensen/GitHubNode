@@ -124,29 +124,31 @@ namespace GitHubNode.SolutionExplorer
                 {
                     _cachedHierarchyItem = hierarchyItem;
 
-                    if (!McpSettingsService.IsGitHubNodeEnabled())
-                    {
-                        return null;
-                    }
+                    // Always create the collection source (possibly empty) so that later
+                    // visibility toggles via UpdateVisibility() can push nodes into it.
+                    // Returning null here would cause Solution Explorer to cache "no children"
+                    // and never re-query us when the user enables the GitHub node.
+                    IReadOnlyList<GitHubRootNode> rootNodes = [];
 
-                    string solutionPath = _dte?.Solution?.FullName;
-                    if (!string.IsNullOrEmpty(solutionPath))
+                    if (McpSettingsService.IsGitHubNodeEnabled())
                     {
-                        var rootNodes = GetOrCreateRootNodes(hierarchyItem, solutionPath);
-                        if (rootNodes.Count > 0)
+                        string solutionPath = _dte?.Solution?.FullName;
+                        if (!string.IsNullOrEmpty(solutionPath))
                         {
-                            if (_solutionCollectionSource == null)
-                            {
-                                _solutionCollectionSource = new GitHubSolutionCollectionSource(hierarchyItem, rootNodes);
-                            }
-                            else
-                            {
-                                _solutionCollectionSource.UpdateRootNodes(rootNodes);
-                            }
-
-                            return _solutionCollectionSource;
+                            rootNodes = GetOrCreateRootNodes(hierarchyItem, solutionPath);
                         }
                     }
+
+                    if (_solutionCollectionSource == null)
+                    {
+                        _solutionCollectionSource = new GitHubSolutionCollectionSource(hierarchyItem, rootNodes);
+                    }
+                    else
+                    {
+                        _solutionCollectionSource.UpdateRootNodes(rootNodes);
+                    }
+
+                    return _solutionCollectionSource;
                 }
                 else if (item is GitHubRootNode rootNode)
                 {
@@ -241,7 +243,13 @@ namespace GitHubNode.SolutionExplorer
 
         private static string FindExistingFolder(string directory, string folderName)
         {
-            while (!string.IsNullOrEmpty(directory))
+            // Walk up at most a few levels from the solution directory. Walking all the way
+            // to the drive root made the UI thread call to Directory.Exists very slow on
+            // OneDrive / network locations.
+            const int maxLevels = 4;
+            int level = 0;
+
+            while (!string.IsNullOrEmpty(directory) && level < maxLevels)
             {
                 string folderPath = Path.Combine(directory, folderName);
                 if (Directory.Exists(folderPath))
@@ -251,6 +259,7 @@ namespace GitHubNode.SolutionExplorer
 
                 DirectoryInfo parent = Directory.GetParent(directory);
                 directory = parent?.FullName;
+                level++;
             }
 
             return null;

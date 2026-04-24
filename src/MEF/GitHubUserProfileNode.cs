@@ -23,7 +23,9 @@ namespace GitHubNode.SolutionExplorer
         IContextMenuPattern
     {
         private readonly ObservableCollection<object> _children;
-        private readonly NodeChildrenManager _childrenManager;
+        private NodeChildrenManager _childrenManager;
+        private bool _initialized;
+        private bool? _hasFileSystemItems;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -36,24 +38,35 @@ namespace GitHubNode.SolutionExplorer
         public GitHubUserProfileNode(object parent)
             : base(parent)
         {
-            ThreadHelper.ThrowIfNotOnUIThread();
-
             FolderPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".copilot");
 
             _children = [];
+        }
+
+        private void EnsureInitialized()
+        {
+            if (_initialized)
+            {
+                return;
+            }
+
+            ThreadHelper.ThrowIfNotOnUIThread();
+
             _childrenManager = new NodeChildrenManager(
                 FolderPath,
                 this,
                 _children,
                 () =>
                 {
+                    _hasFileSystemItems = null;
                     RaisePropertyChanged(nameof(HasItems));
                     RaisePropertyChanged(nameof(Items));
                 },
                 includeSubdirectories: false);
 
+            _initialized = true;
             _childrenManager.Initialize();
         }
 
@@ -63,8 +76,59 @@ namespace GitHubNode.SolutionExplorer
         public string FolderPath { get; }
 
         // IAttachedCollectionSource
-        public bool HasItems => _childrenManager.HasItems;
-        public IEnumerable Items => _children;
+        // Use a cheap file-system probe so Solution Explorer can draw the expander without
+        // forcing enumeration of %USERPROFILE%\.copilot on the UI thread during solution open.
+        public bool HasItems
+        {
+            get
+            {
+                if (_initialized)
+                {
+                    return _children.Count > 0;
+                }
+
+                if (!_hasFileSystemItems.HasValue)
+                {
+                    _hasFileSystemItems = ProbeHasFileSystemItems(FolderPath);
+                }
+
+                return _hasFileSystemItems.Value;
+            }
+        }
+
+        public IEnumerable Items
+        {
+            get
+            {
+                EnsureInitialized();
+                return _children;
+            }
+        }
+
+        private static bool ProbeHasFileSystemItems(string folderPath)
+        {
+            if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                return Directory.EnumerateFileSystemEntries(folderPath).Any();
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+        }
 
         /// <summary>
         /// Gets the children for search enumeration without modifying the tree.

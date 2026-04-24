@@ -10,20 +10,36 @@ namespace GitHubNode.Services
         private const string _showMcpServersProperty = "ShowMcpServers";
         private const string _showGitHubNodeProperty = "ShowGitHubNode";
 
+        // Cached values to avoid building a ShellSettingsManager on every Solution Explorer
+        // call. The cache is invalidated by the corresponding setters.
+        private static bool? _cachedMcpServersEnabled;
+        private static bool? _cachedGitHubNodeEnabled;
+
         public static bool IsMcpServersEnabled()
         {
+            if (_cachedMcpServersEnabled.HasValue)
+            {
+                return _cachedMcpServersEnabled.Value;
+            }
+
             try
             {
                 var settingsManager = new ShellSettingsManager(ServiceProvider.GlobalProvider);
                 SettingsStore store = settingsManager.GetReadOnlySettingsStore(SettingsScope.UserSettings);
 
+                bool value;
                 if (!store.CollectionExists(_collectionPath) ||
                     !store.PropertyExists(_collectionPath, _showMcpServersProperty))
                 {
-                    return false;
+                    value = false;
+                }
+                else
+                {
+                    value = store.GetBoolean(_collectionPath, _showMcpServersProperty);
                 }
 
-                return store.GetBoolean(_collectionPath, _showMcpServersProperty);
+                _cachedMcpServersEnabled = value;
+                return value;
             }
             catch (InvalidOperationException ex)
             {
@@ -52,6 +68,7 @@ namespace GitHubNode.Services
                 }
 
                 store.SetBoolean(_collectionPath, _showMcpServersProperty, enabled);
+                _cachedMcpServersEnabled = enabled;
             }
             catch (InvalidOperationException ex)
             {
@@ -66,18 +83,29 @@ namespace GitHubNode.Services
         }
             public static bool IsGitHubNodeEnabled()
             {
+                if (_cachedGitHubNodeEnabled.HasValue)
+                {
+                    return _cachedGitHubNodeEnabled.Value;
+                }
+
                 try
                 {
                     var settingsManager = new ShellSettingsManager(ServiceProvider.GlobalProvider);
                     SettingsStore store = settingsManager.GetReadOnlySettingsStore(SettingsScope.UserSettings);
 
+                    bool value;
                     if (!store.CollectionExists(_collectionPath) ||
                         !store.PropertyExists(_collectionPath, _showGitHubNodeProperty))
                     {
-                        return true;
+                        value = true;
+                    }
+                    else
+                    {
+                        value = store.GetBoolean(_collectionPath, _showGitHubNodeProperty);
                     }
 
-                    return store.GetBoolean(_collectionPath, _showGitHubNodeProperty);
+                    _cachedGitHubNodeEnabled = value;
+                    return value;
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -106,6 +134,7 @@ namespace GitHubNode.Services
                     }
 
                     store.SetBoolean(_collectionPath, _showGitHubNodeProperty, enabled);
+                    _cachedGitHubNodeEnabled = enabled;
                 }
                 catch (InvalidOperationException ex)
                 {

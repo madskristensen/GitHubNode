@@ -7,6 +7,7 @@ using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Imaging.Interop;
 using Microsoft.VisualStudio.Shell.Interop;
+using Microsoft.VisualStudio.Shell.Interop;
 
 namespace GitHubNode.SolutionExplorer
 {
@@ -21,7 +22,7 @@ namespace GitHubNode.SolutionExplorer
         IContextMenuPattern
     {
         private static readonly ConcurrentDictionary<string, ImageMoniker> _fileIconCache = new();
-        private static readonly IVsImageService2 _imageService = VS.GetRequiredService<SVsImageService, IVsImageService2>();
+        private static IVsImageService2 _imageService;
         private string _fileName;
         private GitFileStatus _cachedGitStatus = GitFileStatus.NotInRepo;
         private bool _gitStatusLoaded;
@@ -237,6 +238,7 @@ namespace GitHubNode.SolutionExplorer
                     ? fileName  // For extensionless files like CODEOWNERS, use the filename
                     : "file" + extension;
 
+                _imageService ??= VS.GetRequiredService<SVsImageService, IVsImageService2>();
                 ImageMoniker moniker = _imageService.GetImageMonikerForFile(fakePath);
                 return moniker.Id < 0 ? KnownMonikers.Document : moniker;
             });

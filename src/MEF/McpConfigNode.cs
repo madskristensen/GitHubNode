@@ -1,8 +1,8 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Imaging;
@@ -23,6 +23,7 @@ namespace GitHubNode.SolutionExplorer
     {
         private readonly McpConfigLocation _location;
         private readonly ObservableCollection<object> _children;
+        private CancellationTokenSource _disposeCts = new();
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -38,7 +39,9 @@ namespace GitHubNode.SolutionExplorer
             _location = location;
             _children = [];
 
-            RefreshChildren();
+            // Don't read/parse the JSON file on the UI thread. Schedule a background load
+            // and switch back to the UI thread to publish the children.
+            LoadChildrenAsync().FireAndForget();
         }
 
         /// <summary>
@@ -90,14 +93,35 @@ namespace GitHubNode.SolutionExplorer
         /// </summary>
         public void RefreshChildren()
         {
+            LoadChildrenAsync().FireAndForget();
+        }
+
+        private async Task LoadChildrenAsync()
+        {
+            CancellationToken cancellationToken = _disposeCts.Token;
+
+            // Parse the file on a background thread.
+            Dictionary<string, string> serverInfo = await Task.Run(
+                () => McpConfigService.ParseServerInfo(_location.FilePath),
+                cancellationToken).ConfigureAwait(false);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             foreach (var child in _children)
             {
                 (child as IDisposable)?.Dispose();
             }
             _children.Clear();
-
-            // Re-parse the file to get current server names and their transport types
-            Dictionary<string, string> serverInfo = McpConfigService.ParseServerInfo(_location.FilePath);
 
             foreach (KeyValuePair<string, string> kvp in serverInfo)
             {
@@ -110,6 +134,9 @@ namespace GitHubNode.SolutionExplorer
 
         protected override void OnDisposing()
         {
+            _disposeCts.Cancel();
+            _disposeCts.Dispose();
+
             foreach (var child in _children)
             {
                 (child as IDisposable)?.Dispose();

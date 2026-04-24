@@ -22,8 +22,11 @@ namespace GitHubNode.SolutionExplorer
 
         private readonly ObservableCollection<object> _children;
         private string _folderName;
-        private readonly NodeChildrenManager _childrenManager;
+        private NodeChildrenManager _childrenManager;
         private bool _isExpanded;
+        private bool _initialized;
+        private bool _initializeOnDemand;
+        private bool? _hasFileSystemItems;
 
         protected override HashSet<Type> SupportedPatterns { get; } =
         [
@@ -51,23 +54,39 @@ namespace GitHubNode.SolutionExplorer
             _folderName = Path.GetFileName(folderPath);
             _children = [];
 
-            // Skip heavy initialization for search-only nodes to avoid memory leaks
+            // Skip heavy initialization for search-only nodes to avoid memory leaks.
+            // For full nodes, defer initialization until the folder is first expanded
+            // (i.e. until Items is enumerated by Solution Explorer) so a solution open
+            // does not recursively walk the entire subtree on the UI thread.
             if (!forSearchOnly)
             {
-                ThreadHelper.ThrowIfNotOnUIThread();
-                _childrenManager = new NodeChildrenManager(
-                    folderPath,
-                    this,
-                    _children,
-                    () =>
-                    {
-                        RaisePropertyChanged(nameof(HasItems));
-                        RaisePropertyChanged(nameof(Items));
-                    },
-                    includeSubdirectories: false);
-
-                _childrenManager.Initialize();
+                _initializeOnDemand = true;
             }
+        }
+
+        private void EnsureInitialized()
+        {
+            if (_initialized || !_initializeOnDemand)
+            {
+                return;
+            }
+
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            _childrenManager = new NodeChildrenManager(
+                FolderPath,
+                this,
+                _children,
+                () =>
+                {
+                    _hasFileSystemItems = null;
+                    RaisePropertyChanged(nameof(HasItems));
+                    RaisePropertyChanged(nameof(Items));
+                },
+                includeSubdirectories: false);
+
+            _initialized = true;
+            _childrenManager.Initialize();
         }
 
         /// <summary>
@@ -87,9 +106,65 @@ namespace GitHubNode.SolutionExplorer
         }
 
         // IAttachedCollectionSource
-        // For search-only nodes, assume folders have items (they won't be expanded anyway)
-        public bool HasItems => _childrenManager?.HasItems ?? true;
-        public IEnumerable Items => _children;
+        // For search-only nodes, assume folders have items (they won't be expanded anyway).
+        // For deferred nodes, do a cheap file-system probe so Solution Explorer can draw the
+        // expander without us having to materialize the whole subtree.
+        public bool HasItems
+        {
+            get
+            {
+                if (_initialized)
+                {
+                    return _children.Count > 0;
+                }
+
+                if (!_initializeOnDemand)
+                {
+                    return true;
+                }
+
+                if (!_hasFileSystemItems.HasValue)
+                {
+                    _hasFileSystemItems = ProbeHasFileSystemItems(FolderPath);
+                }
+
+                return _hasFileSystemItems.Value;
+            }
+        }
+
+        public IEnumerable Items
+        {
+            get
+            {
+                EnsureInitialized();
+                return _children;
+            }
+        }
+
+        private static bool ProbeHasFileSystemItems(string folderPath)
+        {
+            if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                return Directory.EnumerateFileSystemEntries(folderPath).Any();
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+        }
 
         /// <summary>
         /// Gets the children for search enumeration without modifying the tree.
