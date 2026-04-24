@@ -70,6 +70,11 @@
         <Parent guid="VSMainMenu" id="Extensions"/>
       </Group>
 
+      <!-- Group on WorkspaceFiles root context menu -->
+      <Group guid="GitHubNode" id="WorkspaceFilesGroup" priority="0x0500">
+        <Parent guid="WorkspaceFiles" id="RootContextMenu"/>
+      </Group>
+
       <!-- Root context menu groups -->
       <Group guid="GitHubNode" id="RootAddGroup" priority="0x0100">
         <Parent guid="GitHubNode" id="GitHubRootContextMenu"/>
@@ -504,6 +509,16 @@
         <CommandPlacement guid="GitHubNode" id="OpenOnGitHubFolder" priority="0x0100">
           <Parent guid="GitHubNode" id="RootGitHubGroup"/>
         </CommandPlacement>
+
+        <!-- Add Agent File flyout on WorkspaceFiles root context menu -->
+        <CommandPlacement guid="GitHubNode" id="AddCopilotSubMenu" priority="0x0100">
+          <Parent guid="GitHubNode" id="WorkspaceFilesGroup"/>
+        </CommandPlacement>
+
+        <!-- Manage Marketplaces on WorkspaceFiles root context menu -->
+        <CommandPlacement guid="GitHubNode" id="ManageMarketplaces" priority="0x0200">
+          <Parent guid="GitHubNode" id="WorkspaceFilesGroup"/>
+        </CommandPlacement>
       </CommandPlacements>
 
     <Symbols>
@@ -537,6 +552,7 @@
       <IDSymbol name="McpRootToggleGroup" value="0x0063" />
       <IDSymbol name="McpServerEditGroup" value="0x0062" />
       <IDSymbol name="ExtensionsMenuGroup" value="0x0070" />
+      <IDSymbol name="WorkspaceFilesGroup" value="0x0080" />
 
       <!-- Commands -->
             <IDSymbol name="AddCopilotInstructions" value="0x0100" />
@@ -569,6 +585,10 @@
             <IDSymbol name="DeleteMcpServer" value="0x011B" />
             <IDSymbol name="AgentMarketplace" value="0x011C" />
             <IDSymbol name="ToggleGitHubNode" value="0x011D" />
+          </GuidSymbol>
+
+          <GuidSymbol name="WorkspaceFiles" value="{d428d0a0-b960-4617-a7fd-15743d49e72e}">
+            <IDSymbol name="RootContextMenu" value="0x0001" />
           </GuidSymbol>
         </Symbols>
       </CommandTable>
