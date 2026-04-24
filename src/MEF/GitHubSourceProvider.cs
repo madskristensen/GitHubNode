@@ -3,6 +3,7 @@ using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
 using EnvDTE;
+using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Utilities;
 
@@ -21,8 +22,10 @@ namespace GitHubNode.SolutionExplorer
     [Order(After = "WorkspaceItemNode")]
     internal class GitHubSourceProvider : IAttachedCollectionSourceProvider
     {
+        public static GitHubSourceProvider Instance { get; private set; }
         private readonly Dictionary<string, GitHubRootNode> _rootNodesByPath = new(System.StringComparer.OrdinalIgnoreCase);
         private GitHubSolutionCollectionSource _solutionCollectionSource;
+        private IVsHierarchyItem _cachedHierarchyItem;
         private readonly DTE _dte;
 
         /// <summary>
@@ -33,6 +36,7 @@ namespace GitHubNode.SolutionExplorer
 
         public GitHubSourceProvider()
         {
+            Instance = this;
             _dte = VS.GetRequiredService<DTE, DTE>();
             VS.Events.SolutionEvents.OnBeforeCloseSolution += OnBeforeCloseSolution;
         }
@@ -41,6 +45,7 @@ namespace GitHubNode.SolutionExplorer
         {
             _solutionCollectionSource?.Dispose();
             _solutionCollectionSource = null;
+            _cachedHierarchyItem = null;
 
             foreach (GitHubRootNode rootNode in _rootNodesByPath.Values)
             {
@@ -48,6 +53,36 @@ namespace GitHubNode.SolutionExplorer
             }
 
             _rootNodesByPath.Clear();
+        }
+
+        public void UpdateVisibility()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            if (_solutionCollectionSource == null || _cachedHierarchyItem == null)
+            {
+                return;
+            }
+
+            if (!McpSettingsService.IsGitHubNodeEnabled())
+            {
+                _solutionCollectionSource.UpdateRootNodes(new List<GitHubRootNode>());
+
+                foreach (GitHubRootNode rootNode in _rootNodesByPath.Values)
+                {
+                    rootNode.Dispose();
+                }
+
+                _rootNodesByPath.Clear();
+                return;
+            }
+
+            string solutionPath = _dte?.Solution?.FullName;
+            if (!string.IsNullOrEmpty(solutionPath))
+            {
+                var rootNodes = GetOrCreateRootNodes(_cachedHierarchyItem, solutionPath);
+                _solutionCollectionSource.UpdateRootNodes(rootNodes);
+            }
         }
 
         public IEnumerable<IAttachedRelationship> GetRelationships(object item)
@@ -87,6 +122,13 @@ namespace GitHubNode.SolutionExplorer
                 if (item is IVsHierarchyItem hierarchyItem &&
                     HierarchyUtilities.IsSolutionNode(hierarchyItem.HierarchyIdentity))
                 {
+                    _cachedHierarchyItem = hierarchyItem;
+
+                    if (!McpSettingsService.IsGitHubNodeEnabled())
+                    {
+                        return null;
+                    }
+
                     string solutionPath = _dte?.Solution?.FullName;
                     if (!string.IsNullOrEmpty(solutionPath))
                     {

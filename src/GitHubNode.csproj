@@ -74,6 +74,7 @@
     <Compile Include="Commands\AddMcpConfigCommand.cs" />
     <Compile Include="Commands\McpLocationPickerDialog.cs" />
     <Compile Include="Commands\RefreshMcpCommand.cs" />
+    <Compile Include="Commands\ToggleGitHubNodeCommand.cs" />
     <Compile Include="Commands\ToggleMcpServersCommand.cs" />
     <Compile Include="FileTemplates.cs" />
     <Compile Include="MEF\AiRootFolderDefinition.cs" />

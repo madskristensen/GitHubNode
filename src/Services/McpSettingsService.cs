@@ -8,6 +8,7 @@ namespace GitHubNode.Services
     {
         private const string _collectionPath = "GitHubNode";
         private const string _showMcpServersProperty = "ShowMcpServers";
+        private const string _showGitHubNodeProperty = "ShowGitHubNode";
 
         public static bool IsMcpServersEnabled()
         {
@@ -63,5 +64,59 @@ namespace GitHubNode.Services
                 Debug.WriteLine($"McpSettingsService.SetMcpServersEnabled failed: {ex}");
             }
         }
+            public static bool IsGitHubNodeEnabled()
+            {
+                try
+                {
+                    var settingsManager = new ShellSettingsManager(ServiceProvider.GlobalProvider);
+                    SettingsStore store = settingsManager.GetReadOnlySettingsStore(SettingsScope.UserSettings);
+
+                    if (!store.CollectionExists(_collectionPath) ||
+                        !store.PropertyExists(_collectionPath, _showGitHubNodeProperty))
+                    {
+                        return true;
+                    }
+
+                    return store.GetBoolean(_collectionPath, _showGitHubNodeProperty);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _ = ex.LogAsync();
+                    Debug.WriteLine($"McpSettingsService.IsGitHubNodeEnabled failed: {ex}");
+                    return true;
+                }
+                catch (ArgumentException ex)
+                {
+                    _ = ex.LogAsync();
+                    Debug.WriteLine($"McpSettingsService.IsGitHubNodeEnabled failed: {ex}");
+                    return true;
+                }
+            }
+
+            public static void SetGitHubNodeEnabled(bool enabled)
+            {
+                try
+                {
+                    var settingsManager = new ShellSettingsManager(ServiceProvider.GlobalProvider);
+                    WritableSettingsStore store = settingsManager.GetWritableSettingsStore(SettingsScope.UserSettings);
+
+                    if (!store.CollectionExists(_collectionPath))
+                    {
+                        store.CreateCollection(_collectionPath);
+                    }
+
+                    store.SetBoolean(_collectionPath, _showGitHubNodeProperty, enabled);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _ = ex.LogAsync();
+                    Debug.WriteLine($"McpSettingsService.SetGitHubNodeEnabled failed: {ex}");
+                }
+                catch (ArgumentException ex)
+                {
+                    _ = ex.LogAsync();
+                    Debug.WriteLine($"McpSettingsService.SetGitHubNodeEnabled failed: {ex}");
+                }
+            }
+        }
     }
-}

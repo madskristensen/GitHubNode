@@ -123,6 +123,9 @@
       <Group guid="GitHubNode" id="McpRootActionsGroup" priority="0x0200">
         <Parent guid="GitHubNode" id="McpRootContextMenu"/>
       </Group>
+      <Group guid="GitHubNode" id="McpRootToggleGroup" priority="0x0300">
+        <Parent guid="GitHubNode" id="McpRootContextMenu"/>
+      </Group>
 
       <!-- MCP server context menu groups -->
       <Group guid="GitHubNode" id="McpServerEditGroup" priority="0x0100">
@@ -278,7 +281,7 @@
       <Button guid="GitHubNode" id="ToggleMcpServers" priority="0x0200" type="Button">
         <Parent guid="GitHubNode" id="RootActionsGroup" />
         <Strings>
-          <ButtonText>Show MCP Servers</ButtonText>
+          <ButtonText>Show MCP Server node</ButtonText>
           <CanonicalName>.GitHubNode.ToggleMcpServers</CanonicalName>
         </Strings>
       </Button>
@@ -437,6 +440,15 @@
           </Strings>
         </Button>
 
+        <!-- Toggle GitHub Node -->
+        <Button guid="GitHubNode" id="ToggleGitHubNode" priority="0x0100" type="Button">
+          <Parent guid="GitHubNode" id="McpRootToggleGroup" />
+          <Strings>
+            <ButtonText>Show GitHub node</ButtonText>
+            <CanonicalName>.GitHubNode.ToggleGitHubNode</CanonicalName>
+          </Strings>
+        </Button>
+
         <!-- Delete MCP Server -->
         <Button guid="GitHubNode" id="DeleteMcpServer" priority="0x0100" type="Button">
           <Parent guid="GitHubNode" id="McpServerEditGroup" />
@@ -522,6 +534,7 @@
       <IDSymbol name="GitHubSubMenuGroup" value="0x0051" />
       <IDSymbol name="McpRootAddGroup" value="0x0060" />
       <IDSymbol name="McpRootActionsGroup" value="0x0061" />
+      <IDSymbol name="McpRootToggleGroup" value="0x0063" />
       <IDSymbol name="McpServerEditGroup" value="0x0062" />
       <IDSymbol name="ExtensionsMenuGroup" value="0x0070" />
 
@@ -555,6 +568,7 @@
             <IDSymbol name="InstallMcpServer" value="0x011A" />
             <IDSymbol name="DeleteMcpServer" value="0x011B" />
             <IDSymbol name="AgentMarketplace" value="0x011C" />
+            <IDSymbol name="ToggleGitHubNode" value="0x011D" />
           </GuidSymbol>
         </Symbols>
       </CommandTable>

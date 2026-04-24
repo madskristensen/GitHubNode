@@ -5,6 +5,7 @@ using System.ComponentModel.Composition;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GitHubNode.Services;
 using Microsoft.Internal.VisualStudio.PlatformUI;
 using Microsoft.VisualStudio.Utilities;
 
@@ -58,6 +59,11 @@ namespace GitHubNode.SolutionExplorer
             // Get the cancellation token from parameters - VS will cancel when user clears search
             CancellationToken cancellationToken = parameters.CancellationToken;
             if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!McpSettingsService.IsGitHubNodeEnabled())
             {
                 return;
             }
