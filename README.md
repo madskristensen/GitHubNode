@@ -176,6 +176,10 @@ The preview pane includes syntax highlighting for:
 - Links and URLs
 - HTML comments
 
+### File Explorer Integration
+
+If you have the [File Explorer](https://marketplace.visualstudio.com/items?itemName=MadsKristensen.WorkspaceFiles) extension installed, the **Add Agent File** flyout and **Manage Marketplaces...** commands are also available from the File Explorer root node context menu. This lets you create Copilot customization files and manage agent marketplaces directly from the File Explorer virtual nodes in Solution Explorer.
+
 ### File Templates
 
 All created files come with helpful starter templates that follow best practices:
