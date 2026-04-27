@@ -63,9 +63,19 @@ namespace GitHubNode.Services.Marketplace
         public string Branch { get; set; } = "main";
 
         /// <summary>
+        /// Gets or sets the source kind for this marketplace.
+        /// </summary>
+        public MarketplaceSourceKind SourceKind { get; set; } = MarketplaceSourceKind.Repository;
+
+        /// <summary>
         /// Gets or sets the repository URL used to browse and clone this marketplace.
         /// </summary>
         public string RepositoryUrl { get; set; }
+
+        /// <summary>
+        /// Gets or sets the source URL used to browse or refresh this marketplace.
+        /// </summary>
+        public string SourceUrl { get; set; }
 
         /// <summary>
         /// Gets or sets the display name from MarketplaceInfo.json.
@@ -124,14 +134,23 @@ namespace GitHubNode.Services.Marketplace
         public List<MarketplacePlugin> Plugins { get; set; } = new List<MarketplacePlugin>();
 
         /// <summary>
-        /// Gets the GitHub URL for this MarketplaceInfo.
+        /// Gets whether this marketplace comes from an Agent Skills Discovery endpoint.
         /// </summary>
-        public string GitHubUrl => MarketplaceRepositoryUrl.GetRepositoryUrl(Owner, RepoName, RepositoryUrl);
+        public bool IsAgentSkillsDiscovery => SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery;
+
+        /// <summary>
+        /// Gets the browser URL for this MarketplaceInfo.
+        /// </summary>
+        public string GitHubUrl => IsAgentSkillsDiscovery
+            ? SourceUrl
+            : MarketplaceRepositoryUrl.GetRepositoryUrl(Owner, RepoName, RepositoryUrl);
 
         /// <summary>
         /// Gets the clone URL for this MarketplaceInfo.
         /// </summary>
-        public string CloneUrl => MarketplaceRepositoryUrl.GetCloneUrl(Owner, RepoName, RepositoryUrl);
+        public string CloneUrl => IsAgentSkillsDiscovery
+            ? SourceUrl
+            : MarketplaceRepositoryUrl.GetCloneUrl(Owner, RepoName, RepositoryUrl);
 
         /// <summary>
         /// Gets all assets of a specific type across all plugins.

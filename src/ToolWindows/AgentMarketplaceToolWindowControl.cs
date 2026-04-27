@@ -108,8 +108,8 @@ namespace GitHubNode.ToolWindows
             };
             _urlInputTextBox.SetResourceReference(ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
             _urlInputTextBox.SetResourceReference(BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
-            AutomationProperties.SetName(_urlInputTextBox, "Marketplace repository URL");
-            AutomationProperties.SetHelpText(_urlInputTextBox, "Enter owner/repo or a repository URL");
+            AutomationProperties.SetName(_urlInputTextBox, "Marketplace or Agent Skills Discovery source");
+            AutomationProperties.SetHelpText(_urlInputTextBox, "Enter owner/repo, a repository URL, a domain, or an Agent Skills Discovery index URL");
             _urlInputTextBox.KeyDown += OnUrlInputKeyDown;
             _urlInputTextBox.TextChanged += OnUrlInputTextChanged;
             _urlInputTextBox.GotFocus += OnUrlInputGotFocus;
@@ -117,7 +117,7 @@ namespace GitHubNode.ToolWindows
 
             _placeholderText = new TextBlock
             {
-                Text = "Enter owner/repo or repository URL...",
+                Text = "Enter owner/repo, repository URL, or skill discovery URL...",
                 Padding = new Thickness(8, 5, 6, 4),
                 VerticalAlignment = VerticalAlignment.Center,
                 IsHitTestVisible = false
@@ -497,9 +497,21 @@ namespace GitHubNode.ToolWindows
             var input = _urlInputTextBox.Text?.Trim();
             if (string.IsNullOrWhiteSpace(input))
             {
-                await VS.MessageBox.ShowWarningAsync("Invalid Input", "Please enter a repository in owner/repo format or a GitHub URL.");
+                await VS.MessageBox.ShowWarningAsync("Invalid Input", "Please enter owner/repo, a repository URL, a domain, or an Agent Skills Discovery index URL.");
                 _urlInputTextBox.Focus();
                 return;
+            }
+
+            if (AgentSkillsDiscoveryService.TryCreateIndexUri(input, out var indexUri))
+            {
+                var confirmed = await VS.MessageBox.ShowConfirmAsync(
+                    "Trust Agent Skills Source",
+                    $"Add and trust skills from {indexUri.GetLeftPart(UriPartial.Authority)}?\n\nSkills contain instructions that can be loaded into agent context. Only add sources you trust.");
+
+                if (!confirmed)
+                {
+                    return;
+                }
             }
 
             SetLoading(true, $"Adding {input}...");
@@ -543,7 +555,7 @@ namespace GitHubNode.ToolWindows
 
             var confirm = await VS.MessageBox.ShowConfirmAsync(
                 "Remove Marketplace",
-                $"Remove '{selected.DisplayName}' from your registered marketplaces?\n\nThis will also delete the local clone.");
+                $"Remove '{selected.DisplayName}' from your registered marketplaces?\n\nThis will also delete the local cache.");
 
             if (!confirm)
             {
@@ -598,7 +610,7 @@ namespace GitHubNode.ToolWindows
         {
             var confirmed = await VS.MessageBox.ShowConfirmAsync(
                 "Refresh Marketplaces",
-                "This will re-clone all marketplace repositories from GitHub. Continue?");
+                "This will refresh all marketplace repositories and Agent Skills Discovery sources. Continue?");
 
             if (!confirmed)
             {
@@ -650,7 +662,7 @@ namespace GitHubNode.ToolWindows
             // Update details
             _detailsAvatar.Source = selected.AvatarImage;
             _detailsName.Text = selected.DisplayName;
-            _detailsAuthor.Text = $"by {selected.Owner}";
+            _detailsAuthor.Text = selected.IsAgentSkillsDiscovery ? "Agent Skills Discovery" : $"by {selected.Owner}";
             _detailsUrl.Text = selected.GitHubUrl;
             _detailsStatus.Text = selected.StatusLine;
 
@@ -790,17 +802,17 @@ namespace GitHubNode.ToolWindows
 
                 RestoreMarketplaceSelection(selectedMarketplace);
 
-                var clonedCount = 0;
+                var syncedCount = 0;
                 var totalCount = marketplaces.Count;
                 foreach (var m in marketplaces)
                 {
                     if (m.IsCloned)
                     {
-                        clonedCount++;
+                        syncedCount++;
                     }
                 }
 
-                SetStatus($"{totalCount} marketplaces registered, {clonedCount} cloned");
+                SetStatus($"{totalCount} marketplaces registered, {syncedCount} synced");
             }
             catch (OperationCanceledException)
             {
@@ -887,6 +899,7 @@ namespace GitHubNode.ToolWindows
             public string RepositoryUrl { get; }
             public bool IsBuiltIn { get; }
             public bool IsCloned { get; }
+            public bool IsAgentSkillsDiscovery { get; }
             public string ErrorMessage { get; }
             public string GitHubUrl { get; }
             public DateTime? LastUpdated { get; }
@@ -906,6 +919,11 @@ namespace GitHubNode.ToolWindows
                     if (IsBuiltIn)
                     {
                         return "Built-in";
+                    }
+
+                    if (IsAgentSkillsDiscovery)
+                    {
+                        return IsCloned ? "Synced" : "Not synced";
                     }
 
                     return IsCloned ? "Cloned" : "Not cloned";
@@ -930,7 +948,7 @@ namespace GitHubNode.ToolWindows
                     }
                     else if (!IsCloned)
                     {
-                        parts.Add("Not yet cloned");
+                        parts.Add(IsAgentSkillsDiscovery ? "Not yet synced" : "Not yet cloned");
                     }
 
                     if (!string.IsNullOrEmpty(ErrorMessage))
@@ -951,11 +969,12 @@ namespace GitHubNode.ToolWindows
                 RepositoryUrl = marketplace.RepositoryUrl;
                 IsBuiltIn = marketplace.IsBuiltIn;
                 IsCloned = marketplace.IsCloned;
+                IsAgentSkillsDiscovery = marketplace.IsAgentSkillsDiscovery;
                 ErrorMessage = marketplace.ErrorMessage;
                 GitHubUrl = marketplace.GitHubUrl ?? marketplace.CloneUrl;
                 LastUpdated = marketplace.LastUpdated;
 
-                AvatarImage = LoadAvatarImage(marketplace.Owner, marketplace.GitHubUrl);
+                AvatarImage = LoadMarketplaceImage(marketplace.IconPath, marketplace.Owner, marketplace.GitHubUrl);
 
                 // Organize templates by category
                 TemplatesByCategory = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<TemplateListItem>>();
@@ -1086,6 +1105,37 @@ namespace GitHubNode.ToolWindows
                 return asset.PluginName ?? "MCP Server";
             }
 
+            private static BitmapImage LoadMarketplaceImage(string iconPath, string owner, string repositoryUrl)
+            {
+                var iconImage = LoadLocalImage(iconPath);
+                return iconImage ?? LoadAvatarImage(owner, repositoryUrl);
+            }
+
+            private static BitmapImage LoadLocalImage(string iconPath)
+            {
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(iconPath) || !System.IO.File.Exists(iconPath))
+                    {
+                        return null;
+                    }
+
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.UriSource = new Uri(iconPath, UriKind.Absolute);
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.DecodePixelWidth = 64;
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+                    return bitmap;
+                }
+                catch (Exception ex)
+                {
+                    _ = ex.LogAsync();
+                    return null;
+                }
+            }
+
             private static BitmapImage LoadAvatarImage(string owner, string repositoryUrl)
             {
                 try
@@ -1104,10 +1154,12 @@ namespace GitHubNode.ToolWindows
                     bitmap.CacheOption = BitmapCacheOption.OnLoad;
                     bitmap.DecodePixelWidth = 64;
                     bitmap.EndInit();
+                    bitmap.Freeze();
                     return bitmap;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _ = ex.LogAsync();
                     return null;
                 }
             }

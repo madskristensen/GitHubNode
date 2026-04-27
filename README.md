@@ -138,31 +138,37 @@ The provider model is extensible, making it straightforward to add more template
 
 ### Agent Marketplaces
 
-In addition to built-in template providers, you can register custom Git repositories as "agent marketplaces" to provide your own templates for agents, skills, instructions, and prompts.
+In addition to built-in template providers, you can register custom Git repositories as "agent marketplaces" to provide your own templates for agents, skills, instructions, and prompts. You can also register Agent Skills Discovery sources that publish skills from `/.well-known/agent-skills/index.json`.
 
 **Managing Marketplaces:**
 
 Right-click on the GitHub node and select **Manage Marketplaces** to open the **Agent Marketplace** tool window. You can also open it from the **Extensions** menu. From there you can:
 
-- **View registered marketplaces** - See all built-in and user-added marketplace repositories with details, status, and available templates
-- **Add custom marketplaces** - Register any repository that follows the marketplace structure
+- **View registered marketplaces** - See all built-in and user-added marketplace sources with details, status, and available templates
+- **Add custom marketplaces** - Register any repository that follows the marketplace structure or any trusted Agent Skills Discovery source
 - **Remove user-added marketplaces** - Built-in marketplaces cannot be removed
-- **Refresh** - Pull the latest changes from a specific marketplace
-- **Refresh All** - Pull the latest changes from all marketplace repositories
-- **Open in Browser** - Navigate to a marketplace repository in your browser
+- **Refresh** - Pull or sync the latest changes from a specific marketplace
+- **Refresh All** - Pull or sync the latest changes from all marketplace sources
+- **Open in Browser** - Navigate to a marketplace source in your browser
 
 Accepted marketplace inputs include:
 
 - **owner/repo** - shorthand for GitHub repositories
 - **HTTPS repository URLs** - for example `https://github.com/owner/repo.git`
 - **SSH repository URLs** - for example `git@host:owner/repo.git` or `ssh://git@host/owner/repo.git`
+- **Agent Skills Discovery domains** - for example `example.com`, resolved to `https://example.com/.well-known/agent-skills/index.json` with fallback to the legacy `/.well-known/skills/index.json` path
+- **Agent Skills Discovery index URLs** - for example `https://example.com/.well-known/agent-skills/index.json` or `https://docs.stripe.com/.well-known/skills/index.json`
 
 ![Manage marketplace](art/marketplace-manager.png)
 
 **How it works:**
 
-- Marketplaces are Git repositories containing plugin definitions with agents, skills, instructions, and prompts
-- Repositories are cloned locally and updated automatically
+- Repository marketplaces are Git repositories containing plugin definitions with agents, skills, instructions, and prompts
+- Agent Skills Discovery sources are fetched over HTTPS from `/.well-known/agent-skills/index.json`, with fallback support for legacy `/.well-known/skills/index.json` indexes
+- Discovered `skill-md`, `.zip`, and `.tar.gz` artifacts are verified with their SHA-256 digest before they are cached locally when the index publishes digests
+- Archives are unpacked only after digest verification and are rejected if they contain unsafe paths or missing root `SKILL.md` files
+- Discovery sources use their site's `/favicon.ico` as the marketplace icon when available
+- Repositories and discovery sources are synced locally and updated automatically
 - When creating new files, templates from all registered marketplaces appear in the provider dropdown
 - Each marketplace can contain multiple plugins, each with various asset types
 

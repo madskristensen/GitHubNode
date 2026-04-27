@@ -9,13 +9,20 @@ namespace GitHubNode.Services.Marketplace
     internal sealed class MarketplaceEntry
     {
         /// <summary>
-        /// Gets or sets the GitHub owner (user or organization).
+        /// Gets or sets the marketplace source kind. Missing values are treated as repository sources.
+        /// </summary>
+        [JsonPropertyName("sourceKind")]
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public MarketplaceSourceKind SourceKind { get; set; } = MarketplaceSourceKind.Repository;
+
+        /// <summary>
+        /// Gets or sets the GitHub owner (user or organization), or source host for discovery sources.
         /// </summary>
         [JsonPropertyName("owner")]
         public string Owner { get; set; }
 
         /// <summary>
-        /// Gets or sets the repository name.
+        /// Gets or sets the repository name, or source name for discovery sources.
         /// </summary>
         [JsonPropertyName("repo")]
         public string Repo { get; set; }
@@ -25,6 +32,24 @@ namespace GitHubNode.Services.Marketplace
         /// </summary>
         [JsonPropertyName("url")]
         public string RepositoryUrl { get; set; }
+
+        /// <summary>
+        /// Gets or sets the Agent Skills Discovery index URL for discovery sources.
+        /// </summary>
+        [JsonPropertyName("agentSkillsIndexUrl")]
+        public string AgentSkillsIndexUrl { get; set; }
+
+        /// <summary>
+        /// Gets or sets the display name for non-repository marketplace sources.
+        /// </summary>
+        [JsonPropertyName("displayName")]
+        public string DisplayName { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether the user trusted this source when it was added.
+        /// </summary>
+        [JsonPropertyName("trusted")]
+        public bool IsTrusted { get; set; }
 
         /// <summary>
         /// Gets or sets the branch to use. Defaults to "main".

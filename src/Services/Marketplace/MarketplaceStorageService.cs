@@ -26,6 +26,11 @@ namespace GitHubNode.Services.Marketplace
         public static string MarketplacesDirectory { get; } = Path.Combine(BaseDirectory, "Marketplaces");
 
         /// <summary>
+        /// Gets the directory where Agent Skills Discovery artifacts are cached.
+        /// </summary>
+        public static string AgentSkillsDirectory { get; } = Path.Combine(BaseDirectory, "AgentSkills");
+
+        /// <summary>
         /// Gets the path to the user's MarketplaceInfo configuration file.
         /// </summary>
         public static string ConfigFilePath { get; } = Path.Combine(BaseDirectory, "marketplaces.json");
@@ -55,12 +60,35 @@ namespace GitHubNode.Services.Marketplace
         }
 
         /// <summary>
+        /// Gets the local cache directory for an Agent Skills Discovery source.
+        /// </summary>
+        public static string GetAgentSkillsDiscoveryDirectory(Uri indexUri)
+        {
+            if (indexUri == null)
+            {
+                throw new ArgumentNullException(nameof(indexUri));
+            }
+
+            var safeName = SanitizePathComponent(indexUri.Host + indexUri.AbsolutePath.Replace('/', '_'));
+            return Path.Combine(AgentSkillsDirectory, safeName);
+        }
+
+        /// <summary>
         /// Gets the path where the marketplace icon should be stored.
         /// </summary>
         public static string GetIconPath(string owner, string repo, string iconExtension, string repositoryUrl = null)
         {
             var marketplaceDir = GetMarketplaceDirectory(owner, repo, repositoryUrl);
             return Path.Combine(marketplaceDir, $"_icon{iconExtension}");
+        }
+
+        /// <summary>
+        /// Gets the path where an Agent Skills Discovery favicon should be stored.
+        /// </summary>
+        public static string GetAgentSkillsDiscoveryIconPath(Uri indexUri, string iconExtension)
+        {
+            var discoveryDir = GetAgentSkillsDiscoveryDirectory(indexUri);
+            return Path.Combine(discoveryDir, $"_favicon{iconExtension}");
         }
 
         /// <summary>
@@ -167,6 +195,11 @@ namespace GitHubNode.Services.Marketplace
             // Check if already exists
             foreach (var existing in config.Marketplaces)
             {
+                if (existing.SourceKind != MarketplaceSourceKind.Repository)
+                {
+                    continue;
+                }
+
                 if (string.Equals(GetMarketplaceId(existing.Owner, existing.Repo, existing.RepositoryUrl), marketplaceId, StringComparison.OrdinalIgnoreCase))
                 {
                     return false; // Already exists
@@ -202,7 +235,79 @@ namespace GitHubNode.Services.Marketplace
             for (int i = config.Marketplaces.Count - 1; i >= 0; i--)
             {
                 var entry = config.Marketplaces[i];
+                if (entry.SourceKind != MarketplaceSourceKind.Repository)
+                {
+                    continue;
+                }
+
                 if (string.Equals(GetMarketplaceId(entry.Owner, entry.Repo, entry.RepositoryUrl), marketplaceId, StringComparison.OrdinalIgnoreCase))
+                {
+                    config.Marketplaces.RemoveAt(i);
+                    SaveConfig(config);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Adds an Agent Skills Discovery source to the user's configuration.
+        /// </summary>
+        public static bool AddAgentSkillsDiscoverySource(Uri indexUri, string displayName, bool trusted)
+        {
+            if (indexUri == null)
+            {
+                throw new ArgumentNullException(nameof(indexUri));
+            }
+
+            var config = LoadConfig();
+            var sourceId = AgentSkillsDiscoveryService.GetSourceId(indexUri);
+
+            foreach (var existing in config.Marketplaces)
+            {
+                if (existing.SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery &&
+                    AgentSkillsDiscoveryService.TryCreateIndexUri(existing.AgentSkillsIndexUrl ?? existing.RepositoryUrl, out var existingIndexUri) &&
+                    string.Equals(AgentSkillsDiscoveryService.GetSourceId(existingIndexUri), sourceId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            config.Marketplaces.Add(new MarketplaceEntry
+            {
+                SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
+                Owner = indexUri.Host,
+                Repo = "agent-skills",
+                RepositoryUrl = indexUri.AbsoluteUri,
+                AgentSkillsIndexUrl = indexUri.AbsoluteUri,
+                DisplayName = string.IsNullOrWhiteSpace(displayName) ? AgentSkillsDiscoveryService.GetDisplayName(indexUri) : displayName,
+                IsTrusted = trusted
+            });
+
+            SaveConfig(config);
+            return true;
+        }
+
+        /// <summary>
+        /// Removes an Agent Skills Discovery source from the user's configuration.
+        /// </summary>
+        public static bool RemoveAgentSkillsDiscoverySource(string indexUrl)
+        {
+            if (!AgentSkillsDiscoveryService.TryCreateIndexUri(indexUrl, out var indexUri))
+            {
+                return false;
+            }
+
+            var config = LoadConfig();
+            var sourceId = AgentSkillsDiscoveryService.GetSourceId(indexUri);
+
+            for (int i = config.Marketplaces.Count - 1; i >= 0; i--)
+            {
+                var entry = config.Marketplaces[i];
+                if (entry.SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery &&
+                    AgentSkillsDiscoveryService.TryCreateIndexUri(entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl, out var existingIndexUri) &&
+                    string.Equals(AgentSkillsDiscoveryService.GetSourceId(existingIndexUri), sourceId, StringComparison.OrdinalIgnoreCase))
                 {
                     config.Marketplaces.RemoveAt(i);
                     SaveConfig(config);
@@ -286,6 +391,7 @@ namespace GitHubNode.Services.Marketplace
         {
             Directory.CreateDirectory(BaseDirectory);
             Directory.CreateDirectory(MarketplacesDirectory);
+            Directory.CreateDirectory(AgentSkillsDirectory);
         }
 
         private static string SanitizePathComponent(string name)

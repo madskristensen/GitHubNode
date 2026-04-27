@@ -49,6 +49,17 @@ public class MarketplaceStorageServiceTests
     }
 
     [TestMethod]
+    public void GetAgentSkillsDiscoveryIconPath_ReturnsFaviconPath()
+    {
+        string iconPath = MarketplaceStorageService.GetAgentSkillsDiscoveryIconPath(
+            new Uri("https://docs.stripe.com/.well-known/skills/index.json"),
+            ".ico");
+
+        StringAssert.Contains(iconPath, "AgentSkills");
+        StringAssert.Contains(iconPath, "_favicon.ico");
+    }
+
+    [TestMethod]
     public void GetLinkedRepositoryDirectory_ReturnsHostAwarePath_ForCustomHost()
     {
         string dir = MarketplaceStorageService.GetLinkedRepositoryDirectory(

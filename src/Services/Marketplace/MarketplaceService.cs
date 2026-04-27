@@ -30,20 +30,33 @@ namespace GitHubNode.Services.Marketplace
             var config = MarketplaceStorageService.LoadConfig();
 
             // Fetch all marketplaces in parallel for better performance
-            var tasks = entries.Select(entry =>
-                GetMarketplaceAsync(
-                    entry.Owner,
-                    entry.Repo,
-                    entry.Branch,
-                    entry.RepositoryUrl,
-                    forceRefresh,
-                    config.UpdateIntervalHours,
-                    cancellationToken));
+            var tasks = entries.Select(entry => GetMarketplaceAsync(entry, forceRefresh, config.UpdateIntervalHours, cancellationToken));
 
             var results = await Task.WhenAll(tasks);
 
             _initialLoadComplete = true;
             return results.Where(m => m != null).ToList();
+        }
+
+        private static async Task<MarketplaceInfo> GetMarketplaceAsync(
+            MarketplaceEntry entry,
+            bool forceRefresh,
+            int updateIntervalHours,
+            CancellationToken cancellationToken)
+        {
+            if (entry.SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery)
+            {
+                return await GetAgentSkillsDiscoveryMarketplaceAsync(entry, forceRefresh, cancellationToken);
+            }
+
+            return await GetMarketplaceAsync(
+                entry.Owner,
+                entry.Repo,
+                entry.Branch,
+                entry.RepositoryUrl,
+                forceRefresh,
+                updateIntervalHours,
+                cancellationToken);
         }
 
         /// <summary>
@@ -140,12 +153,39 @@ namespace GitHubNode.Services.Marketplace
             string input,
             CancellationToken cancellationToken = default)
         {
+            if (AgentSkillsDiscoveryService.TryCreateIndexUri(input, out var indexUri))
+            {
+                var entry = new MarketplaceEntry
+                {
+                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
+                    Owner = indexUri.Host,
+                    Repo = "agent-skills",
+                    RepositoryUrl = indexUri.AbsoluteUri,
+                    AgentSkillsIndexUrl = indexUri.AbsoluteUri,
+                    DisplayName = AgentSkillsDiscoveryService.GetDisplayName(indexUri),
+                    IsTrusted = true
+                };
+
+                var discoveredMarketplace = await GetAgentSkillsDiscoveryMarketplaceAsync(entry, forceRefresh: true, cancellationToken);
+                if (!discoveredMarketplace.IsCloned)
+                {
+                    return (false, discoveredMarketplace.ErrorMessage ?? "Failed to load Agent Skills Discovery source.", null);
+                }
+
+                if (AgentSkillsDiscoveryService.TryCreateIndexUri(discoveredMarketplace.SourceUrl, out var discoveredIndexUri))
+                {
+                    MarketplaceStorageService.AddAgentSkillsDiscoverySource(discoveredIndexUri, discoveredMarketplace.DisplayName, trusted: true);
+                }
+
+                return (true, null, discoveredMarketplace);
+            }
+
             // Parse input (supports "owner/repo" or "https://github.com/owner/repo")
             var (owner, repo, branch, repositoryUrl) = ParseMarketplaceInput(input);
 
             if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             {
-                return (false, "Invalid format. Use 'owner/repo' or a repository URL.", null);
+                return (false, "Invalid format. Use 'owner/repo', a repository URL, a domain, or an Agent Skills Discovery index URL.", null);
             }
 
             // Check if it's a built-in
@@ -177,6 +217,24 @@ namespace GitHubNode.Services.Marketplace
         /// </summary>
         public static bool RemoveMarketplace(string owner, string repo, string repositoryUrl = null, bool deleteClone = true)
         {
+            if (AgentSkillsDiscoveryService.TryCreateIndexUri(repositoryUrl, out var indexUri))
+            {
+                MarketplaceStorageService.RemoveAgentSkillsDiscoverySource(indexUri.AbsoluteUri);
+
+                var sourceId = AgentSkillsDiscoveryService.GetSourceId(indexUri);
+                lock (_cacheLock)
+                {
+                    _marketplaceCache.Remove(sourceId);
+                }
+
+                if (deleteClone)
+                {
+                    DeleteDirectory(MarketplaceStorageService.GetAgentSkillsDiscoveryDirectory(indexUri));
+                }
+
+                return true;
+            }
+
             // Can't remove built-in marketplaces
             if (MarketplaceStorageService.IsBuiltIn(owner, repo, repositoryUrl))
             {
@@ -264,6 +322,7 @@ namespace GitHubNode.Services.Marketplace
             catch (Exception ex)
             {
                 Debug.WriteLine($"MarketplaceService.GetAssetContent failed: {ex}");
+                _ = ex.LogAsync();
             }
 
             return null;
@@ -283,8 +342,38 @@ namespace GitHubNode.Services.Marketplace
             string branch = null;
             string configuredRepositoryUrl = repositoryUrl;
 
+            if (AgentSkillsDiscoveryService.TryCreateIndexUri(repositoryUrl, out var requestedIndexUri))
+            {
+                var requestedSourceId = AgentSkillsDiscoveryService.GetSourceId(requestedIndexUri);
+                foreach (var entry in config.Marketplaces)
+                {
+                    if (entry.SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery &&
+                        AgentSkillsDiscoveryService.TryCreateIndexUri(entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl, out var entryIndexUri) &&
+                        string.Equals(AgentSkillsDiscoveryService.GetSourceId(entryIndexUri), requestedSourceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return await GetAgentSkillsDiscoveryMarketplaceAsync(entry, forceRefresh: true, cancellationToken);
+                    }
+                }
+
+                return await GetAgentSkillsDiscoveryMarketplaceAsync(new MarketplaceEntry
+                {
+                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
+                    Owner = requestedIndexUri.Host,
+                    Repo = "agent-skills",
+                    RepositoryUrl = requestedIndexUri.AbsoluteUri,
+                    AgentSkillsIndexUrl = requestedIndexUri.AbsoluteUri,
+                    DisplayName = AgentSkillsDiscoveryService.GetDisplayName(requestedIndexUri),
+                    IsTrusted = true
+                }, forceRefresh: true, cancellationToken);
+            }
+
             foreach (var entry in config.Marketplaces)
             {
+                if (entry.SourceKind != MarketplaceSourceKind.Repository)
+                {
+                    continue;
+                }
+
                 if (string.Equals(MarketplaceStorageService.GetMarketplaceId(entry.Owner, entry.Repo, entry.RepositoryUrl),
                         MarketplaceStorageService.GetMarketplaceId(owner, repo, repositoryUrl),
                         StringComparison.OrdinalIgnoreCase))
@@ -309,6 +398,157 @@ namespace GitHubNode.Services.Marketplace
             }
 
             return await GetMarketplaceAsync(owner, repo, branch, configuredRepositoryUrl, forceRefresh: true, cancellationToken: cancellationToken);
+        }
+
+        private static async Task<MarketplaceInfo> GetAgentSkillsDiscoveryMarketplaceAsync(
+            MarketplaceEntry entry,
+            bool forceRefresh,
+            CancellationToken cancellationToken)
+        {
+            if (!AgentSkillsDiscoveryService.TryCreateIndexUri(entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl, out var indexUri))
+            {
+                return new MarketplaceInfo
+                {
+                    Id = entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl ?? entry.Owner,
+                    Owner = entry.Owner,
+                    RepoName = entry.Repo,
+                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
+                    RepositoryUrl = entry.RepositoryUrl,
+                    SourceUrl = entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl,
+                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? "Agent Skills" : entry.DisplayName,
+                    IsCloned = false,
+                    ErrorMessage = "Invalid Agent Skills Discovery URL."
+                };
+            }
+
+            var id = AgentSkillsDiscoveryService.GetSourceId(indexUri);
+            if (!entry.IsTrusted)
+            {
+                return new MarketplaceInfo
+                {
+                    Id = id,
+                    Owner = indexUri.Host,
+                    RepoName = "agent-skills",
+                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
+                    RepositoryUrl = indexUri.AbsoluteUri,
+                    SourceUrl = indexUri.AbsoluteUri,
+                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? AgentSkillsDiscoveryService.GetDisplayName(indexUri) : entry.DisplayName,
+                    IsCloned = false,
+                    ErrorMessage = "Agent Skills Discovery source is not trusted. Remove and add it again to confirm trust."
+                };
+            }
+
+            if (!forceRefresh)
+            {
+                lock (_cacheLock)
+                {
+                    if (_marketplaceCache.TryGetValue(id, out var cached) && cached.IsCloned)
+                    {
+                        return cached;
+                    }
+                }
+            }
+
+            try
+            {
+                var result = await AgentSkillsDiscoveryService.DiscoverAsync(entry, forceRefresh, cancellationToken);
+                var plugin = new MarketplacePlugin
+                {
+                    Name = "Agent Skills",
+                    Description = $"Discovered from {result.Origin}",
+                    Source = result.IndexUri.AbsoluteUri,
+                    MarketplaceId = result.Id
+                };
+
+                foreach (var skill in result.Skills)
+                {
+                    plugin.Assets.Add(new PluginAsset
+                    {
+                        Type = AssetType.Skill,
+                        Name = skill.Name,
+                        Description = skill.Description,
+                        RelativePath = skill.Name,
+                        LocalPath = skill.LocalSkillPath,
+                        PluginName = result.DisplayName,
+                        MarketplaceId = result.Id
+                    });
+                }
+
+                var marketplace = new MarketplaceInfo
+                {
+                    Id = result.Id,
+                    Owner = result.IndexUri.Host,
+                    RepoName = "agent-skills",
+                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
+                    RepositoryUrl = result.IndexUri.AbsoluteUri,
+                    SourceUrl = result.IndexUri.AbsoluteUri,
+                    DisplayName = result.DisplayName,
+                    Description = $"Agent Skills Discovery source at {result.Origin}",
+                    IsBuiltIn = false,
+                    LocalPath = result.CacheDirectory,
+                    IconPath = result.IconPath,
+                    IsCloned = true,
+                    LastUpdated = result.LastUpdated,
+                    ErrorMessage = result.Skills.Count == 0 && result.Warnings.Count > 0 ? string.Join(" ", result.Warnings) : null,
+                    Plugins = new List<MarketplacePlugin> { plugin }
+                };
+
+                lock (_cacheLock)
+                {
+                    _marketplaceCache[id] = marketplace;
+                }
+
+                return marketplace;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceService.GetAgentSkillsDiscoveryMarketplaceAsync failed for '{indexUri}': {ex}");
+                _ = ex.LogAsync();
+
+                lock (_cacheLock)
+                {
+                    if (_marketplaceCache.TryGetValue(id, out var cached))
+                    {
+                        cached.ErrorMessage = ex.Message;
+                        return cached;
+                    }
+                }
+
+                return new MarketplaceInfo
+                {
+                    Id = id,
+                    Owner = indexUri.Host,
+                    RepoName = "agent-skills",
+                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
+                    RepositoryUrl = indexUri.AbsoluteUri,
+                    SourceUrl = indexUri.AbsoluteUri,
+                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? AgentSkillsDiscoveryService.GetDisplayName(indexUri) : entry.DisplayName,
+                    IsCloned = false,
+                    ErrorMessage = ex.Message
+                };
+            }
+        }
+
+        private static void DeleteDirectory(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.Delete(path, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceService.DeleteDirectory failed for '{path}': {ex}");
+                _ = ex.LogAsync();
+            }
         }
 
         /// <summary>
