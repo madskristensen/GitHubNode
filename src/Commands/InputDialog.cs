@@ -48,10 +48,13 @@ namespace GitHubNode.Commands
         private List<TemplateListItemModel> _templateListItems;
         private readonly Dictionary<string, bool> _collapsedTemplateGroups;
         private readonly Dictionary<TemplateInfo, ToolTip> _templateTooltipCache;
+        private readonly HashSet<string> _selectedTemplateKeys;
+        private readonly HashSet<string> _preselectedTemplateFileNames;
         private bool _isUpdatingTemplateChecks;
         private CancellationTokenSource _templateListCancellationTokenSource;
         private CancellationTokenSource _templateContentCancellationTokenSource;
         private bool _isInitialLoad;
+        private bool _hasAppliedPreselectedTemplates;
 
         /// <summary>
         /// Gets the text entered by the user.
@@ -84,7 +87,8 @@ namespace GitHubNode.Commands
             string defaultValue = "",
             Func<string, string> previewGenerator = null,
             TemplateType? templateType = null,
-            IReadOnlyList<MarketplaceAsProvider> marketplaceProviders = null)
+            IReadOnlyList<MarketplaceAsProvider> marketplaceProviders = null,
+            IReadOnlyCollection<string> preselectedTemplateFileNames = null)
         {
             _previewGenerator = previewGenerator;
             _templateType = templateType;
@@ -123,6 +127,10 @@ namespace GitHubNode.Commands
             _templateListItems = new List<TemplateListItemModel>();
             _collapsedTemplateGroups = new Dictionary<string, bool>(System.StringComparer.OrdinalIgnoreCase);
             _templateTooltipCache = new Dictionary<TemplateInfo, ToolTip>();
+            _selectedTemplateKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _preselectedTemplateFileNames = preselectedTemplateFileNames == null
+                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(preselectedTemplateFileNames, StringComparer.OrdinalIgnoreCase);
 
             // Constants for two-column layout
             const double labelWidth = 100;
@@ -630,6 +638,7 @@ namespace GitHubNode.Commands
                 cancellationToken.ThrowIfCancellationRequested();
 
                 _allTemplates = templateResults.SelectMany(t => t).ToList();
+                ApplyPreselectedTemplates();
 
                 // Apply filters and update UI
                 ApplyFilters();
@@ -708,11 +717,6 @@ namespace GitHubNode.Commands
                 _collapsedTemplateGroups[existingHeader.GroupKey] = existingHeader.IsCollapsed;
             }
 
-            var checkedTemplates = _templateListItems
-                .Where(item => !item.IsGroupHeader && item.IsChecked && item.Template != null)
-                .Select(item => item.Template)
-                .ToHashSet();
-
             var nextItems = new List<TemplateListItemModel>();
 
             if (_filteredTemplates.Count > 0)
@@ -744,7 +748,7 @@ namespace GitHubNode.Commands
                             GroupKey = group.Key,
                             GroupDisplayName = GetMarketplaceDisplayName(group.Key),
                             Template = template,
-                            IsChecked = checkedTemplates.Contains(template)
+                            IsChecked = _selectedTemplateKeys.Contains(TemplateSelectionKey.Create(template))
                         })
                         .ToList();
 
@@ -973,6 +977,7 @@ namespace GitHubNode.Commands
                     foreach (var child in _templateListItems.Where(candidate => !candidate.IsGroupHeader && string.Equals(candidate.GroupKey, item.GroupKey, StringComparison.OrdinalIgnoreCase)))
                     {
                         child.IsChecked = isChecked;
+                        UpdateSelectedTemplateKey(child.Template, isChecked);
                     }
 
                     item.IsChecked = isChecked;
@@ -980,6 +985,7 @@ namespace GitHubNode.Commands
                 else
                 {
                     item.IsChecked = isChecked;
+                    UpdateSelectedTemplateKey(item.Template, isChecked);
                     UpdateGroupHeaderCheckState(item.GroupKey);
                 }
 
@@ -1017,19 +1023,20 @@ namespace GitHubNode.Commands
             }
 
             var selectedCount = _templateListItems.Count(item => !item.IsGroupHeader && item.IsChecked);
-            _templateLabel.Text = selectedCount > 0
-                ? $"Templates ({selectedCount} selected):"
+            var totalSelectedCount = _selectedTemplateKeys.Count;
+            _templateLabel.Text = totalSelectedCount > 0
+                ? $"Templates ({totalSelectedCount} selected):"
                 : "Templates:";
 
             if (_templateType != null && _statusText != null && _allTemplates.Count > 0)
             {
-                if (selectedCount == 0)
+                if (totalSelectedCount == 0)
                 {
                     _statusText.Text = "No template selected. Enter a file name to create a scaffolded file.";
                 }
                 else
                 {
-                    _statusText.Text = $"{selectedCount} template(s) selected.";
+                    _statusText.Text = $"{totalSelectedCount} template(s) selected.";
                 }
             }
 
@@ -1043,8 +1050,41 @@ namespace GitHubNode.Commands
                 return;
             }
 
-            var hasCheckedTemplates = _templateListItems.Any(item => !item.IsGroupHeader && item.IsChecked);
+            var hasCheckedTemplates = _selectedTemplateKeys.Count > 0;
             _textBox.IsReadOnly = hasCheckedTemplates;
+        }
+
+        private void ApplyPreselectedTemplates()
+        {
+            if (_hasAppliedPreselectedTemplates || _preselectedTemplateFileNames.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var template in _allTemplates.Where(template => TemplateSelectionKey.MatchesFileName(template, _preselectedTemplateFileNames)))
+            {
+                _selectedTemplateKeys.Add(TemplateSelectionKey.Create(template));
+            }
+
+            _hasAppliedPreselectedTemplates = true;
+        }
+
+        private void UpdateSelectedTemplateKey(TemplateInfo template, bool isSelected)
+        {
+            var key = TemplateSelectionKey.Create(template);
+            if (string.IsNullOrEmpty(key))
+            {
+                return;
+            }
+
+            if (isSelected)
+            {
+                _selectedTemplateKeys.Add(key);
+            }
+            else
+            {
+                _selectedTemplateKeys.Remove(key);
+            }
         }
 
         private void CollectSelectedTemplates()
@@ -1055,21 +1095,21 @@ namespace GitHubNode.Commands
                 return;
             }
 
-            var selected = _templateListItems
-                .Where(item => !item.IsGroupHeader && item.IsChecked && item.Template != null)
-                .Select(item =>
+            var selected = _allTemplates
+                .Where(template => _selectedTemplateKeys.Contains(TemplateSelectionKey.Create(template)))
+                .Select(template =>
                 {
-                    var content = item.Template.Content;
+                    var content = template.Content;
                     if (string.IsNullOrEmpty(content))
                     {
-                        content = MarketplaceTemplateAdapter.GetTemplateContent(item.Template);
-                        item.Template.Content = content;
+                        content = MarketplaceTemplateAdapter.GetTemplateContent(template);
+                        template.Content = content;
                     }
 
                     return new TemplateSelectionResult
                     {
-                        Template = item.Template,
-                        FileName = item.Template.FileName,
+                        Template = template,
+                        FileName = template.FileName,
                         Content = content
                     };
                 })
@@ -1380,6 +1420,29 @@ namespace GitHubNode.Commands
         public bool IsChecked { get; set; }
 
         public string Tooltip { get; set; }
+    }
+
+    internal static class TemplateSelectionKey
+    {
+        public static string Create(TemplateInfo template)
+        {
+            if (template == null)
+            {
+                return null;
+            }
+
+            var providerId = template.ProviderId ?? string.Empty;
+            var identity = template.FileName ?? template.DownloadUrl ?? template.Name ?? template.DisplayName ?? string.Empty;
+            return $"{providerId}|{template.TemplateType}|{identity}";
+        }
+
+        public static bool MatchesFileName(TemplateInfo template, ISet<string> fileNames)
+        {
+            return template != null
+                && fileNames != null
+                && !string.IsNullOrWhiteSpace(template.FileName)
+                && fileNames.Contains(template.FileName);
+        }
     }
 }
 

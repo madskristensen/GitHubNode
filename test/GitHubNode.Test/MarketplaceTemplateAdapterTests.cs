@@ -1,3 +1,4 @@
+using GitHubNode.Commands;
 using GitHubNode.Services;
 using GitHubNode.Services.Marketplace;
 
@@ -76,5 +77,41 @@ public class MarketplaceTemplateAdapterTests
         var result = MarketplaceTemplateAdapter.ToTemplateType(AssetType.McpServer);
 
         Assert.IsNull(result);
+    }
+
+    [TestMethod]
+    public void TemplateSelectionKey_Create_DistinguishesSameFileNameFromDifferentProviders()
+    {
+        var first = new TemplateInfo
+        {
+            FileName = "code-review",
+            ProviderId = "owner/first",
+            TemplateType = TemplateType.Skill
+        };
+        var second = new TemplateInfo
+        {
+            FileName = "code-review",
+            ProviderId = "owner/second",
+            TemplateType = TemplateType.Skill
+        };
+
+        Assert.AreNotEqual(TemplateSelectionKey.Create(first), TemplateSelectionKey.Create(second));
+    }
+
+    [TestMethod]
+    public void TemplateSelectionKey_MatchesFileName_ReturnsTrueForExistingSkillFolderName()
+    {
+        var template = new TemplateInfo
+        {
+            FileName = "code-review",
+            ProviderId = "owner/repo",
+            TemplateType = TemplateType.Skill
+        };
+        var installedSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Code-Review"
+        };
+
+        Assert.IsTrue(TemplateSelectionKey.MatchesFileName(template, installedSkills));
     }
 }

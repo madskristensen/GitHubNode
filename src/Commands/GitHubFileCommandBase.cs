@@ -167,7 +167,10 @@ namespace GitHubNode.Commands
                 Func<string, string> previewGenerator = GetFileContent;
 
                 // Marketplace providers are loaded asynchronously by the dialog
-                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator, TemplateType, marketplaceProviders: null);
+                var preselectedTemplateFileNames = TemplateType == null
+                    ? null
+                    : GetExistingTemplateFileNames(targetFolder);
+                var dialog = new InputDialog(DialogTitle, DialogPrompt, DialogDefaultValue, previewGenerator, TemplateType, marketplaceProviders: null, preselectedTemplateFileNames);
                 if (dialog.ShowModal() != true)
                 {
                     return;
@@ -401,6 +404,28 @@ namespace GitHubNode.Commands
         /// <param name="destinationDirectory">The destination directory where supporting files should be copied.</param>
         protected virtual void CopySupportingFiles(string sourceFilePath, string destinationDirectory)
         {
+        }
+
+        /// <summary>
+        /// Gets template file names that already exist in the target folder and should be preselected in the template dialog.
+        /// </summary>
+        protected virtual IReadOnlyCollection<string> GetExistingTemplateFileNames(string targetFolder)
+        {
+            if (string.IsNullOrWhiteSpace(targetFolder) || string.IsNullOrWhiteSpace(RequiredExtension))
+            {
+                return System.Array.Empty<string>();
+            }
+
+            var subfolder = GetSubfolderPath(targetFolder);
+            if (string.IsNullOrWhiteSpace(subfolder) || !Directory.Exists(subfolder))
+            {
+                return System.Array.Empty<string>();
+            }
+
+            return Directory.GetFiles(subfolder, "*" + RequiredExtension, SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+                .ToList();
         }
     }
 }
