@@ -26,9 +26,9 @@ namespace GitHubNode.Services.Marketplace
         public static string MarketplacesDirectory { get; } = Path.Combine(BaseDirectory, "Marketplaces");
 
         /// <summary>
-        /// Gets the directory where Agent Skills Discovery artifacts are cached.
+        /// Gets the directory where Well-Known Discovery artifacts are cached.
         /// </summary>
-        public static string AgentSkillsDirectory { get; } = Path.Combine(BaseDirectory, "AgentSkills");
+        public static string WellKnownDirectory { get; } = Path.Combine(BaseDirectory, "WellKnown");
 
         /// <summary>
         /// Gets the path to the user's MarketplaceInfo configuration file.
@@ -60,17 +60,19 @@ namespace GitHubNode.Services.Marketplace
         }
 
         /// <summary>
-        /// Gets the local cache directory for an Agent Skills Discovery source.
+        /// Gets the local cache directory for a Well-Known Discovery source.
+        /// The directory is keyed by the source origin (host and port) so that
+        /// every well-known sub type (skills, MCP, ...) shares the same cache.
         /// </summary>
-        public static string GetAgentSkillsDiscoveryDirectory(Uri indexUri)
+        public static string GetWellKnownDiscoveryDirectory(Uri originUri)
         {
-            if (indexUri == null)
+            if (originUri == null)
             {
-                throw new ArgumentNullException(nameof(indexUri));
+                throw new ArgumentNullException(nameof(originUri));
             }
 
-            var safeName = SanitizePathComponent(indexUri.Host + indexUri.AbsolutePath.Replace('/', '_'));
-            return Path.Combine(AgentSkillsDirectory, safeName);
+            var authority = originUri.Authority;
+            return Path.Combine(WellKnownDirectory, SanitizePathComponent(authority));
         }
 
         /// <summary>
@@ -83,12 +85,71 @@ namespace GitHubNode.Services.Marketplace
         }
 
         /// <summary>
-        /// Gets the path where an Agent Skills Discovery favicon should be stored.
+        /// Gets the path where a Well-Known Discovery favicon should be stored.
         /// </summary>
-        public static string GetAgentSkillsDiscoveryIconPath(Uri indexUri, string iconExtension)
+        public static string GetWellKnownDiscoveryIconPath(Uri indexUri, string iconExtension)
         {
-            var discoveryDir = GetAgentSkillsDiscoveryDirectory(indexUri);
+            var discoveryDir = GetWellKnownDiscoveryDirectory(indexUri);
             return Path.Combine(discoveryDir, $"_favicon{iconExtension}");
+        }
+
+        /// <summary>
+        /// Returns the path of an existing on-disk icon for a marketplace, regardless
+        /// of file extension, or null when no icon has been cached yet. Used for
+        /// instantly populating list items at startup without parsing the marketplace
+        /// or hitting the network.
+        /// </summary>
+        public static string FindExistingIconPath(string owner, string repo, string repositoryUrl = null)
+        {
+            try
+            {
+                var marketplaceDir = GetMarketplaceDirectory(owner, repo, repositoryUrl);
+                return FindFileWithPrefix(marketplaceDir, "_icon");
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Returns the path of an existing on-disk favicon for a Well-Known Discovery
+        /// origin, regardless of file extension, or null when no favicon has been cached.
+        /// Used for instantly populating list items at startup without running discovery
+        /// or hitting the network.
+        /// </summary>
+        public static string FindExistingWellKnownIconPath(Uri originUri)
+        {
+            if (originUri == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var discoveryDir = GetWellKnownDiscoveryDirectory(originUri);
+                return FindFileWithPrefix(discoveryDir, "_favicon");
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string FindFileWithPrefix(string directory, string fileNamePrefix)
+        {
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            {
+                return null;
+            }
+
+            var matches = Directory.GetFiles(directory, fileNamePrefix + ".*");
+            if (matches == null || matches.Length == 0)
+            {
+                return null;
+            }
+
+            return matches[0];
         }
 
         /// <summary>
@@ -252,9 +313,9 @@ namespace GitHubNode.Services.Marketplace
         }
 
         /// <summary>
-        /// Adds an Agent Skills Discovery source to the user's configuration.
+        /// Adds a Well-Known Discovery source to the user's configuration.
         /// </summary>
-        public static bool AddAgentSkillsDiscoverySource(Uri indexUri, string displayName, bool trusted)
+        public static bool AddWellKnownDiscoverySource(Uri indexUri, string displayName, bool trusted)
         {
             if (indexUri == null)
             {
@@ -262,13 +323,13 @@ namespace GitHubNode.Services.Marketplace
             }
 
             var config = LoadConfig();
-            var sourceId = AgentSkillsDiscoveryService.GetSourceId(indexUri);
+            var sourceId = WellKnownDiscoveryService.GetSourceId(indexUri);
 
             foreach (var existing in config.Marketplaces)
             {
-                if (existing.SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery &&
-                    AgentSkillsDiscoveryService.TryCreateIndexUri(existing.AgentSkillsIndexUrl ?? existing.RepositoryUrl, out var existingIndexUri) &&
-                    string.Equals(AgentSkillsDiscoveryService.GetSourceId(existingIndexUri), sourceId, StringComparison.OrdinalIgnoreCase))
+                if (existing.SourceKind == MarketplaceSourceKind.WellKnownDiscovery &&
+                    WellKnownDiscoveryService.TryCreateIndexUri(existing.WellKnownIndexUrl ?? existing.RepositoryUrl, out var existingIndexUri) &&
+                    string.Equals(WellKnownDiscoveryService.GetSourceId(existingIndexUri), sourceId, StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
                 }
@@ -276,12 +337,12 @@ namespace GitHubNode.Services.Marketplace
 
             config.Marketplaces.Add(new MarketplaceEntry
             {
-                SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
+                SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
                 Owner = indexUri.Host,
-                Repo = "agent-skills",
+                Repo = "well-known",
                 RepositoryUrl = indexUri.AbsoluteUri,
-                AgentSkillsIndexUrl = indexUri.AbsoluteUri,
-                DisplayName = string.IsNullOrWhiteSpace(displayName) ? AgentSkillsDiscoveryService.GetDisplayName(indexUri) : displayName,
+                WellKnownIndexUrl = indexUri.AbsoluteUri,
+                DisplayName = string.IsNullOrWhiteSpace(displayName) ? WellKnownDiscoveryService.GetDisplayName(indexUri) : displayName,
                 IsTrusted = trusted
             });
 
@@ -290,24 +351,24 @@ namespace GitHubNode.Services.Marketplace
         }
 
         /// <summary>
-        /// Removes an Agent Skills Discovery source from the user's configuration.
+        /// Removes a Well-Known Discovery source from the user's configuration.
         /// </summary>
-        public static bool RemoveAgentSkillsDiscoverySource(string indexUrl)
+        public static bool RemoveWellKnownDiscoverySource(string indexUrl)
         {
-            if (!AgentSkillsDiscoveryService.TryCreateIndexUri(indexUrl, out var indexUri))
+            if (!WellKnownDiscoveryService.TryCreateIndexUri(indexUrl, out var indexUri))
             {
                 return false;
             }
 
             var config = LoadConfig();
-            var sourceId = AgentSkillsDiscoveryService.GetSourceId(indexUri);
+            var sourceId = WellKnownDiscoveryService.GetSourceId(indexUri);
 
             for (int i = config.Marketplaces.Count - 1; i >= 0; i--)
             {
                 var entry = config.Marketplaces[i];
-                if (entry.SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery &&
-                    AgentSkillsDiscoveryService.TryCreateIndexUri(entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl, out var existingIndexUri) &&
-                    string.Equals(AgentSkillsDiscoveryService.GetSourceId(existingIndexUri), sourceId, StringComparison.OrdinalIgnoreCase))
+                if (entry.SourceKind == MarketplaceSourceKind.WellKnownDiscovery &&
+                    WellKnownDiscoveryService.TryCreateIndexUri(entry.WellKnownIndexUrl ?? entry.RepositoryUrl, out var existingIndexUri) &&
+                    string.Equals(WellKnownDiscoveryService.GetSourceId(existingIndexUri), sourceId, StringComparison.OrdinalIgnoreCase))
                 {
                     config.Marketplaces.RemoveAt(i);
                     SaveConfig(config);
@@ -391,7 +452,7 @@ namespace GitHubNode.Services.Marketplace
         {
             Directory.CreateDirectory(BaseDirectory);
             Directory.CreateDirectory(MarketplacesDirectory);
-            Directory.CreateDirectory(AgentSkillsDirectory);
+            Directory.CreateDirectory(WellKnownDirectory);
         }
 
         private static string SanitizePathComponent(string name)

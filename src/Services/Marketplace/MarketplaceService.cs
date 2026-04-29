@@ -19,23 +19,295 @@ namespace GitHubNode.Services.Marketplace
         private static volatile bool _initialLoadComplete;
 
         /// <summary>
+        /// Returns lightweight placeholder MarketplaceInfo objects for every
+        /// marketplace registered in the on-disk config (built-in + user-added),
+        /// in the exact order they appear in the config file. This method is
+        /// fully synchronous and does no I/O beyond reading the config file, so
+        /// it is safe to call directly from the UI thread to populate a list
+        /// instantly before any cache hydration or background sync work runs.
+        /// Each returned item exposes any in-memory cached state when available
+        /// (so previously hydrated marketplaces appear as already cloned/synced),
+        /// but no disk parse, no git fetch, and no discovery is performed.
+        /// </summary>
+        public static List<MarketplaceInfo> GetAllMarketplacePlaceholders()
+        {
+            var entries = MarketplaceStorageService.GetAllMarketplaceEntries();
+            var placeholders = new List<MarketplaceInfo>(entries.Count);
+
+            foreach (var entry in entries)
+            {
+                var placeholder = CreatePlaceholderFromEntry(entry);
+                if (placeholder != null)
+                {
+                    placeholders.Add(placeholder);
+                }
+            }
+
+            return placeholders;
+        }
+
+        private static MarketplaceInfo CreatePlaceholderFromEntry(MarketplaceEntry entry)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            if (entry.SourceKind == MarketplaceSourceKind.WellKnownDiscovery)
+            {
+                if (!WellKnownDiscoveryService.TryCreateOriginUri(entry.WellKnownIndexUrl ?? entry.RepositoryUrl, out var originUri))
+                {
+                    return null;
+                }
+
+                var sourceId = WellKnownDiscoveryService.GetSourceId(originUri);
+                lock (_cacheLock)
+                {
+                    if (_marketplaceCache.TryGetValue(sourceId, out var cached) && cached != null)
+                    {
+                        return cached;
+                    }
+                }
+
+                var displayUrl = WellKnownDiscoveryService.GetDisplayUrl(originUri);
+                return new MarketplaceInfo
+                {
+                    Id = sourceId,
+                    Owner = originUri.Host,
+                    RepoName = "well-known",
+                    SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
+                    RepositoryUrl = displayUrl,
+                    SourceUrl = displayUrl,
+                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName)
+                        ? WellKnownDiscoveryService.GetDisplayName(originUri)
+                        : entry.DisplayName,
+                    IconPath = MarketplaceStorageService.FindExistingWellKnownIconPath(originUri),
+                    IsCloned = false
+                };
+            }
+
+            var owner = entry.Owner;
+            var repo = entry.Repo;
+            var repositoryUrl = entry.RepositoryUrl;
+            var id = MarketplaceStorageService.GetMarketplaceId(owner, repo, repositoryUrl);
+
+            lock (_cacheLock)
+            {
+                if (_marketplaceCache.TryGetValue(id, out var cached) && cached != null)
+                {
+                    return cached;
+                }
+            }
+
+            return new MarketplaceInfo
+            {
+                Id = id,
+                Owner = owner,
+                RepoName = repo,
+                RepositoryUrl = string.IsNullOrWhiteSpace(repositoryUrl) ? null : MarketplaceRepositoryUrl.GetRepositoryUrl(owner, repo, repositoryUrl),
+                Branch = entry.Branch,
+                DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? $"{owner}/{repo}" : entry.DisplayName,
+                IsBuiltIn = MarketplaceStorageService.IsBuiltIn(owner, repo, repositoryUrl),
+                IconPath = MarketplaceStorageService.FindExistingIconPath(owner, repo, repositoryUrl),
+                IsCloned = false
+            };
+        }
+
+        /// <summary>
         /// Gets all registered marketplaces (built-in and user-added).
         /// Clones repositories if not already cloned.
         /// </summary>
+        /// <param name="cacheOnly">
+        /// When true, only returns data already available locally (in-memory cache
+        /// or already-cloned repositories on disk). No git fetch, clone, or
+        /// discovery network calls are performed. Use this for fast startup loads
+        /// where the user can request a refresh explicitly.
+        /// </param>
+        /// <param name="progress">
+        /// Optional progress receiver. When provided, each marketplace is reported
+        /// as soon as it finishes loading, allowing callers (such as the marketplace
+        /// tool window) to render results incrementally instead of waiting for the
+        /// slowest entry.
+        /// </param>
         public static async Task<List<MarketplaceInfo>> GetAllMarketplacesAsync(
             bool forceRefresh = false,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IProgress<MarketplaceInfo> progress = null,
+            bool cacheOnly = false)
         {
             var entries = MarketplaceStorageService.GetAllMarketplaceEntries();
             var config = MarketplaceStorageService.LoadConfig();
 
-            // Fetch all marketplaces in parallel for better performance
-            var tasks = entries.Select(entry => GetMarketplaceAsync(entry, forceRefresh, config.UpdateIntervalHours, cancellationToken));
+            // Fetch all marketplaces in parallel for better performance.
+            // Report each one to the progress receiver as soon as it completes so
+            // the UI can render cached entries instantly while slower ones (clone,
+            // fetch, parse) finish in the background.
+            var tasks = entries.Select(async entry =>
+            {
+                MarketplaceInfo marketplace;
+                if (cacheOnly)
+                {
+                    marketplace = await GetMarketplaceFromCacheAsync(entry, cancellationToken);
+                }
+                else
+                {
+                    marketplace = await GetMarketplaceAsync(entry, forceRefresh, config.UpdateIntervalHours, cancellationToken);
+                }
+
+                if (marketplace != null)
+                {
+                    progress?.Report(marketplace);
+                }
+                return marketplace;
+            });
 
             var results = await Task.WhenAll(tasks);
 
-            _initialLoadComplete = true;
+            if (!cacheOnly)
+            {
+                _initialLoadComplete = true;
+            }
+
             return results.Where(m => m != null).ToList();
+        }
+
+        /// <summary>
+        /// Returns a marketplace using only locally available data: the in-memory
+        /// cache, or a previously cloned repository on disk. Never performs git
+        /// fetch, clone, or discovery network calls. Returns a lightweight
+        /// placeholder (IsCloned = false) when nothing is locally available, so
+        /// the UI can still show the entry and let the user trigger a refresh.
+        /// </summary>
+        /// <summary>
+        /// Hydrates a single marketplace from local data only (in-memory cache,
+        /// cloned-on-disk repository, or cached well-known manifest). Performs no
+        /// git fetch, clone, or discovery network calls. Returns null when the
+        /// marketplace has no local data yet so the caller can keep the
+        /// placeholder it already rendered.
+        /// </summary>
+        public static async Task<MarketplaceInfo> GetMarketplaceFromLocalCacheAsync(
+            string id,
+            string owner,
+            string repo,
+            string repositoryUrl,
+            bool isWellKnownDiscovery,
+            CancellationToken cancellationToken)
+        {
+            var entry = new MarketplaceEntry
+            {
+                Owner = owner,
+                Repo = repo,
+                RepositoryUrl = repositoryUrl,
+                SourceKind = isWellKnownDiscovery ? MarketplaceSourceKind.WellKnownDiscovery : MarketplaceSourceKind.Repository,
+                WellKnownIndexUrl = isWellKnownDiscovery ? repositoryUrl : null
+            };
+
+            var info = await GetMarketplaceFromCacheAsync(entry, cancellationToken);
+            return info;
+        }
+
+        private static async Task<MarketplaceInfo> GetMarketplaceFromCacheAsync(
+            MarketplaceEntry entry,
+            CancellationToken cancellationToken)
+        {
+            if (entry.SourceKind == MarketplaceSourceKind.WellKnownDiscovery)
+            {
+                if (WellKnownDiscoveryService.TryCreateOriginUri(entry.WellKnownIndexUrl ?? entry.RepositoryUrl, out var originUri))
+                {
+                    var sourceId = WellKnownDiscoveryService.GetSourceId(originUri);
+                    lock (_cacheLock)
+                    {
+                        if (_marketplaceCache.TryGetValue(sourceId, out var cached) && cached.IsCloned)
+                        {
+                            return cached;
+                        }
+                    }
+
+                    // Try to hydrate from the on-disk cache manifest written by
+                    // the previous discovery run so the UI can show the source
+                    // as Synced without any network calls.
+                    var fromDisk = TryLoadWellKnownMarketplaceFromDisk(entry, originUri);
+                    if (fromDisk != null)
+                    {
+                        lock (_cacheLock)
+                        {
+                            _marketplaceCache[sourceId] = fromDisk;
+                        }
+
+                        return fromDisk;
+                    }
+
+                    return new MarketplaceInfo
+                    {
+                        Id = sourceId,
+                        Owner = originUri.Host,
+                        RepoName = "well-known",
+                        SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
+                        RepositoryUrl = WellKnownDiscoveryService.GetDisplayUrl(originUri),
+                        SourceUrl = WellKnownDiscoveryService.GetDisplayUrl(originUri),
+                        DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? WellKnownDiscoveryService.GetDisplayName(originUri) : entry.DisplayName,
+                        IsCloned = false
+                    };
+                }
+
+                return null;
+            }
+
+            var owner = entry.Owner;
+            var repo = entry.Repo;
+            var repositoryUrl = entry.RepositoryUrl;
+            var id = MarketplaceStorageService.GetMarketplaceId(owner, repo, repositoryUrl);
+
+            lock (_cacheLock)
+            {
+                if (_marketplaceCache.TryGetValue(id, out var cached) && cached.IsCloned)
+                {
+                    return cached;
+                }
+            }
+
+            // Not in memory cache yet, but we may have a previous clone on disk.
+            // Parse it without fetching so the user sees content instantly.
+            if (MarketplaceGitService.IsCloned(owner, repo, repositoryUrl))
+            {
+                var localPath = MarketplaceStorageService.GetMarketplaceDirectory(owner, repo, repositoryUrl);
+                try
+                {
+                    var marketplaceInfo = await MarketplaceParserService.ParseMarketplaceAsync(
+                        owner, repo, localPath, repositoryUrl, cloneLinkedRepos: false, cancellationToken);
+                    marketplaceInfo.Branch = entry.Branch;
+
+                    lock (_cacheLock)
+                    {
+                        _marketplaceCache[id] = marketplaceInfo;
+                    }
+
+                    return marketplaceInfo;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"MarketplaceService.GetMarketplaceFromCacheAsync parse failed for {id}: {ex}");
+                    _ = ex.LogAsync();
+                }
+            }
+
+            // Nothing locally available; return a placeholder so the entry still
+            // shows up in the UI and the user can request a refresh.
+            return new MarketplaceInfo
+            {
+                Id = id,
+                Owner = owner,
+                RepoName = repo,
+                RepositoryUrl = string.IsNullOrWhiteSpace(repositoryUrl) ? null : MarketplaceRepositoryUrl.GetRepositoryUrl(owner, repo, repositoryUrl),
+                Branch = entry.Branch,
+                DisplayName = $"{owner}/{repo}",
+                IsBuiltIn = MarketplaceStorageService.IsBuiltIn(owner, repo, repositoryUrl),
+                IsCloned = false
+            };
         }
 
         private static async Task<MarketplaceInfo> GetMarketplaceAsync(
@@ -44,9 +316,9 @@ namespace GitHubNode.Services.Marketplace
             int updateIntervalHours,
             CancellationToken cancellationToken)
         {
-            if (entry.SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery)
+            if (entry.SourceKind == MarketplaceSourceKind.WellKnownDiscovery)
             {
-                return await GetAgentSkillsDiscoveryMarketplaceAsync(entry, forceRefresh, cancellationToken);
+                return await GetWellKnownDiscoveryMarketplaceAsync(entry, forceRefresh, cancellationToken);
             }
 
             return await GetMarketplaceAsync(
@@ -177,28 +449,28 @@ namespace GitHubNode.Services.Marketplace
             string input,
             CancellationToken cancellationToken = default)
         {
-            if (AgentSkillsDiscoveryService.TryCreateIndexUri(input, out var indexUri))
+            if (WellKnownDiscoveryService.TryCreateOriginUri(input, out var originUri))
             {
                 var entry = new MarketplaceEntry
                 {
-                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
-                    Owner = indexUri.Host,
-                    Repo = "agent-skills",
-                    RepositoryUrl = indexUri.AbsoluteUri,
-                    AgentSkillsIndexUrl = indexUri.AbsoluteUri,
-                    DisplayName = AgentSkillsDiscoveryService.GetDisplayName(indexUri),
+                    SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
+                    Owner = originUri.Host,
+                    Repo = "well-known",
+                    RepositoryUrl = WellKnownDiscoveryService.GetDisplayUrl(originUri),
+                    WellKnownIndexUrl = WellKnownDiscoveryService.GetDisplayUrl(originUri),
+                    DisplayName = WellKnownDiscoveryService.GetDisplayName(originUri),
                     IsTrusted = true
                 };
 
-                var discoveredMarketplace = await GetAgentSkillsDiscoveryMarketplaceAsync(entry, forceRefresh: true, cancellationToken);
+                var discoveredMarketplace = await GetWellKnownDiscoveryMarketplaceAsync(entry, forceRefresh: true, cancellationToken);
                 if (!discoveredMarketplace.IsCloned)
                 {
-                    return (false, discoveredMarketplace.ErrorMessage ?? "Failed to load Agent Skills Discovery source.", null);
+                    return (false, discoveredMarketplace.ErrorMessage ?? "Failed to load Well-Known Discovery source.", null);
                 }
 
-                if (AgentSkillsDiscoveryService.TryCreateIndexUri(discoveredMarketplace.SourceUrl, out var discoveredIndexUri))
+                if (WellKnownDiscoveryService.TryCreateOriginUri(discoveredMarketplace.SourceUrl, out var discoveredOriginUri))
                 {
-                    MarketplaceStorageService.AddAgentSkillsDiscoverySource(discoveredIndexUri, discoveredMarketplace.DisplayName, trusted: true);
+                    MarketplaceStorageService.AddWellKnownDiscoverySource(discoveredOriginUri, discoveredMarketplace.DisplayName, trusted: true);
                 }
 
                 return (true, null, discoveredMarketplace);
@@ -209,7 +481,7 @@ namespace GitHubNode.Services.Marketplace
 
             if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             {
-                return (false, "Invalid format. Use 'owner/repo', a repository URL, a domain, or an Agent Skills Discovery index URL.", null);
+                return (false, "Invalid format. Use 'owner/repo', a repository URL, a domain, or an Well-Known Discovery index URL.", null);
             }
 
             // Check if it's a built-in
@@ -241,11 +513,11 @@ namespace GitHubNode.Services.Marketplace
         /// </summary>
         public static bool RemoveMarketplace(string owner, string repo, string repositoryUrl = null, bool deleteClone = true)
         {
-            if (AgentSkillsDiscoveryService.TryCreateIndexUri(repositoryUrl, out var indexUri))
+            if (WellKnownDiscoveryService.TryCreateOriginUri(repositoryUrl, out var originUri))
             {
-                MarketplaceStorageService.RemoveAgentSkillsDiscoverySource(indexUri.AbsoluteUri);
+                MarketplaceStorageService.RemoveWellKnownDiscoverySource(originUri.AbsoluteUri);
 
-                var sourceId = AgentSkillsDiscoveryService.GetSourceId(indexUri);
+                var sourceId = WellKnownDiscoveryService.GetSourceId(originUri);
                 lock (_cacheLock)
                 {
                     _marketplaceCache.Remove(sourceId);
@@ -253,7 +525,7 @@ namespace GitHubNode.Services.Marketplace
 
                 if (deleteClone)
                 {
-                    DeleteDirectory(MarketplaceStorageService.GetAgentSkillsDiscoveryDirectory(indexUri));
+                    DeleteDirectory(MarketplaceStorageService.GetWellKnownDiscoveryDirectory(originUri));
                 }
 
                 return true;
@@ -366,27 +638,27 @@ namespace GitHubNode.Services.Marketplace
             string branch = null;
             string configuredRepositoryUrl = repositoryUrl;
 
-            if (AgentSkillsDiscoveryService.TryCreateIndexUri(repositoryUrl, out var requestedIndexUri))
+            if (WellKnownDiscoveryService.TryCreateOriginUri(repositoryUrl, out var requestedOriginUri))
             {
-                var requestedSourceId = AgentSkillsDiscoveryService.GetSourceId(requestedIndexUri);
+                var requestedSourceId = WellKnownDiscoveryService.GetSourceId(requestedOriginUri);
                 foreach (var entry in config.Marketplaces)
                 {
-                    if (entry.SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery &&
-                        AgentSkillsDiscoveryService.TryCreateIndexUri(entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl, out var entryIndexUri) &&
-                        string.Equals(AgentSkillsDiscoveryService.GetSourceId(entryIndexUri), requestedSourceId, StringComparison.OrdinalIgnoreCase))
+                    if (entry.SourceKind == MarketplaceSourceKind.WellKnownDiscovery &&
+                        WellKnownDiscoveryService.TryCreateOriginUri(entry.WellKnownIndexUrl ?? entry.RepositoryUrl, out var entryOriginUri) &&
+                        string.Equals(WellKnownDiscoveryService.GetSourceId(entryOriginUri), requestedSourceId, StringComparison.OrdinalIgnoreCase))
                     {
-                        return await GetAgentSkillsDiscoveryMarketplaceAsync(entry, forceRefresh: true, cancellationToken);
+                        return await GetWellKnownDiscoveryMarketplaceAsync(entry, forceRefresh: true, cancellationToken);
                     }
                 }
 
-                return await GetAgentSkillsDiscoveryMarketplaceAsync(new MarketplaceEntry
+                return await GetWellKnownDiscoveryMarketplaceAsync(new MarketplaceEntry
                 {
-                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
-                    Owner = requestedIndexUri.Host,
-                    Repo = "agent-skills",
-                    RepositoryUrl = requestedIndexUri.AbsoluteUri,
-                    AgentSkillsIndexUrl = requestedIndexUri.AbsoluteUri,
-                    DisplayName = AgentSkillsDiscoveryService.GetDisplayName(requestedIndexUri),
+                    SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
+                    Owner = requestedOriginUri.Host,
+                    Repo = "well-known",
+                    RepositoryUrl = WellKnownDiscoveryService.GetDisplayUrl(requestedOriginUri),
+                    WellKnownIndexUrl = WellKnownDiscoveryService.GetDisplayUrl(requestedOriginUri),
+                    DisplayName = WellKnownDiscoveryService.GetDisplayName(requestedOriginUri),
                     IsTrusted = true
                 }, forceRefresh: true, cancellationToken);
             }
@@ -424,41 +696,42 @@ namespace GitHubNode.Services.Marketplace
             return await GetMarketplaceAsync(owner, repo, branch, configuredRepositoryUrl, forceRefresh: true, cancellationToken: cancellationToken);
         }
 
-        private static async Task<MarketplaceInfo> GetAgentSkillsDiscoveryMarketplaceAsync(
+        private static async Task<MarketplaceInfo> GetWellKnownDiscoveryMarketplaceAsync(
             MarketplaceEntry entry,
             bool forceRefresh,
             CancellationToken cancellationToken)
         {
-            if (!AgentSkillsDiscoveryService.TryCreateIndexUri(entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl, out var indexUri))
+            if (!WellKnownDiscoveryService.TryCreateOriginUri(entry.WellKnownIndexUrl ?? entry.RepositoryUrl, out var originUri))
             {
                 return new MarketplaceInfo
                 {
-                    Id = entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl ?? entry.Owner,
+                    Id = entry.WellKnownIndexUrl ?? entry.RepositoryUrl ?? entry.Owner,
                     Owner = entry.Owner,
                     RepoName = entry.Repo,
-                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
+                    SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
                     RepositoryUrl = entry.RepositoryUrl,
-                    SourceUrl = entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl,
-                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? "Agent Skills" : entry.DisplayName,
+                    SourceUrl = entry.WellKnownIndexUrl ?? entry.RepositoryUrl,
+                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? "Well-Known" : entry.DisplayName,
                     IsCloned = false,
-                    ErrorMessage = "Invalid Agent Skills Discovery URL."
+                    ErrorMessage = "Invalid Well-Known Discovery URL."
                 };
             }
 
-            var id = AgentSkillsDiscoveryService.GetSourceId(indexUri);
+            var displayUrl = WellKnownDiscoveryService.GetDisplayUrl(originUri);
+            var id = WellKnownDiscoveryService.GetSourceId(originUri);
             if (!entry.IsTrusted)
             {
                 return new MarketplaceInfo
                 {
                     Id = id,
-                    Owner = indexUri.Host,
-                    RepoName = "agent-skills",
-                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
-                    RepositoryUrl = indexUri.AbsoluteUri,
-                    SourceUrl = indexUri.AbsoluteUri,
-                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? AgentSkillsDiscoveryService.GetDisplayName(indexUri) : entry.DisplayName,
+                    Owner = originUri.Host,
+                    RepoName = "well-known",
+                    SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
+                    RepositoryUrl = displayUrl,
+                    SourceUrl = displayUrl,
+                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? WellKnownDiscoveryService.GetDisplayName(originUri) : entry.DisplayName,
                     IsCloned = false,
-                    ErrorMessage = "Agent Skills Discovery source is not trusted. Remove and add it again to confirm trust."
+                    ErrorMessage = "Well-Known Discovery source is not trusted. Remove and add it again to confirm trust."
                 };
             }
 
@@ -475,34 +748,31 @@ namespace GitHubNode.Services.Marketplace
 
             try
             {
-                var result = await AgentSkillsDiscoveryService.DiscoverAsync(entry, forceRefresh, cancellationToken);
+                var result = await WellKnownDiscoveryService.DiscoverAsync(entry, forceRefresh, cancellationToken);
 
-                // Also try to discover MCP servers from the same source
+                // Also try to discover MCP servers from the same origin. This is
+                // a separate well-known sub type that is surfaced as additional
+                // assets on the same marketplace entry.
                 McpServerDiscoveryResult mcpResult = null;
                 try
                 {
-                    string mcpHost = result.IndexUri.Scheme + "://" + result.IndexUri.Host;
-                    if (result.IndexUri.Port > 0 && result.IndexUri.Port != 80 && result.IndexUri.Port != 443)
-                    {
-                        mcpHost += ":" + result.IndexUri.Port;
-                    }
-                    mcpResult = await McpServerDiscoveryService.DiscoverAsync(new Uri(mcpHost), forceRefresh: false, cancellationToken: cancellationToken);
+                    mcpResult = await McpServerDiscoveryService.DiscoverAsync(originUri, forceRefresh: false, cancellationToken: cancellationToken);
                 }
                 catch
                 {
                     // MCP discovery is optional; if it fails, continue with just skills
                 }
 
-                // Create a generic plugin that can contain both skills and MCP servers
+                // Create a generic plugin that can contain assets of any
+                // well-known sub type (skills, MCP servers, ...).
                 var plugin = new MarketplacePlugin
                 {
                     Name = "Well-Known Marketplace",
                     Description = $"Discovered from {result.Origin}",
-                    Source = result.IndexUri.AbsoluteUri,
+                    Source = displayUrl,
                     MarketplaceId = result.Id
                 };
 
-                // Add discovered skills
                 foreach (var skill in result.Skills)
                 {
                     plugin.Assets.Add(new PluginAsset
@@ -517,13 +787,8 @@ namespace GitHubNode.Services.Marketplace
                     });
                 }
 
-                // Add discovered MCP servers
                 if (mcpResult != null && mcpResult.Servers != null && mcpResult.Servers.Count > 0)
                 {
-                    // Persist the discovered servers as a local mcp.json file so that the install
-                    // dialog and McpInstallService (which both expect a real on-disk JSON file in
-                    // mcpServers/servers format) can consume well-known marketplace entries the
-                    // same way as repository-based marketplaces.
                     string mcpConfigPath = WriteWellKnownMcpConfig(result.CacheDirectory, mcpResult.Servers);
 
                     foreach (var server in mcpResult.Servers)
@@ -544,11 +809,11 @@ namespace GitHubNode.Services.Marketplace
                 var marketplace = new MarketplaceInfo
                 {
                     Id = result.Id,
-                    Owner = result.IndexUri.Host,
-                    RepoName = "well-known-marketplace",
-                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
-                    RepositoryUrl = result.IndexUri.AbsoluteUri,
-                    SourceUrl = result.Origin,
+                    Owner = originUri.Host,
+                    RepoName = "well-known",
+                    SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
+                    RepositoryUrl = displayUrl,
+                    SourceUrl = displayUrl,
                     DisplayName = result.DisplayName,
                     Description = $"Well-Known Marketplace source at {result.Origin}",
                     IsBuiltIn = false,
@@ -559,6 +824,8 @@ namespace GitHubNode.Services.Marketplace
                     ErrorMessage = result.Skills.Count == 0 && (mcpResult?.Servers.Count ?? 0) == 0 && result.Warnings.Count > 0 ? string.Join(" ", result.Warnings) : null,
                     Plugins = new List<MarketplacePlugin> { plugin }
                 };
+
+                SaveWellKnownMarketplaceManifest(marketplace);
 
                 lock (_cacheLock)
                 {
@@ -573,7 +840,7 @@ namespace GitHubNode.Services.Marketplace
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"MarketplaceService.GetAgentSkillsDiscoveryMarketplaceAsync failed for '{indexUri}': {ex}");
+                Debug.WriteLine($"MarketplaceService.GetWellKnownDiscoveryMarketplaceAsync failed for '{originUri}': {ex}");
                 _ = ex.LogAsync();
 
                 lock (_cacheLock)
@@ -588,12 +855,12 @@ namespace GitHubNode.Services.Marketplace
                 return new MarketplaceInfo
                 {
                     Id = id,
-                    Owner = indexUri.Host,
-                    RepoName = "agent-skills",
-                    SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
-                    RepositoryUrl = indexUri.AbsoluteUri,
-                    SourceUrl = indexUri.AbsoluteUri,
-                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? AgentSkillsDiscoveryService.GetDisplayName(indexUri) : entry.DisplayName,
+                    Owner = originUri.Host,
+                    RepoName = "well-known",
+                    SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
+                    RepositoryUrl = displayUrl,
+                    SourceUrl = displayUrl,
+                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? WellKnownDiscoveryService.GetDisplayName(originUri) : entry.DisplayName,
                     IsCloned = false,
                     ErrorMessage = ex.Message
                 };
@@ -675,6 +942,200 @@ namespace GitHubNode.Services.Marketplace
                 _ = ex.LogAsync();
                 return null;
             }
+        }
+
+        private const string WellKnownManifestFileName = "_marketplace.json";
+
+        /// <summary>
+        /// Persists a snapshot of the discovered well-known marketplace to disk
+        /// so that the next tool-window load can render it as Synced without any
+        /// network calls.
+        /// </summary>
+        private static void SaveWellKnownMarketplaceManifest(MarketplaceInfo marketplace)
+        {
+            if (marketplace == null || string.IsNullOrWhiteSpace(marketplace.LocalPath))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(marketplace.LocalPath);
+                var manifestPath = Path.Combine(marketplace.LocalPath, WellKnownManifestFileName);
+
+                var manifest = new WellKnownMarketplaceManifest
+                {
+                    Id = marketplace.Id,
+                    DisplayName = marketplace.DisplayName,
+                    Description = marketplace.Description,
+                    Owner = marketplace.Owner,
+                    SourceUrl = marketplace.SourceUrl,
+                    RepositoryUrl = marketplace.RepositoryUrl,
+                    IconPath = marketplace.IconPath,
+                    LastUpdated = marketplace.LastUpdated,
+                    ErrorMessage = marketplace.ErrorMessage
+                };
+
+                foreach (var plugin in marketplace.Plugins)
+                {
+                    foreach (var asset in plugin.Assets)
+                    {
+                        manifest.Assets.Add(new WellKnownMarketplaceManifestAsset
+                        {
+                            Type = asset.Type.ToString(),
+                            Name = asset.Name,
+                            Description = asset.Description,
+                            RelativePath = asset.RelativePath,
+                            LocalPath = asset.LocalPath,
+                            PluginName = asset.PluginName
+                        });
+                    }
+                }
+
+                var json = System.Text.Json.JsonSerializer.Serialize(manifest, new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+
+                File.WriteAllText(manifestPath, json);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceService.SaveWellKnownMarketplaceManifest failed: {ex}");
+                _ = ex.LogAsync();
+            }
+        }
+
+        /// <summary>
+        /// Tries to rebuild a well-known MarketplaceInfo from the on-disk
+        /// manifest written by a previous discovery run. Returns null if no
+        /// usable manifest is found.
+        /// </summary>
+        private static MarketplaceInfo TryLoadWellKnownMarketplaceFromDisk(MarketplaceEntry entry, Uri originUri)
+        {
+            try
+            {
+                var cacheDirectory = MarketplaceStorageService.GetWellKnownDiscoveryDirectory(originUri);
+                var manifestPath = Path.Combine(cacheDirectory, WellKnownManifestFileName);
+                if (!File.Exists(manifestPath))
+                {
+                    return null;
+                }
+
+                var json = File.ReadAllText(manifestPath);
+                var manifest = System.Text.Json.JsonSerializer.Deserialize<WellKnownMarketplaceManifest>(json, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (manifest == null)
+                {
+                    return null;
+                }
+
+                var sourceId = WellKnownDiscoveryService.GetSourceId(originUri);
+                var displayUrl = WellKnownDiscoveryService.GetDisplayUrl(originUri);
+
+                var plugin = new MarketplacePlugin
+                {
+                    Name = "Well-Known Marketplace",
+                    Description = manifest.Description,
+                    Source = displayUrl,
+                    MarketplaceId = sourceId
+                };
+
+                if (manifest.Assets != null)
+                {
+                    foreach (var asset in manifest.Assets)
+                    {
+                        if (!Enum.TryParse(asset.Type, ignoreCase: true, out AssetType assetType))
+                        {
+                            continue;
+                        }
+
+                        plugin.Assets.Add(new PluginAsset
+                        {
+                            Type = assetType,
+                            Name = asset.Name,
+                            Description = asset.Description,
+                            RelativePath = asset.RelativePath,
+                            LocalPath = asset.LocalPath,
+                            PluginName = asset.PluginName,
+                            MarketplaceId = sourceId
+                        });
+                    }
+                }
+
+                var iconPath = manifest.IconPath;
+                if (string.IsNullOrWhiteSpace(iconPath) || !File.Exists(iconPath))
+                {
+                    var faviconCandidate = MarketplaceStorageService.GetWellKnownDiscoveryIconPath(originUri, ".ico");
+                    iconPath = File.Exists(faviconCandidate) ? faviconCandidate : null;
+                }
+
+                return new MarketplaceInfo
+                {
+                    Id = sourceId,
+                    Owner = originUri.Host,
+                    RepoName = "well-known",
+                    SourceKind = MarketplaceSourceKind.WellKnownDiscovery,
+                    RepositoryUrl = displayUrl,
+                    SourceUrl = displayUrl,
+                    DisplayName = string.IsNullOrWhiteSpace(manifest.DisplayName) ? (string.IsNullOrWhiteSpace(entry.DisplayName) ? WellKnownDiscoveryService.GetDisplayName(originUri) : entry.DisplayName) : manifest.DisplayName,
+                    Description = manifest.Description,
+                    IsBuiltIn = false,
+                    LocalPath = cacheDirectory,
+                    IconPath = iconPath,
+                    IsCloned = true,
+                    LastUpdated = manifest.LastUpdated,
+                    ErrorMessage = manifest.ErrorMessage,
+                    Plugins = new List<MarketplacePlugin> { plugin }
+                };
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceService.TryLoadWellKnownMarketplaceFromDisk failed: {ex}");
+                _ = ex.LogAsync();
+                return null;
+            }
+        }
+
+        private sealed class WellKnownMarketplaceManifest
+        {
+            public string Id { get; set; }
+
+            public string DisplayName { get; set; }
+
+            public string Description { get; set; }
+
+            public string Owner { get; set; }
+
+            public string SourceUrl { get; set; }
+
+            public string RepositoryUrl { get; set; }
+
+            public string IconPath { get; set; }
+
+            public DateTime? LastUpdated { get; set; }
+
+            public string ErrorMessage { get; set; }
+
+            public List<WellKnownMarketplaceManifestAsset> Assets { get; set; } = new List<WellKnownMarketplaceManifestAsset>();
+        }
+
+        private sealed class WellKnownMarketplaceManifestAsset
+        {
+            public string Type { get; set; }
+
+            public string Name { get; set; }
+
+            public string Description { get; set; }
+
+            public string RelativePath { get; set; }
+
+            public string LocalPath { get; set; }
+
+            public string PluginName { get; set; }
         }
 
         /// <summary>

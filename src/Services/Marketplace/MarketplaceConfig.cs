@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace GitHubNode.Services.Marketplace
@@ -12,7 +14,7 @@ namespace GitHubNode.Services.Marketplace
         /// Gets or sets the marketplace source kind. Missing values are treated as repository sources.
         /// </summary>
         [JsonPropertyName("sourceKind")]
-        [JsonConverter(typeof(JsonStringEnumConverter))]
+        [JsonConverter(typeof(MarketplaceSourceKindJsonConverter))]
         public MarketplaceSourceKind SourceKind { get; set; } = MarketplaceSourceKind.Repository;
 
         /// <summary>
@@ -34,10 +36,30 @@ namespace GitHubNode.Services.Marketplace
         public string RepositoryUrl { get; set; }
 
         /// <summary>
-        /// Gets or sets the Agent Skills Discovery index URL for discovery sources.
+        /// Gets or sets the Well-Known Discovery index URL for discovery sources.
+        /// </summary>
+        [JsonPropertyName("wellKnownIndexUrl")]
+        public string WellKnownIndexUrl { get; set; }
+
+        /// <summary>
+        /// Legacy JSON shim. Older configs persisted the well-known index URL as
+        /// "agentSkillsIndexUrl". When present and the new property is missing,
+        /// the value is mirrored into <see cref="WellKnownIndexUrl"/> on load so
+        /// user-added entries remain visible after the rename.
         /// </summary>
         [JsonPropertyName("agentSkillsIndexUrl")]
-        public string AgentSkillsIndexUrl { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string LegacyAgentSkillsIndexUrl
+        {
+            get => null;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(WellKnownIndexUrl) && !string.IsNullOrWhiteSpace(value))
+                {
+                    WellKnownIndexUrl = value;
+                }
+            }
+        }
 
         /// <summary>
         /// Gets or sets the display name for non-repository marketplace sources.
@@ -81,5 +103,49 @@ namespace GitHubNode.Services.Marketplace
         /// </summary>
         [JsonPropertyName("enableBuiltInMarketplaces")]
         public bool EnableBuiltInMarketplaces { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Tolerant string-based converter for <see cref="MarketplaceSourceKind"/>.
+    /// Accepts the current names plus the legacy "AgentSkillsDiscovery" value
+    /// written by older versions of the extension. Unknown values fall back to
+    /// <see cref="MarketplaceSourceKind.Repository"/> so a single bad entry does
+    /// not break loading the entire config.
+    /// </summary>
+    internal sealed class MarketplaceSourceKindJsonConverter : JsonConverter<MarketplaceSourceKind>
+    {
+        public override MarketplaceSourceKind Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+            {
+                return MarketplaceSourceKind.Repository;
+            }
+
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                var value = reader.GetString();
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return MarketplaceSourceKind.Repository;
+                }
+
+                if (string.Equals(value, "AgentSkillsDiscovery", StringComparison.OrdinalIgnoreCase))
+                {
+                    return MarketplaceSourceKind.WellKnownDiscovery;
+                }
+
+                if (Enum.TryParse<MarketplaceSourceKind>(value, ignoreCase: true, out var parsed))
+                {
+                    return parsed;
+                }
+            }
+
+            return MarketplaceSourceKind.Repository;
+        }
+
+        public override void Write(Utf8JsonWriter writer, MarketplaceSourceKind value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value.ToString());
+        }
     }
 }

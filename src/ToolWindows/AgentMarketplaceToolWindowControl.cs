@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
@@ -108,8 +109,8 @@ namespace GitHubNode.ToolWindows
             };
             _urlInputTextBox.SetResourceReference(ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
             _urlInputTextBox.SetResourceReference(BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
-            AutomationProperties.SetName(_urlInputTextBox, "Marketplace or Agent Skills Discovery source");
-            AutomationProperties.SetHelpText(_urlInputTextBox, "Enter owner/repo, a repository URL, a domain, or an Agent Skills Discovery index URL");
+            AutomationProperties.SetName(_urlInputTextBox, "Marketplace or Well-Known Discovery source");
+            AutomationProperties.SetHelpText(_urlInputTextBox, "Enter owner/repo, a repository URL, a domain, or an Well-Known Discovery index URL");
             _urlInputTextBox.KeyDown += OnUrlInputKeyDown;
             _urlInputTextBox.TextChanged += OnUrlInputTextChanged;
             _urlInputTextBox.GotFocus += OnUrlInputGotFocus;
@@ -457,9 +458,168 @@ namespace GitHubNode.ToolWindows
             return style;
         }
 
-        private async void OnControlLoaded(object sender, RoutedEventArgs e)
+        private void OnControlLoaded(object sender, RoutedEventArgs e)
         {
-            await LoadMarketplacesAsync();
+            // Render the list synchronously and immediately from the on-disk
+            // config so the user sees every marketplace as soon as the tool
+            // window appears. No async, no parallelism, no I/O beyond reading
+            // the marketplaces.json config. Any cache hydration (parsing cloned
+            // repos on disk, loading well-known manifests, downloading avatars)
+            // and any network sync for unsynced entries happens afterwards in
+            // the background and patches items in place.
+            RenderMarketplacesFromConfig();
+
+            _loadCancellationTokenSource?.Cancel();
+            _loadCancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = _loadCancellationTokenSource.Token;
+
+            _ = HydrateAndSyncMarketplacesAsync(cancellationToken);
+        }
+
+        private void RenderMarketplacesFromConfig()
+        {
+            try
+            {
+                _marketplaces.Clear();
+
+                var placeholders = MarketplaceService.GetAllMarketplacePlaceholders();
+                foreach (var marketplace in placeholders)
+                {
+                    if (marketplace == null)
+                    {
+                        continue;
+                    }
+
+                    _marketplaces.Add(new MarketplaceListItem(marketplace));
+                }
+
+                if (_marketplaceList != null && _marketplaceList.SelectedItem == null && _marketplaces.Count > 0)
+                {
+                    _marketplaceList.SelectedIndex = 0;
+                }
+
+                var syncedCount = 0;
+                foreach (var item in _marketplaces)
+                {
+                    if (item.IsCloned)
+                    {
+                        syncedCount++;
+                    }
+                }
+
+                SetStatus($"{_marketplaces.Count} marketplaces registered, {syncedCount} synced");
+            }
+            catch (Exception ex)
+            {
+                _ = ex.LogAsync();
+                SetStatus($"Error loading marketplaces: {ex.Message}");
+            }
+        }
+
+        private async Task HydrateAndSyncMarketplacesAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                // First pass: hydrate any items that already have local data
+                // (cloned repository on disk, cached well-known manifest) without
+                // hitting the network. This upgrades placeholder items in place.
+                await HydrateFromLocalCacheAsync(cancellationToken);
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                // Second pass: actually sync over the network for items that
+                // are still not synced (no local clone, no cached manifest).
+                await RunBackgroundSyncAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignore
+            }
+            catch (Exception ex)
+            {
+                await ex.LogAsync();
+            }
+        }
+
+        private async Task HydrateFromLocalCacheAsync(CancellationToken cancellationToken)
+        {
+            // Snapshot a copy so we don't iterate while the UI thread mutates
+            // _marketplaces in response to user actions (add/remove).
+            var snapshot = new List<MarketplaceListItem>(_marketplaces);
+
+            var hydrated = await Task.Run(async () =>
+            {
+                var results = new List<(MarketplaceListItem placeholder, MarketplaceInfo info)>();
+                foreach (var placeholder in snapshot)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    if (placeholder.IsCloned)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        var info = await MarketplaceService.GetMarketplaceFromLocalCacheAsync(
+                            placeholder.Id,
+                            placeholder.Owner,
+                            placeholder.RepoName,
+                            placeholder.RepositoryUrl,
+                            placeholder.IsWellKnownDiscovery,
+                            cancellationToken);
+
+                        if (info != null && info.IsCloned)
+                        {
+                            results.Add((placeholder, info));
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        await ex.LogAsync();
+                    }
+                }
+
+                return results;
+            }, cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+
+            foreach (var (placeholder, info) in hydrated)
+            {
+                ReplaceMarketplaceItem(placeholder, new MarketplaceListItem(info));
+            }
+
+            UpdateSyncedStatus();
+        }
+
+        private void UpdateSyncedStatus()
+        {
+            var syncedCount = 0;
+            foreach (var item in _marketplaces)
+            {
+                if (item.IsCloned)
+                {
+                    syncedCount++;
+                }
+            }
+
+            SetStatus($"{_marketplaces.Count} marketplaces registered, {syncedCount} synced");
         }
 
         private void OnUrlInputKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -497,15 +657,15 @@ namespace GitHubNode.ToolWindows
             var input = _urlInputTextBox.Text?.Trim();
             if (string.IsNullOrWhiteSpace(input))
             {
-                await VS.MessageBox.ShowWarningAsync("Invalid Input", "Please enter owner/repo, a repository URL, a domain, or an Agent Skills Discovery index URL.");
+                await VS.MessageBox.ShowWarningAsync("Invalid Input", "Please enter owner/repo, a repository URL, a domain, or an Well-Known Discovery index URL.");
                 _urlInputTextBox.Focus();
                 return;
             }
 
-            if (AgentSkillsDiscoveryService.TryCreateIndexUri(input, out var indexUri))
+            if (WellKnownDiscoveryService.TryCreateIndexUri(input, out var indexUri))
             {
                 var confirmed = await VS.MessageBox.ShowConfirmAsync(
-                    "Trust Agent Skills Source",
+                    "Trust Well-Known Source",
                     $"Add and trust skills from {indexUri.GetLeftPart(UriPartial.Authority)}?\n\nSkills contain instructions that can be loaded into agent context. Only add sources you trust.");
 
                 if (!confirmed)
@@ -518,14 +678,15 @@ namespace GitHubNode.ToolWindows
 
             try
             {
-                var (success, error, marketplace) = await MarketplaceService.AddMarketplaceAsync(
-                    input,
-                    _loadCancellationTokenSource?.Token ?? CancellationToken.None);
+                var addToken = _loadCancellationTokenSource?.Token ?? CancellationToken.None;
+                var (success, error, marketplace) = await Task.Run(
+                    () => MarketplaceService.AddMarketplaceAsync(input, addToken),
+                    addToken);
 
                 if (success && marketplace != null)
                 {
                     _urlInputTextBox.Clear();
-                    await LoadMarketplacesAsync();
+                    await LoadMarketplacesAsync(selectionToRestore: new MarketplaceListItem(marketplace));
                     SetStatus($"Added {marketplace.DisplayName}");
                 }
                 else
@@ -564,7 +725,7 @@ namespace GitHubNode.ToolWindows
 
             try
             {
-                MarketplaceService.RemoveMarketplace(selected.Owner, selected.RepoName, selected.RepositoryUrl, deleteClone: true);
+                await Task.Run(() => MarketplaceService.RemoveMarketplace(selected.Owner, selected.RepoName, selected.RepositoryUrl, deleteClone: true));
                 await LoadMarketplacesAsync();
                 SetStatus($"Removed {selected.DisplayName}");
             }
@@ -586,12 +747,15 @@ namespace GitHubNode.ToolWindows
             SetLoading(true, $"Refreshing {selected.DisplayName}...");
             try
             {
-                await MarketplaceService.GetMarketplaceAsync(
-                    selected.Owner,
-                    selected.RepoName,
-                    repositoryUrl: selected.RepositoryUrl,
-                    forceRefresh: true,
-                    cancellationToken: _loadCancellationTokenSource?.Token ?? CancellationToken.None);
+                var refreshToken = _loadCancellationTokenSource?.Token ?? CancellationToken.None;
+                await Task.Run(
+                    () => MarketplaceService.GetMarketplaceAsync(
+                        selected.Owner,
+                        selected.RepoName,
+                        repositoryUrl: selected.RepositoryUrl,
+                        forceRefresh: true,
+                        cancellationToken: refreshToken),
+                    refreshToken);
                 await LoadMarketplacesAsync(selectionToRestore: selected);
                 SetStatus($"Refreshed {selected.DisplayName}");
             }
@@ -610,7 +774,7 @@ namespace GitHubNode.ToolWindows
         {
             var confirmed = await VS.MessageBox.ShowConfirmAsync(
                 "Refresh Marketplaces",
-                "This will refresh all marketplace repositories and Agent Skills Discovery sources. Continue?");
+                "This will refresh all marketplace repositories and Well-Known Discovery sources. Continue?");
 
             if (!confirmed)
             {
@@ -662,7 +826,7 @@ namespace GitHubNode.ToolWindows
             // Update details
             _detailsAvatar.Source = selected.AvatarImage;
             _detailsName.Text = selected.DisplayName;
-            if (selected.IsAgentSkillsDiscovery)
+            if (selected.IsWellKnownDiscovery)
             {
                 _detailsAuthor.Text = string.Empty;
                 _detailsAuthor.Visibility = Visibility.Collapsed;
@@ -789,6 +953,117 @@ namespace GitHubNode.ToolWindows
             };
         }
 
+        private async Task RunBackgroundSyncAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Snapshot which entries still need a sync after the cache load
+                // completed (built-ins are never refreshed automatically because
+                // they are always in a synced state by definition).
+                var pending = new List<MarketplaceListItem>();
+                foreach (var item in _marketplaces)
+                {
+                    if (!item.IsCloned && !item.IsBuiltIn)
+                    {
+                        pending.Add(item);
+                    }
+                }
+
+                if (pending.Count == 0)
+                {
+                    return;
+                }
+
+                // Run each refresh on the background thread and replace the
+                // placeholder item in place when the real data arrives. The
+                // refresh path takes care of cloning the repository or running
+                // well-known discovery, so this single call covers both
+                // marketplace kinds.
+                var tasks = new List<Task>(pending.Count);
+                foreach (var placeholder in pending)
+                {
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var refreshed = await MarketplaceService.RefreshMarketplaceAsync(
+                                placeholder.Owner,
+                                placeholder.RepoName,
+                                placeholder.RepositoryUrl,
+                                cancellationToken);
+
+                            if (refreshed == null || cancellationToken.IsCancellationRequested)
+                            {
+                                return;
+                            }
+
+                            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+                            ReplaceMarketplaceItem(placeholder, new MarketplaceListItem(refreshed));
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Ignore
+                        }
+                        catch (Exception ex)
+                        {
+                            await ex.LogAsync();
+                        }
+                    }, cancellationToken));
+                }
+
+                await Task.WhenAll(tasks);
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+                var syncedCount = 0;
+                foreach (var item in _marketplaces)
+                {
+                    if (item.IsCloned)
+                    {
+                        syncedCount++;
+                    }
+                }
+
+                SetStatus($"{_marketplaces.Count} marketplaces registered, {syncedCount} synced");
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignore
+            }
+            catch (Exception ex)
+            {
+                await ex.LogAsync();
+            }
+        }
+
+        private void ReplaceMarketplaceItem(MarketplaceListItem placeholder, MarketplaceListItem replacement)
+        {
+            if (replacement == null)
+            {
+                return;
+            }
+
+            var index = _marketplaces.IndexOf(placeholder);
+            if (index < 0)
+            {
+                // The placeholder was already replaced or removed (for example
+                // by an explicit refresh while the background sync was running).
+                return;
+            }
+
+            var wasSelected = _marketplaceList != null && ReferenceEquals(_marketplaceList.SelectedItem, placeholder);
+            _marketplaces[index] = replacement;
+
+            if (wasSelected && _marketplaceList != null)
+            {
+                _marketplaceList.SelectedItem = replacement;
+            }
+        }
+
         private async Task LoadMarketplacesAsync(bool forceRefresh = false, MarketplaceListItem selectionToRestore = null)
         {
             _loadCancellationTokenSource?.Cancel();
@@ -801,15 +1076,50 @@ namespace GitHubNode.ToolWindows
                 SetLoading(true, "Loading marketplaces...");
                 _marketplaces.Clear();
 
-                var marketplaces = await MarketplaceService.GetAllMarketplacesAsync(forceRefresh, cancellationToken);
+                // Incremental progress reporting so slow entries don't hold up the rest.
+                var progress = new Progress<MarketplaceInfo>(marketplace =>
+                {
+                    if (cancellationToken.IsCancellationRequested || marketplace == null)
+                    {
+                        return;
+                    }
+
+                    var item = new MarketplaceListItem(marketplace);
+                    _marketplaces.Add(item);
+
+                    if (_marketplaceList == null)
+                    {
+                        return;
+                    }
+
+                    // Auto-select the matching item if a specific selection was requested,
+                    // or the first arrival when nothing is selected yet, so the details
+                    // panel populates immediately instead of staying blank during load.
+                    if (selectedMarketplace != null)
+                    {
+                        if (_marketplaceList.SelectedItem == null && IsMatchingMarketplace(item, selectedMarketplace))
+                        {
+                            _marketplaceList.SelectedItem = item;
+                            _marketplaceList.ScrollIntoView(item);
+                        }
+                    }
+                    else if (_marketplaceList.SelectedItem == null && _marketplaces.Count == 1)
+                    {
+                        _marketplaceList.SelectedIndex = 0;
+                    }
+                });
+
+                var marketplaces = await Task.Run(
+                    () => MarketplaceService.GetAllMarketplacesAsync(forceRefresh, cancellationToken, progress, cacheOnly: false),
+                    cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
-                foreach (var marketplace in marketplaces)
+                // If the requested selection never arrived (or no auto-selection happened),
+                // fall back to the first available item.
+                if (_marketplaceList != null && _marketplaceList.SelectedItem == null)
                 {
-                    _marketplaces.Add(new MarketplaceListItem(marketplace));
+                    RestoreMarketplaceSelection(selectedMarketplace);
                 }
-
-                RestoreMarketplaceSelection(selectedMarketplace);
 
                 var syncedCount = 0;
                 var totalCount = marketplaces.Count;
@@ -908,7 +1218,7 @@ namespace GitHubNode.ToolWindows
             public string RepositoryUrl { get; }
             public bool IsBuiltIn { get; }
             public bool IsCloned { get; }
-            public bool IsAgentSkillsDiscovery { get; }
+            public bool IsWellKnownDiscovery { get; }
             public string ErrorMessage { get; }
             public string GitHubUrl { get; }
             public DateTime? LastUpdated { get; }
@@ -930,7 +1240,7 @@ namespace GitHubNode.ToolWindows
                         return "Built-in";
                     }
 
-                    if (IsAgentSkillsDiscovery)
+                    if (IsWellKnownDiscovery)
                     {
                         return IsCloned ? "Synced" : "Not synced";
                     }
@@ -943,7 +1253,7 @@ namespace GitHubNode.ToolWindows
             {
                 get
                 {
-                    if (IsAgentSkillsDiscovery)
+                    if (IsWellKnownDiscovery)
                     {
                         return GitHubUrl ?? string.Empty;
                     }
@@ -970,7 +1280,7 @@ namespace GitHubNode.ToolWindows
                     }
                     else if (!IsCloned)
                     {
-                        parts.Add(IsAgentSkillsDiscovery ? "Not yet synced" : "Not yet cloned");
+                        parts.Add(IsWellKnownDiscovery ? "Not yet synced" : "Not yet cloned");
                     }
 
                     if (!string.IsNullOrEmpty(ErrorMessage))
@@ -991,7 +1301,7 @@ namespace GitHubNode.ToolWindows
                 RepositoryUrl = marketplace.RepositoryUrl;
                 IsBuiltIn = marketplace.IsBuiltIn;
                 IsCloned = marketplace.IsCloned;
-                IsAgentSkillsDiscovery = marketplace.IsAgentSkillsDiscovery;
+                IsWellKnownDiscovery = marketplace.IsWellKnownDiscovery;
                 ErrorMessage = marketplace.ErrorMessage;
                 GitHubUrl = marketplace.GitHubUrl ?? marketplace.CloneUrl;
                 LastUpdated = marketplace.LastUpdated;

@@ -49,13 +49,13 @@ public class MarketplaceStorageServiceTests
     }
 
     [TestMethod]
-    public void GetAgentSkillsDiscoveryIconPath_ReturnsFaviconPath()
+    public void GetWellKnownDiscoveryIconPath_ReturnsFaviconPath()
     {
-        string iconPath = MarketplaceStorageService.GetAgentSkillsDiscoveryIconPath(
+        string iconPath = MarketplaceStorageService.GetWellKnownDiscoveryIconPath(
             new Uri("https://docs.stripe.com/.well-known/skills/index.json"),
             ".ico");
 
-        StringAssert.Contains(iconPath, "AgentSkills");
+        StringAssert.Contains(iconPath, "WellKnown");
         StringAssert.Contains(iconPath, "_favicon.ico");
     }
 

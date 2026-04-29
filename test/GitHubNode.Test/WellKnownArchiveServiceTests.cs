@@ -4,7 +4,7 @@ using GitHubNode.Services.Marketplace;
 namespace GitHubNode.Test;
 
 [TestClass]
-public class AgentSkillsArchiveServiceTests
+public class WellKnownArchiveServiceTests
 {
     [TestMethod]
     public void ExtractArchive_ExtractsZipWithRootSkillMarkdown()
@@ -12,7 +12,7 @@ public class AgentSkillsArchiveServiceTests
         byte[] archiveBytes = CreateZipArchive(("SKILL.md", "---\nname: test-skill\ndescription: Test\n---\n"));
         string targetDirectory = CreateTargetDirectory();
 
-        string skillPath = AgentSkillsArchiveService.ExtractArchive(archiveBytes, new Uri("https://example.com/test-skill.zip"), targetDirectory);
+        string skillPath = WellKnownArchiveService.ExtractArchive(archiveBytes, new Uri("https://example.com/test-skill.zip"), targetDirectory);
 
         Assert.IsTrue(File.Exists(skillPath));
         Assert.AreEqual(Path.Combine(targetDirectory, "SKILL.md"), skillPath);
@@ -25,7 +25,7 @@ public class AgentSkillsArchiveServiceTests
         string targetDirectory = CreateTargetDirectory();
 
         AssertThrowsInvalidOperation(() =>
-            AgentSkillsArchiveService.ExtractArchive(archiveBytes, new Uri("https://example.com/test-skill.zip"), targetDirectory));
+            WellKnownArchiveService.ExtractArchive(archiveBytes, new Uri("https://example.com/test-skill.zip"), targetDirectory));
     }
 
     [TestMethod]
@@ -35,7 +35,7 @@ public class AgentSkillsArchiveServiceTests
         string targetDirectory = CreateTargetDirectory();
 
         AssertThrowsInvalidOperation(() =>
-            AgentSkillsArchiveService.ExtractArchive(archiveBytes, new Uri("https://example.com/test-skill.zip"), targetDirectory));
+            WellKnownArchiveService.ExtractArchive(archiveBytes, new Uri("https://example.com/test-skill.zip"), targetDirectory));
     }
 
     private static void AssertThrowsInvalidOperation(Action action)

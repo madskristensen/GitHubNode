@@ -12,19 +12,28 @@ using System.Threading.Tasks;
 
 namespace GitHubNode.Services.Marketplace
 {
-    internal static class AgentSkillsDiscoveryService
+    internal static class WellKnownDiscoveryService
     {
         public const string CurrentSchemaUri = "https://schemas.agentskills.io/discovery/0.2.0/schema.json";
-        public const string WellKnownIndexPath = "/.well-known/agent-skills/index.json";
-        public const string LegacyWellKnownIndexPath = "/.well-known/skills/index.json";
+        public const string SkillsWellKnownIndexPath = "/.well-known/agent-skills/index.json";
+        public const string LegacySkillsWellKnownIndexPath = "/.well-known/skills/index.json";
+
+        // Kept for backward source compatibility with earlier code paths.
+        public const string WellKnownIndexPath = SkillsWellKnownIndexPath;
+        public const string LegacyWellKnownIndexPath = LegacySkillsWellKnownIndexPath;
 
         private static readonly Regex _skillNameRegex = new Regex("^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$", RegexOptions.Compiled);
         private static readonly Regex _digestRegex = new Regex("^sha256:[0-9a-f]{64}$", RegexOptions.Compiled);
         private static readonly HttpClient _httpClient = new HttpClient();
 
-        internal static bool TryCreateIndexUri(string input, out Uri indexUri)
+        /// <summary>
+        /// Tries to parse user input into a Well-Known origin URI such as
+        /// https://docs.stripe.com/. Accepts a domain, an http(s) origin, or a
+        /// legacy /.well-known/... URL (in which case the origin is extracted).
+        /// </summary>
+        internal static bool TryCreateOriginUri(string input, out Uri originUri)
         {
-            indexUri = null;
+            originUri = null;
 
             if (string.IsNullOrWhiteSpace(input))
             {
@@ -39,15 +48,15 @@ namespace GitHubNode.Services.Marketplace
                     return false;
                 }
 
-                if (IsWellKnownAgentSkillsUri(absoluteUri))
+                if (IsWellKnownDiscoveryUri(absoluteUri))
                 {
-                    indexUri = NormalizeIndexUri(absoluteUri);
+                    originUri = new Uri(absoluteUri.GetLeftPart(UriPartial.Authority) + "/");
                     return true;
                 }
 
                 if (string.IsNullOrEmpty(absoluteUri.AbsolutePath) || absoluteUri.AbsolutePath == "/")
                 {
-                    indexUri = new Uri($"{absoluteUri.Scheme}://{absoluteUri.Authority}{WellKnownIndexPath}");
+                    originUri = new Uri(absoluteUri.GetLeftPart(UriPartial.Authority) + "/");
                     return true;
                 }
 
@@ -56,31 +65,55 @@ namespace GitHubNode.Services.Marketplace
 
             if (!trimmed.Contains("/") && trimmed.Contains("."))
             {
-                indexUri = new Uri($"https://{trimmed.TrimEnd('/')}{WellKnownIndexPath}");
+                originUri = new Uri($"https://{trimmed.TrimEnd('/')}/");
                 return true;
             }
 
             return false;
         }
 
-        internal static string GetSourceId(Uri indexUri)
+        /// <summary>
+        /// Backwards-compatible wrapper. Returns the origin URI rather than the
+        /// agent-skills index URL because the well-known marketplace is no longer
+        /// limited to the agent-skills sub type.
+        /// </summary>
+        internal static bool TryCreateIndexUri(string input, out Uri indexUri)
         {
-            if (indexUri == null)
-            {
-                throw new ArgumentNullException(nameof(indexUri));
-            }
-
-            return $"agent-skills:{indexUri.AbsoluteUri}";
+            return TryCreateOriginUri(input, out indexUri);
         }
 
-        internal static string GetDisplayName(Uri indexUri)
+        internal static string GetSourceId(Uri originUri)
         {
-            if (indexUri == null)
+            if (originUri == null)
+            {
+                throw new ArgumentNullException(nameof(originUri));
+            }
+
+            return $"well-known:{originUri.GetLeftPart(UriPartial.Authority)}/";
+        }
+
+        internal static string GetDisplayName(Uri originUri)
+        {
+            if (originUri == null)
             {
                 return "Well-Known Marketplace";
             }
 
-            return indexUri.Host;
+            return originUri.Host;
+        }
+
+        /// <summary>
+        /// Gets the origin URL displayed in the marketplace list (no
+        /// agent-skills, mcp, or other sub-type path is shown).
+        /// </summary>
+        internal static string GetDisplayUrl(Uri originUri)
+        {
+            if (originUri == null)
+            {
+                return null;
+            }
+
+            return originUri.GetLeftPart(UriPartial.Authority) + "/";
         }
 
         internal static bool IsValidSkillName(string name)
@@ -112,7 +145,7 @@ namespace GitHubNode.Services.Marketplace
                 : null;
         }
 
-        public static async Task<AgentSkillsDiscoveryResult> DiscoverAsync(
+        public static async Task<WellKnownDiscoveryResult> DiscoverAsync(
             MarketplaceEntry entry,
             bool forceRefresh = false,
             CancellationToken cancellationToken = default)
@@ -122,58 +155,54 @@ namespace GitHubNode.Services.Marketplace
                 throw new ArgumentNullException(nameof(entry));
             }
 
-            if (!TryCreateIndexUri(entry.AgentSkillsIndexUrl ?? entry.RepositoryUrl, out var indexUri))
+            if (!TryCreateOriginUri(entry.WellKnownIndexUrl ?? entry.RepositoryUrl, out var originUri))
             {
-                throw new InvalidOperationException("Invalid Agent Skills Discovery URL.");
+                throw new InvalidOperationException("Invalid Well-Known Discovery URL.");
             }
 
-            if (!IsTrustedHttpUri(indexUri))
+            if (!IsTrustedHttpUri(originUri))
             {
-                throw new InvalidOperationException("Agent Skills Discovery sources must use HTTPS unless they are hosted on localhost.");
+                throw new InvalidOperationException("Well-Known Discovery sources must use HTTPS unless they are hosted on localhost.");
             }
 
-            var result = new AgentSkillsDiscoveryResult
+            var skillsIndexUri = new Uri(originUri.GetLeftPart(UriPartial.Authority) + SkillsWellKnownIndexPath);
+
+            var result = new WellKnownDiscoveryResult
             {
-                Id = GetSourceId(indexUri),
-                IndexUri = indexUri,
-                Origin = indexUri.GetLeftPart(UriPartial.Authority),
-                DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? GetDisplayName(indexUri) : entry.DisplayName,
-                CacheDirectory = MarketplaceStorageService.GetAgentSkillsDiscoveryDirectory(indexUri),
+                Id = GetSourceId(originUri),
+                IndexUri = originUri,
+                Origin = originUri.GetLeftPart(UriPartial.Authority),
+                DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? GetDisplayName(originUri) : entry.DisplayName,
+                CacheDirectory = MarketplaceStorageService.GetWellKnownDiscoveryDirectory(originUri),
                 LastUpdated = DateTime.UtcNow
             };
 
             Directory.CreateDirectory(result.CacheDirectory);
+            result.IconPath = await CacheFaviconAsync(originUri, forceRefresh, cancellationToken);
 
-            var (indexBytes, resolvedIndexUri) = await DownloadIndexBytesAsync(indexUri, cancellationToken);
+            var (indexBytes, resolvedIndexUri) = await DownloadIndexBytesAsync(skillsIndexUri, cancellationToken);
 
             if (indexBytes == null)
             {
-                // Update the IndexUri to the resolved URI even if no skills were found
-                // This ensures subsequent discovery (like MCP servers) uses the correct base URI
-                indexUri = result.IndexUri = resolvedIndexUri;
-                result.Id = GetSourceId(indexUri);
-                result.Origin = indexUri.GetLeftPart(UriPartial.Authority);
-                result.CacheDirectory = MarketplaceStorageService.GetAgentSkillsDiscoveryDirectory(indexUri);
-                result.IconPath = await CacheFaviconAsync(indexUri, forceRefresh, cancellationToken);
-
-                // Don't add a warning for missing skills - we now support other artifact types like MCP servers
-                // that may be discovered from the same well-known location
+                // No skills sub-type at this origin. The well-known marketplace
+                // can still surface other sub-types (such as MCP servers) that
+                // are discovered separately by the caller.
                 return result;
             }
 
-            indexUri = result.IndexUri = resolvedIndexUri;
-            result.Id = GetSourceId(indexUri);
-            result.Origin = indexUri.GetLeftPart(UriPartial.Authority);
-            result.CacheDirectory = MarketplaceStorageService.GetAgentSkillsDiscoveryDirectory(indexUri);
-            Directory.CreateDirectory(result.CacheDirectory);
-            result.IconPath = await CacheFaviconAsync(indexUri, forceRefresh, cancellationToken);
+            // Use the URI that actually returned the index (which may be the
+            // legacy /.well-known/skills/ path) as the base for resolving
+            // relative skill artifact URLs. Using the original agent-skills URI
+            // here would produce 404s for sources that only publish the legacy
+            // skills index (for example docs.stripe.com).
+            var indexUri = resolvedIndexUri ?? skillsIndexUri;
 
             var rawIndex = ParseIndex(indexBytes);
             var isLegacyIndex = string.IsNullOrWhiteSpace(rawIndex.Schema);
 
             if (!isLegacyIndex && !string.Equals(rawIndex.Schema, CurrentSchemaUri, StringComparison.Ordinal))
             {
-                throw new InvalidOperationException($"Unsupported Agent Skills Discovery schema '{rawIndex.Schema ?? "<missing>"}'.");
+                throw new InvalidOperationException($"Unsupported Well-Known Discovery schema '{rawIndex.Schema ?? "<missing>"}'.");
             }
 
             if (isLegacyIndex)
@@ -183,7 +212,7 @@ namespace GitHubNode.Services.Marketplace
 
             if (rawIndex.Skills == null)
             {
-                throw new InvalidOperationException("Agent Skills Discovery index does not contain a skills array.");
+                throw new InvalidOperationException("Well-Known Discovery index does not contain a skills array.");
             }
 
             foreach (var rawSkill in rawIndex.Skills)
@@ -217,7 +246,7 @@ namespace GitHubNode.Services.Marketplace
                         ? await CacheSkillArchiveAsync(result.CacheDirectory, rawSkill, artifactUri, forceRefresh, cancellationToken)
                         : await CacheSkillMarkdownAsync(result.CacheDirectory, rawSkill, artifactUri, forceRefresh, cancellationToken);
                 }
-                result.Skills.Add(new AgentSkillsDiscoverySkill
+                result.Skills.Add(new WellKnownDiscoverySkill
                 {
                     Name = rawSkill.Name,
                     Description = rawSkill.Description,
@@ -238,13 +267,13 @@ namespace GitHubNode.Services.Marketplace
                 return JsonSerializer.Deserialize<RawDiscoveryIndex>(indexBytes, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
-                }) ?? throw new InvalidOperationException("Agent Skills Discovery index is empty.");
+                }) ?? throw new InvalidOperationException("Well-Known Discovery index is empty.");
             }
             catch (JsonException ex)
             {
-                Debug.WriteLine($"AgentSkillsDiscoveryService.ParseIndex failed: {ex}");
+                Debug.WriteLine($"WellKnownDiscoveryService.ParseIndex failed: {ex}");
                 _ = ex.LogAsync();
-                throw new InvalidOperationException("Agent Skills Discovery index is not valid JSON.", ex);
+                throw new InvalidOperationException("Well-Known Discovery index is not valid JSON.", ex);
             }
         }
 
@@ -325,7 +354,7 @@ namespace GitHubNode.Services.Marketplace
         private static async Task<string> CacheFaviconAsync(Uri indexUri, bool forceRefresh, CancellationToken cancellationToken)
         {
             var faviconUri = new Uri(indexUri.GetLeftPart(UriPartial.Authority) + "/favicon.ico");
-            var iconPath = MarketplaceStorageService.GetAgentSkillsDiscoveryIconPath(indexUri, ".ico");
+            var iconPath = MarketplaceStorageService.GetWellKnownDiscoveryIconPath(indexUri, ".ico");
 
             if (!forceRefresh && File.Exists(iconPath))
             {
@@ -350,7 +379,7 @@ namespace GitHubNode.Services.Marketplace
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"AgentSkillsDiscoveryService.CacheFaviconAsync failed for '{faviconUri}': {ex}");
+                Debug.WriteLine($"WellKnownDiscoveryService.CacheFaviconAsync failed for '{faviconUri}': {ex}");
                 _ = ex.LogAsync();
                 return null;
             }
@@ -464,7 +493,7 @@ namespace GitHubNode.Services.Marketplace
             }
 
             var artifactBytes = await DownloadAndVerifyArtifactAsync(rawSkill, artifactUri, cancellationToken);
-            return AgentSkillsArchiveService.ExtractArchive(artifactBytes, artifactUri, skillDirectory);
+            return WellKnownArchiveService.ExtractArchive(artifactBytes, artifactUri, skillDirectory);
         }
 
         private static async Task<byte[]> DownloadAndVerifyArtifactAsync(RawDiscoverySkill rawSkill, Uri artifactUri, CancellationToken cancellationToken)
@@ -519,13 +548,13 @@ namespace GitHubNode.Services.Marketplace
                 }
                 else
                 {
-                    Debug.WriteLine($"AgentSkillsDiscoveryService.DownloadBytesAsync: HTTP {(int)response.StatusCode} for {uri}");
+                    Debug.WriteLine($"WellKnownDiscoveryService.DownloadBytesAsync: HTTP {(int)response.StatusCode} for {uri}");
                     return (false, null);
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"AgentSkillsDiscoveryService.DownloadBytesAsync error for {uri}: {ex.Message}");
+                Debug.WriteLine($"WellKnownDiscoveryService.DownloadBytesAsync error for {uri}: {ex.Message}");
                 return (false, null);
             }
         }
@@ -537,10 +566,9 @@ namespace GitHubNode.Services.Marketplace
             return "sha256:" + BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
         }
 
-        private static bool IsWellKnownAgentSkillsUri(Uri uri)
+        private static bool IsWellKnownDiscoveryUri(Uri uri)
         {
-            return uri.AbsolutePath.IndexOf("/.well-known/agent-skills", StringComparison.OrdinalIgnoreCase) >= 0
-                || uri.AbsolutePath.IndexOf("/.well-known/skills", StringComparison.OrdinalIgnoreCase) >= 0;
+            return uri.AbsolutePath.IndexOf("/.well-known/", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static Uri NormalizeIndexUri(Uri uri)

@@ -134,21 +134,21 @@ namespace GitHubNode.Services.Marketplace
         public List<MarketplacePlugin> Plugins { get; set; } = new List<MarketplacePlugin>();
 
         /// <summary>
-        /// Gets whether this marketplace comes from an Agent Skills Discovery endpoint.
+        /// Gets whether this marketplace comes from an Well-Known Discovery endpoint.
         /// </summary>
-        public bool IsAgentSkillsDiscovery => SourceKind == MarketplaceSourceKind.AgentSkillsDiscovery;
+        public bool IsWellKnownDiscovery => SourceKind == MarketplaceSourceKind.WellKnownDiscovery;
 
         /// <summary>
         /// Gets the browser URL for this MarketplaceInfo.
         /// </summary>
-        public string GitHubUrl => IsAgentSkillsDiscovery
+        public string GitHubUrl => IsWellKnownDiscovery
             ? SourceUrl
             : MarketplaceRepositoryUrl.GetRepositoryUrl(Owner, RepoName, RepositoryUrl);
 
         /// <summary>
         /// Gets the clone URL for this MarketplaceInfo.
         /// </summary>
-        public string CloneUrl => IsAgentSkillsDiscovery
+        public string CloneUrl => IsWellKnownDiscovery
             ? SourceUrl
             : MarketplaceRepositoryUrl.GetCloneUrl(Owner, RepoName, RepositoryUrl);
 

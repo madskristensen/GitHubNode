@@ -6,7 +6,7 @@ using System.Text;
 
 namespace GitHubNode.Services.Marketplace
 {
-    internal static class AgentSkillsArchiveService
+    internal static class WellKnownArchiveService
     {
         private const int TarBlockSize = 512;
         private const int MaxEntries = 2048;

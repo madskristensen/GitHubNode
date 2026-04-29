@@ -107,9 +107,9 @@
     <Compile Include="Services\GitStatusService.cs" />
     <Compile Include="Services\InstallScope.cs" />
     <Compile Include="Services\MarkdownSyntaxHighlighter.cs" />
-    <Compile Include="Services\Marketplace\AgentSkillsArchiveService.cs" />
-    <Compile Include="Services\Marketplace\AgentSkillsDiscoveryModels.cs" />
-    <Compile Include="Services\Marketplace\AgentSkillsDiscoveryService.cs" />
+    <Compile Include="Services\Marketplace\WellKnownArchiveService.cs" />
+    <Compile Include="Services\Marketplace\WellKnownDiscoveryModels.cs" />
+    <Compile Include="Services\Marketplace\WellKnownDiscoveryService.cs" />
     <Compile Include="Services\Marketplace\AssetType.cs" />
     <Compile Include="Services\Marketplace\Marketplace.cs" />
     <Compile Include="Services\Marketplace\MarketplaceConfig.cs" />

@@ -6,11 +6,11 @@ namespace GitHubNode.Services.Marketplace
     internal enum MarketplaceSourceKind
     {
         Repository,
-        AgentSkillsDiscovery,
+        WellKnownDiscovery,
         McpServerDiscovery
     }
 
-    internal sealed class AgentSkillsDiscoveryResult
+    internal sealed class WellKnownDiscoveryResult
     {
         public string Id { get; set; }
 
@@ -26,12 +26,12 @@ namespace GitHubNode.Services.Marketplace
 
         public DateTime LastUpdated { get; set; }
 
-        public List<AgentSkillsDiscoverySkill> Skills { get; } = new List<AgentSkillsDiscoverySkill>();
+        public List<WellKnownDiscoverySkill> Skills { get; } = new List<WellKnownDiscoverySkill>();
 
         public List<string> Warnings { get; } = new List<string>();
     }
 
-    internal sealed class AgentSkillsDiscoverySkill
+    internal sealed class WellKnownDiscoverySkill
     {
         public string Name { get; set; }
 
