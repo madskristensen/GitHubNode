@@ -33,9 +33,11 @@ namespace GitHubNode.Commands
 
             // Load MCP server assets from marketplaces
             List<PluginAsset> mcpAssets;
+            List<MarketplaceInfo> allMarketplaces;
             try
             {
                 mcpAssets = await MarketplaceService.GetAllAssetsAsync(AssetType.McpServer, CancellationToken.None);
+                allMarketplaces = await MarketplaceService.GetAllMarketplacesAsync(forceRefresh: false, CancellationToken.None);
             }
             catch (System.Exception ex)
             {
@@ -53,7 +55,7 @@ namespace GitHubNode.Commands
             }
 
             // Show the MCP server picker dialog
-            var dialog = new InstallMcpServerDialog(mcpAssets, solutionDirectory);
+            var dialog = new InstallMcpServerDialog(mcpAssets, solutionDirectory, allMarketplaces);
             if (dialog.ShowDialog() != true || dialog.SelectedServers == null || dialog.SelectedServers.Count == 0)
             {
                 return;

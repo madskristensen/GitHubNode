@@ -6,7 +6,8 @@ namespace GitHubNode.Services.Marketplace
     internal enum MarketplaceSourceKind
     {
         Repository,
-        AgentSkillsDiscovery
+        AgentSkillsDiscovery,
+        McpServerDiscovery
     }
 
     internal sealed class AgentSkillsDiscoveryResult

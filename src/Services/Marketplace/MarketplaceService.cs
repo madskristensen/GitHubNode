@@ -81,6 +81,30 @@ namespace GitHubNode.Services.Marketplace
                 {
                     if (_marketplaceCache.TryGetValue(id, out var cached) && cached.IsCloned)
                     {
+                        // If cached entry is missing IconPath, try to download avatar asynchronously
+                        // This handles cases like built-in repos that were cached before avatar download was implemented
+                        if (string.IsNullOrEmpty(cached.IconPath))
+                        {
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    if (MarketplaceParserService.IsGitHubRepository(repositoryUrl))
+                                    {
+                                        var avatarPath = await MarketplaceParserService.DownloadGitHubAvatarAsync(owner, repo, repositoryUrl, cancellationToken);
+                                        if (!string.IsNullOrEmpty(avatarPath))
+                                        {
+                                            cached.IconPath = avatarPath;
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Debug.WriteLine($"MarketplaceService: Failed to fetch avatar for cached {id}: {ex}");
+                                }
+                            }, cancellationToken);
+                        }
+
                         return cached;
                     }
                 }
@@ -452,14 +476,33 @@ namespace GitHubNode.Services.Marketplace
             try
             {
                 var result = await AgentSkillsDiscoveryService.DiscoverAsync(entry, forceRefresh, cancellationToken);
+
+                // Also try to discover MCP servers from the same source
+                McpServerDiscoveryResult mcpResult = null;
+                try
+                {
+                    string mcpHost = result.IndexUri.Scheme + "://" + result.IndexUri.Host;
+                    if (result.IndexUri.Port > 0 && result.IndexUri.Port != 80 && result.IndexUri.Port != 443)
+                    {
+                        mcpHost += ":" + result.IndexUri.Port;
+                    }
+                    mcpResult = await McpServerDiscoveryService.DiscoverAsync(new Uri(mcpHost), forceRefresh: false, cancellationToken: cancellationToken);
+                }
+                catch
+                {
+                    // MCP discovery is optional; if it fails, continue with just skills
+                }
+
+                // Create a generic plugin that can contain both skills and MCP servers
                 var plugin = new MarketplacePlugin
                 {
-                    Name = "Agent Skills",
+                    Name = "Well-Known Marketplace",
                     Description = $"Discovered from {result.Origin}",
                     Source = result.IndexUri.AbsoluteUri,
                     MarketplaceId = result.Id
                 };
 
+                // Add discovered skills
                 foreach (var skill in result.Skills)
                 {
                     plugin.Assets.Add(new PluginAsset
@@ -474,22 +517,46 @@ namespace GitHubNode.Services.Marketplace
                     });
                 }
 
+                // Add discovered MCP servers
+                if (mcpResult != null && mcpResult.Servers != null && mcpResult.Servers.Count > 0)
+                {
+                    // Persist the discovered servers as a local mcp.json file so that the install
+                    // dialog and McpInstallService (which both expect a real on-disk JSON file in
+                    // mcpServers/servers format) can consume well-known marketplace entries the
+                    // same way as repository-based marketplaces.
+                    string mcpConfigPath = WriteWellKnownMcpConfig(result.CacheDirectory, mcpResult.Servers);
+
+                    foreach (var server in mcpResult.Servers)
+                    {
+                        plugin.Assets.Add(new PluginAsset
+                        {
+                            Type = AssetType.McpServer,
+                            Name = server.Name,
+                            Description = server.Description,
+                            RelativePath = server.Name,
+                            LocalPath = mcpConfigPath ?? server.ArtifactUri?.AbsoluteUri,
+                            PluginName = result.DisplayName,
+                            MarketplaceId = result.Id
+                        });
+                    }
+                }
+
                 var marketplace = new MarketplaceInfo
                 {
                     Id = result.Id,
                     Owner = result.IndexUri.Host,
-                    RepoName = "agent-skills",
+                    RepoName = "well-known-marketplace",
                     SourceKind = MarketplaceSourceKind.AgentSkillsDiscovery,
                     RepositoryUrl = result.IndexUri.AbsoluteUri,
-                    SourceUrl = result.IndexUri.AbsoluteUri,
+                    SourceUrl = result.Origin,
                     DisplayName = result.DisplayName,
-                    Description = $"Agent Skills Discovery source at {result.Origin}",
+                    Description = $"Well-Known Marketplace source at {result.Origin}",
                     IsBuiltIn = false,
                     LocalPath = result.CacheDirectory,
                     IconPath = result.IconPath,
                     IsCloned = true,
                     LastUpdated = result.LastUpdated,
-                    ErrorMessage = result.Skills.Count == 0 && result.Warnings.Count > 0 ? string.Join(" ", result.Warnings) : null,
+                    ErrorMessage = result.Skills.Count == 0 && (mcpResult?.Servers.Count ?? 0) == 0 && result.Warnings.Count > 0 ? string.Join(" ", result.Warnings) : null,
                     Plugins = new List<MarketplacePlugin> { plugin }
                 };
 
@@ -548,6 +615,65 @@ namespace GitHubNode.Services.Marketplace
             {
                 Debug.WriteLine($"MarketplaceService.DeleteDirectory failed for '{path}': {ex}");
                 _ = ex.LogAsync();
+            }
+        }
+
+        /// <summary>
+        /// Writes the discovered well-known MCP servers to a local mcp.json file in the
+        /// cache directory using the standard "mcpServers" object format. Returns the path
+        /// of the written file, or null if it could not be written.
+        /// </summary>
+        private static string WriteWellKnownMcpConfig(string cacheDirectory, IList<McpServerDefinition> servers)
+        {
+            if (string.IsNullOrWhiteSpace(cacheDirectory) || servers == null || servers.Count == 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(cacheDirectory);
+                string targetPath = Path.Combine(cacheDirectory, "well-known.mcp.json");
+
+                var mcpServers = new Dictionary<string, object>(StringComparer.Ordinal);
+                foreach (var server in servers)
+                {
+                    if (string.IsNullOrWhiteSpace(server.Name) || server.ArtifactUri == null)
+                    {
+                        continue;
+                    }
+
+                    // Well-known MCP discovery currently surfaces remote servers; emit the
+                    // standard HTTP transport entry with the resolved URL.
+                    mcpServers[server.Name] = new Dictionary<string, object>(StringComparer.Ordinal)
+                    {
+                        ["url"] = server.ArtifactUri.AbsoluteUri
+                    };
+                }
+
+                if (mcpServers.Count == 0)
+                {
+                    return null;
+                }
+
+                var root = new Dictionary<string, object>(StringComparer.Ordinal)
+                {
+                    ["mcpServers"] = mcpServers
+                };
+
+                string json = System.Text.Json.JsonSerializer.Serialize(root, new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+
+                File.WriteAllText(targetPath, json);
+                return targetPath;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceService.WriteWellKnownMcpConfig failed: {ex}");
+                _ = ex.LogAsync();
+                return null;
             }
         }
 

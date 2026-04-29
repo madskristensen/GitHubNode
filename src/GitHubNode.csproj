@@ -119,6 +119,8 @@
     <Compile Include="Services\Marketplace\MarketplaceService.cs" />
     <Compile Include="Services\Marketplace\MarketplaceStorageService.cs" />
     <Compile Include="Services\Marketplace\MarketplaceTemplateAdapter.cs" />
+    <Compile Include="Services\Marketplace\McpServerDiscoveryModels.cs" />
+    <Compile Include="Services\Marketplace\McpServerDiscoveryService.cs" />
     <Compile Include="Services\McpInstallService.cs" />
     <Compile Include="Services\McpSettingsService.cs" />
     <Compile Include="Services\SyntaxColors.cs" />

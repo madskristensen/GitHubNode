@@ -77,10 +77,10 @@ namespace GitHubNode.Services.Marketplace
         {
             if (indexUri == null)
             {
-                return "Agent Skills";
+                return "Well-Known Marketplace";
             }
 
-            return $"Agent Skills - {indexUri.Host}";
+            return indexUri.Host;
         }
 
         internal static bool IsValidSkillName(string name)
@@ -145,6 +145,22 @@ namespace GitHubNode.Services.Marketplace
             Directory.CreateDirectory(result.CacheDirectory);
 
             var (indexBytes, resolvedIndexUri) = await DownloadIndexBytesAsync(indexUri, cancellationToken);
+
+            if (indexBytes == null)
+            {
+                // Update the IndexUri to the resolved URI even if no skills were found
+                // This ensures subsequent discovery (like MCP servers) uses the correct base URI
+                indexUri = result.IndexUri = resolvedIndexUri;
+                result.Id = GetSourceId(indexUri);
+                result.Origin = indexUri.GetLeftPart(UriPartial.Authority);
+                result.CacheDirectory = MarketplaceStorageService.GetAgentSkillsDiscoveryDirectory(indexUri);
+                result.IconPath = await CacheFaviconAsync(indexUri, forceRefresh, cancellationToken);
+
+                // Don't add a warning for missing skills - we now support other artifact types like MCP servers
+                // that may be discovered from the same well-known location
+                return result;
+            }
+
             indexUri = result.IndexUri = resolvedIndexUri;
             result.Id = GetSourceId(indexUri);
             result.Origin = indexUri.GetLeftPart(UriPartial.Authority);
@@ -318,7 +334,12 @@ namespace GitHubNode.Services.Marketplace
 
             try
             {
-                var bytes = await DownloadBytesAsync(faviconUri, cancellationToken);
+                var (success, bytes) = await DownloadBytesAsync(faviconUri, cancellationToken);
+                if (!success || bytes == null)
+                {
+                    return null;
+                }
+
                 Directory.CreateDirectory(Path.GetDirectoryName(iconPath));
                 File.WriteAllBytes(iconPath, bytes);
                 return iconPath;
@@ -360,7 +381,12 @@ namespace GitHubNode.Services.Marketplace
                     throw new InvalidOperationException($"Legacy skill '{rawSkill.Name}' contains an invalid file URL for '{file}'.");
                 }
 
-                var bytes = await DownloadBytesAsync(fileUri, cancellationToken);
+                var (success, bytes) = await DownloadBytesAsync(fileUri, cancellationToken);
+                if (!success || bytes == null)
+                {
+                    throw new InvalidOperationException($"Failed to download file '{file}' for skill '{rawSkill.Name}'.");
+                }
+
                 Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
                 File.WriteAllBytes(destinationPath, bytes);
             }
@@ -443,7 +469,12 @@ namespace GitHubNode.Services.Marketplace
 
         private static async Task<byte[]> DownloadAndVerifyArtifactAsync(RawDiscoverySkill rawSkill, Uri artifactUri, CancellationToken cancellationToken)
         {
-            var artifactBytes = await DownloadBytesAsync(artifactUri, cancellationToken);
+            var (success, artifactBytes) = await DownloadBytesAsync(artifactUri, cancellationToken);
+            if (!success || artifactBytes == null)
+            {
+                throw new InvalidOperationException($"Failed to download artifact for skill '{rawSkill.Name}' from {artifactUri}.");
+            }
+
             var actualDigest = ComputeSha256Digest(artifactBytes);
             if (!string.Equals(actualDigest, rawSkill.Digest, StringComparison.Ordinal))
             {
@@ -455,22 +486,48 @@ namespace GitHubNode.Services.Marketplace
 
         private static async Task<(byte[] Bytes, Uri ResolvedIndexUri)> DownloadIndexBytesAsync(Uri indexUri, CancellationToken cancellationToken)
         {
-            try
+            var (success, bytes) = await DownloadBytesAsync(indexUri, cancellationToken);
+            if (success)
             {
-                return (await DownloadBytesAsync(indexUri, cancellationToken), indexUri);
+                return (bytes, indexUri);
             }
-            catch (HttpRequestException) when (string.Equals(indexUri.AbsolutePath, WellKnownIndexPath, StringComparison.OrdinalIgnoreCase))
+
+            // If the provided URI is the newer format, try legacy format
+            if (string.Equals(indexUri.AbsolutePath, WellKnownIndexPath, StringComparison.OrdinalIgnoreCase))
             {
                 var legacyIndexUri = new Uri($"{indexUri.Scheme}://{indexUri.Authority}{LegacyWellKnownIndexPath}");
-                return (await DownloadBytesAsync(legacyIndexUri, cancellationToken), legacyIndexUri);
+                var (legacySuccess, legacyBytes) = await DownloadBytesAsync(legacyIndexUri, cancellationToken);
+                if (legacySuccess)
+                {
+                    return (legacyBytes, legacyIndexUri);
+                }
             }
+
+            // Return null bytes to indicate failure
+            return (null, indexUri);
         }
 
-        private static async Task<byte[]> DownloadBytesAsync(Uri uri, CancellationToken cancellationToken)
+        private static async Task<(bool success, byte[] bytes)> DownloadBytesAsync(Uri uri, CancellationToken cancellationToken)
         {
-            using var response = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseContentRead, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsByteArrayAsync();
+            try
+            {
+                using var response = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseContentRead, cancellationToken);
+                if (response.IsSuccessStatusCode)
+                {
+                    var bytes = await response.Content.ReadAsByteArrayAsync();
+                    return (true, bytes);
+                }
+                else
+                {
+                    Debug.WriteLine($"AgentSkillsDiscoveryService.DownloadBytesAsync: HTTP {(int)response.StatusCode} for {uri}");
+                    return (false, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"AgentSkillsDiscoveryService.DownloadBytesAsync error for {uri}: {ex.Message}");
+                return (false, null);
+            }
         }
 
         private static string ComputeSha256Digest(byte[] bytes)

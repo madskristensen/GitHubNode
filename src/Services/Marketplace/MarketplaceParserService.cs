@@ -196,7 +196,7 @@ namespace GitHubNode.Services.Marketplace
                 marketplaceInfo.Description = rawJson.metadata?.description;
 
                 // Copy icon to local storage if specified
-                marketplaceInfo.IconPath = CopyIconToStorage(owner, repo, localPath, rawJson.metadata?.icon, repositoryUrl);
+                marketplaceInfo.IconPath = await CopyIconToStorageAsync(owner, repo, localPath, rawJson.metadata?.icon, repositoryUrl, cancellationToken);
 
                 // Get the plugin root directory (default to repo root if not specified)
                 // Only trim leading slashes, not dots (to preserve .github folder names)
@@ -227,6 +227,12 @@ namespace GitHubNode.Services.Marketplace
                     legacyPlugin.Description = "Assets discovered in repository root";
                     marketplaceInfo.Plugins.Add(legacyPlugin);
                 }
+            }
+
+            // Try to discover MCP servers from well-known marketplace URLs
+            if (!string.IsNullOrWhiteSpace(repositoryUrl) && Uri.TryCreate(repositoryUrl, UriKind.Absolute, out var marketplaceUri))
+            {
+                await DiscoverAndAddMcpServersAsync(marketplaceUri, marketplaceInfo, cancellationToken);
             }
 
             return marketplaceInfo;
@@ -761,44 +767,236 @@ namespace GitHubNode.Services.Marketplace
         /// <summary>
         /// Copies the marketplace icon to local storage if specified and valid.
         /// </summary>
-        private static string CopyIconToStorage(string owner, string repo, string localPath, string iconRelativePath, string repositoryUrl)
+        private static async Task<string> CopyIconToStorageAsync(string owner, string repo, string localPath, string iconRelativePath, string repositoryUrl, CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(iconRelativePath))
-            {
-                return null;
-            }
-
             try
             {
-                // Normalize path separators
-                var normalizedPath = iconRelativePath.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar);
-                var sourceIconPath = Path.Combine(localPath, normalizedPath);
-
-                if (!File.Exists(sourceIconPath))
+                // Try to use the specified icon from metadata first
+                if (!string.IsNullOrWhiteSpace(iconRelativePath))
                 {
-                    Debug.WriteLine($"MarketplaceParserService.CopyIconToStorage: Icon not found at '{sourceIconPath}'");
-                    return null;
+                    // Normalize path separators
+                    var normalizedPath = iconRelativePath.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar);
+                    var sourceIconPath = Path.Combine(localPath, normalizedPath);
+
+                    if (File.Exists(sourceIconPath))
+                    {
+                        var extension = Path.GetExtension(sourceIconPath);
+                        var destIconPath = MarketplaceStorageService.GetIconPath(owner, repo, extension, repositoryUrl);
+
+                        // Copy if source is newer or dest doesn't exist
+                        var sourceInfo = new FileInfo(sourceIconPath);
+                        var destInfo = new FileInfo(destIconPath);
+
+                        if (!destInfo.Exists || sourceInfo.LastWriteTimeUtc > destInfo.LastWriteTimeUtc)
+                        {
+                            File.Copy(sourceIconPath, destIconPath, overwrite: true);
+                            Debug.WriteLine($"MarketplaceParserService.CopyIconToStorageAsync: Copied icon to '{destIconPath}'");
+                        }
+
+                        return destIconPath;
+                    }
+
+                    Debug.WriteLine($"MarketplaceParserService.CopyIconToStorageAsync: Icon not found at '{sourceIconPath}'");
                 }
 
-                var extension = Path.GetExtension(sourceIconPath);
-                var destIconPath = MarketplaceStorageService.GetIconPath(owner, repo, extension, repositoryUrl);
-
-                // Copy if source is newer or dest doesn't exist
-                var sourceInfo = new FileInfo(sourceIconPath);
-                var destInfo = new FileInfo(destIconPath);
-
-                if (!destInfo.Exists || sourceInfo.LastWriteTimeUtc > destInfo.LastWriteTimeUtc)
-                {
-                    File.Copy(sourceIconPath, destIconPath, overwrite: true);
-                    Debug.WriteLine($"MarketplaceParserService.CopyIconToStorage: Copied icon to '{destIconPath}'");
-                }
-
-                return destIconPath;
+                // Fall back to GitHub avatar if no icon is specified or found
+                return await DownloadGitHubAvatarAsync(owner, repo, repositoryUrl, cancellationToken);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"MarketplaceParserService.CopyIconToStorage failed: {ex}");
+                Debug.WriteLine($"MarketplaceParserService.CopyIconToStorageAsync failed: {ex}");
+                _ = ex.LogAsync();
                 return null;
+            }
+        }
+
+        internal static async Task<string> DownloadGitHubAvatarAsync(string owner, string repo, string repositoryUrl, CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Check if this is a GitHub repo
+                if (!IsGitHubRepository(repositoryUrl))
+                {
+                    return null;
+                }
+
+                var destIconPath = MarketplaceStorageService.GetIconPath(owner, repo, ".png", repositoryUrl);
+                var destDir = Path.GetDirectoryName(destIconPath);
+
+                // Try multiple avatar URLs in order of preference
+                var avatarUrls = new[]
+                {
+                    // Try API endpoint first - more reliable for orgs
+                    $"https://api.github.com/users/{owner}",
+                    // Fallback to direct avatar URL
+                    $"https://github.com/{owner}.png?size=64",
+                    // Try avatar CDN
+                    $"https://avatars.githubusercontent.com/{owner}?v=4",
+                };
+
+                using (var client = new System.Net.Http.HttpClient())
+                {
+                    client.Timeout = TimeSpan.FromSeconds(10);
+
+                    // Set user agent to avoid API rate limiting issues
+                    client.DefaultRequestHeaders.Add("User-Agent", "GitHubNode/1.0");
+
+                    foreach (var url in avatarUrls)
+                    {
+                        try
+                        {
+                            byte[] bytes;
+
+                            if (url.Contains("api.github.com"))
+                            {
+                                // For API endpoint, get JSON and extract avatar_url
+                                var json = await client.GetStringAsync(url);
+
+                                // Simple JSON parsing for avatar_url
+                                var match = System.Text.RegularExpressions.Regex.Match(json, @"""avatar_url""\s*:\s*""([^""]+)""");
+                                if (match.Success)
+                                {
+                                    var avatarUrl = match.Groups[1].Value;
+                                    bytes = await client.GetByteArrayAsync(avatarUrl);
+
+                                    if (bytes != null && bytes.Length > 0)
+                                    {
+                                        Directory.CreateDirectory(destDir);
+                                        await Task.Run(() => File.WriteAllBytes(destIconPath, bytes), cancellationToken);
+                                        Debug.WriteLine($"MarketplaceParserService.DownloadGitHubAvatarAsync: Downloaded avatar for {owner} from API to '{destIconPath}'");
+                                        return destIconPath;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Direct image download
+                                bytes = await client.GetByteArrayAsync(url);
+
+                                if (bytes != null && bytes.Length > 0)
+                                {
+                                    Directory.CreateDirectory(destDir);
+                                    await Task.Run(() => File.WriteAllBytes(destIconPath, bytes), cancellationToken);
+                                    Debug.WriteLine($"MarketplaceParserService.DownloadGitHubAvatarAsync: Downloaded avatar for {owner} from {url} to '{destIconPath}'");
+                                    return destIconPath;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"MarketplaceParserService.DownloadGitHubAvatarAsync: Failed to download from {url}: {ex.Message}");
+                            // Continue to next URL
+                            continue;
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceParserService.DownloadGitHubAvatarAsync failed: {ex}");
+                _ = ex.LogAsync();
+            }
+
+            return null;
+        }
+
+        internal static bool IsGitHubRepository(string repositoryUrl)
+        {
+            // If no URL is specified, it defaults to github.com
+            if (string.IsNullOrWhiteSpace(repositoryUrl))
+            {
+                return true;
+            }
+
+            if (Uri.TryCreate(repositoryUrl, UriKind.Absolute, out var uri))
+            {
+                return string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+                       uri.Host.EndsWith(".ghe.com", StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Discovers MCP servers from the marketplace's well-known locations and adds them as assets.
+        /// </summary>
+        private static async Task DiscoverAndAddMcpServersAsync(
+            Uri marketplaceUri,
+            MarketplaceInfo marketplaceInfo,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (!McpServerDiscoveryService.TryCreateDiscoveryUri(marketplaceUri.AbsoluteUri, out var discoveryUri))
+                {
+                    return;
+                }
+
+                var discoveryResult = await McpServerDiscoveryService.DiscoverAsync(
+                    discoveryUri,
+                    McpServerDiscoveryService.GetDisplayName(discoveryUri),
+                    forceRefresh: false,
+                    cancellationToken);
+
+                if (discoveryResult?.Servers == null || discoveryResult.Servers.Count == 0)
+                {
+                    return;
+                }
+
+                // Create a plugin to hold the discovered MCP servers
+                var plugin = new MarketplacePlugin
+                {
+                    Name = "MCP Servers (Well-Known)",
+                    Description = discoveryResult.DisplayName,
+                    MarketplaceId = marketplaceInfo.Id
+                };
+
+                // Convert each discovered server to an asset
+                foreach (var server in discoveryResult.Servers)
+                {
+                    try
+                    {
+                        var asset = new PluginAsset
+                        {
+                            Type = AssetType.McpServer,
+                            Name = server.Name,
+                            RelativePath = server.ArtifactUri?.AbsolutePath ?? server.Name,
+                            LocalPath = server.ArtifactUri?.AbsoluteUri ?? server.Name,
+                            PluginName = plugin.Name,
+                            MarketplaceId = marketplaceInfo.Id,
+                            Description = server.Description
+                        };
+
+                        plugin.Assets.Add(asset);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"MarketplaceParserService.DiscoverAndAddMcpServersAsync: Failed to add MCP server {server.Name}: {ex}");
+                    }
+                }
+
+                if (plugin.Assets.Count > 0)
+                {
+                    marketplaceInfo.Plugins.Add(plugin);
+                }
+
+                // Log any warnings
+                if (discoveryResult.Warnings.Count > 0)
+                {
+                    Debug.WriteLine($"MarketplaceParserService.DiscoverAndAddMcpServersAsync warnings from {discoveryUri.Host}:");
+                    foreach (var warning in discoveryResult.Warnings)
+                    {
+                        Debug.WriteLine($"  - {warning}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MarketplaceParserService.DiscoverAndAddMcpServersAsync failed: {ex}");
             }
         }
     }

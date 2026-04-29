@@ -249,7 +249,7 @@ namespace GitHubNode.ToolWindows
 
             // URL / ID
             var urlFactory = new FrameworkElementFactory(typeof(TextBlock));
-            urlFactory.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Id"));
+            urlFactory.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("SubText"));
             urlFactory.SetValue(TextBlock.FontSizeProperty, 11.0);
             urlFactory.SetValue(TextBlock.MarginProperty, new Thickness(0, 2, 0, 0));
             urlFactory.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
@@ -662,7 +662,16 @@ namespace GitHubNode.ToolWindows
             // Update details
             _detailsAvatar.Source = selected.AvatarImage;
             _detailsName.Text = selected.DisplayName;
-            _detailsAuthor.Text = selected.IsAgentSkillsDiscovery ? "Agent Skills Discovery" : $"by {selected.Owner}";
+            if (selected.IsAgentSkillsDiscovery)
+            {
+                _detailsAuthor.Text = string.Empty;
+                _detailsAuthor.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                _detailsAuthor.Text = $"by {selected.Owner}";
+                _detailsAuthor.Visibility = Visibility.Visible;
+            }
             _detailsUrl.Text = selected.GitHubUrl;
             _detailsStatus.Text = selected.StatusLine;
 
@@ -930,6 +939,19 @@ namespace GitHubNode.ToolWindows
                 }
             }
 
+            public string SubText
+            {
+                get
+                {
+                    if (IsAgentSkillsDiscovery)
+                    {
+                        return GitHubUrl ?? string.Empty;
+                    }
+
+                    return Id;
+                }
+            }
+
             public string StatusLine
             {
                 get
@@ -974,7 +996,7 @@ namespace GitHubNode.ToolWindows
                 GitHubUrl = marketplace.GitHubUrl ?? marketplace.CloneUrl;
                 LastUpdated = marketplace.LastUpdated;
 
-                AvatarImage = LoadMarketplaceImage(marketplace.IconPath, marketplace.Owner, marketplace.GitHubUrl);
+                AvatarImage = LoadMarketplaceImage(marketplace.IconPath, null, null);
 
                 // Organize templates by category
                 TemplatesByCategory = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<TemplateListItem>>();
@@ -1043,6 +1065,15 @@ namespace GitHubNode.ToolWindows
 
                 try
                 {
+                    // If the asset already has a name (e.g. discovered from a well-known server-card.json),
+                    // use it directly without attempting to parse a local file.
+                    if (!string.IsNullOrWhiteSpace(asset.Name)
+                        && (string.IsNullOrEmpty(asset.LocalPath) || !System.IO.File.Exists(asset.LocalPath)))
+                    {
+                        names.Add(asset.Name);
+                        return names;
+                    }
+
                     if (!string.IsNullOrEmpty(asset.LocalPath) && System.IO.File.Exists(asset.LocalPath))
                     {
                         var json = System.IO.File.ReadAllText(asset.LocalPath);
@@ -1107,8 +1138,16 @@ namespace GitHubNode.ToolWindows
 
             private static BitmapImage LoadMarketplaceImage(string iconPath, string owner, string repositoryUrl)
             {
+                // Try loading from local cache first
                 var iconImage = LoadLocalImage(iconPath);
-                return iconImage ?? LoadAvatarImage(owner, repositoryUrl);
+                if (iconImage != null)
+                {
+                    return iconImage;
+                }
+
+                // If no cached icon, we don't try network loads - the avatar should have been
+                // cached during marketplace parse time
+                return null;
             }
 
             private static BitmapImage LoadLocalImage(string iconPath)
@@ -1123,34 +1162,6 @@ namespace GitHubNode.ToolWindows
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
                     bitmap.UriSource = new Uri(iconPath, UriKind.Absolute);
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.DecodePixelWidth = 64;
-                    bitmap.EndInit();
-                    bitmap.Freeze();
-                    return bitmap;
-                }
-                catch (Exception ex)
-                {
-                    _ = ex.LogAsync();
-                    return null;
-                }
-            }
-
-            private static BitmapImage LoadAvatarImage(string owner, string repositoryUrl)
-            {
-                try
-                {
-                    if (!Uri.TryCreate(repositoryUrl, UriKind.Absolute, out var repositoryUri) ||
-                        (!string.Equals(repositoryUri.Host, "github.com", StringComparison.OrdinalIgnoreCase) &&
-                         !repositoryUri.Host.EndsWith(".ghe.com", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        return null;
-                    }
-
-                    var avatarUrl = $"https://{repositoryUri.Authority}/{owner}.png?size=64";
-                    var bitmap = new BitmapImage();
-                    bitmap.BeginInit();
-                    bitmap.UriSource = new Uri(avatarUrl, UriKind.Absolute);
                     bitmap.CacheOption = BitmapCacheOption.OnLoad;
                     bitmap.DecodePixelWidth = 64;
                     bitmap.EndInit();

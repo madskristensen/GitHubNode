@@ -38,6 +38,7 @@ namespace GitHubNode.Commands
         private List<McpServerItem> _allServerItems;
         private List<McpServerListItem> _serverListItems;
         private List<MarketplaceInfo> _marketplaces;
+        private Dictionary<string, string> _marketplaceDisplayNames;
         private bool _isUpdatingServerChecks;
 
         /// <summary>
@@ -52,9 +53,15 @@ namespace GitHubNode.Commands
             _scopeComboBox?.SelectedIndex == 1 ? InstallScope.UserProfile : InstallScope.Solution;
 
         public InstallMcpServerDialog(List<PluginAsset> mcpAssets, string solutionDirectory)
+            : this(mcpAssets, solutionDirectory, null)
+        {
+        }
+
+        public InstallMcpServerDialog(List<PluginAsset> mcpAssets, string solutionDirectory, IReadOnlyList<Services.Marketplace.MarketplaceInfo> allMarketplaces)
         {
             _solutionDirectory = solutionDirectory;
             _targetConfigPath = McpInstallService.GetTargetConfigPath(solutionDirectory);
+            _marketplaceDisplayNames = BuildMarketplaceDisplayNames(allMarketplaces);
 
             // Parse the actual server info from each .mcp.json file
             _allServerItems = ParseServerItems(mcpAssets);
@@ -64,14 +71,14 @@ namespace GitHubNode.Commands
             _marketplaces = _allServerItems
                 .Select(s => s.Asset.MarketplaceId)
                 .Distinct()
-                .Select(id => new MarketplaceInfo { Id = id })
+                .Select(id => new MarketplaceInfo { Id = id, DisplayName = ResolveMarketplaceDisplayName(id) })
                 .ToList();
 
             Title = "Install MCP Server from Marketplace";
             Width = 550;
-            Height = 500;
+            Height = 650;
             MinWidth = 450;
-            MinHeight = 400;
+            MinHeight = 500;
             ResizeMode = ResizeMode.CanResizeWithGrip;
             HasMaximizeButton = false;
             HasMinimizeButton = false;
@@ -164,7 +171,7 @@ namespace GitHubNode.Commands
             _marketplaceComboBox.Items.Add(_allMarketplacesText);
             foreach (var marketplace in _marketplaces)
             {
-                _marketplaceComboBox.Items.Add(marketplace.Id);
+                _marketplaceComboBox.Items.Add(marketplace);
             }
             _marketplaceComboBox.SelectedIndex = 0;
             _marketplaceComboBox.SelectionChanged += OnMarketplaceSelectionChanged;
@@ -212,6 +219,9 @@ namespace GitHubNode.Commands
             _serverListBox.SetResourceReference(ListBox.BackgroundProperty, EnvironmentColors.ComboBoxBackgroundBrushKey);
             _serverListBox.SetResourceReference(ListBox.ForegroundProperty, EnvironmentColors.ComboBoxTextBrushKey);
             _serverListBox.SetResourceReference(ListBox.BorderBrushProperty, EnvironmentColors.ComboBoxBorderBrushKey);
+            ScrollViewer.SetCanContentScroll(_serverListBox, true);
+            ScrollViewer.SetVerticalScrollBarVisibility(_serverListBox, ScrollBarVisibility.Auto);
+            ScrollViewer.SetHorizontalScrollBarVisibility(_serverListBox, ScrollBarVisibility.Disabled);
             Grid.SetRow(_serverListBox, currentRow++);
             grid.Children.Add(_serverListBox);
 
@@ -378,7 +388,8 @@ namespace GitHubNode.Commands
             try
             {
                 // Force refresh marketplaces
-                await MarketplaceService.GetAllMarketplacesAsync(forceRefresh: true, System.Threading.CancellationToken.None);
+                var refreshedMarketplaces = await MarketplaceService.GetAllMarketplacesAsync(forceRefresh: true, System.Threading.CancellationToken.None);
+                _marketplaceDisplayNames = BuildMarketplaceDisplayNames(refreshedMarketplaces);
 
                 // Reload MCP assets
                 var mcpAssets = await MarketplaceService.GetAllAssetsAsync(AssetType.McpServer, System.Threading.CancellationToken.None);
@@ -390,7 +401,7 @@ namespace GitHubNode.Commands
                 _marketplaces = _allServerItems
                     .Select(s => s.Asset.MarketplaceId)
                     .Distinct()
-                    .Select(id => new MarketplaceInfo { Id = id })
+                    .Select(id => new MarketplaceInfo { Id = id, DisplayName = ResolveMarketplaceDisplayName(id) })
                     .ToList();
 
                 // Rebuild the marketplace dropdown
@@ -398,7 +409,7 @@ namespace GitHubNode.Commands
                 _marketplaceComboBox.Items.Add(_allMarketplacesText);
                 foreach (var marketplace in _marketplaces)
                 {
-                    _marketplaceComboBox.Items.Add(marketplace.Id);
+                    _marketplaceComboBox.Items.Add(marketplace);
                 }
                 _marketplaceComboBox.SelectedIndex = 0;
 
@@ -448,13 +459,14 @@ namespace GitHubNode.Commands
 
         private void UpdateServerList()
         {
-            string selectedMarketplace = _marketplaceComboBox.SelectedItem as string;
-            bool showAll = selectedMarketplace == _allMarketplacesText;
+            object selectedItem = _marketplaceComboBox.SelectedItem;
+            string selectedMarketplaceId = selectedItem is MarketplaceInfo mp ? mp.Id : null;
+            bool showAll = !(selectedItem is MarketplaceInfo);
             string searchText = _searchBox?.Text?.Trim() ?? string.Empty;
 
             var filteredServers = showAll
                 ? _allServerItems
-                : _allServerItems.Where(s => s.Asset.MarketplaceId == selectedMarketplace).ToList();
+                : _allServerItems.Where(s => s.Asset.MarketplaceId == selectedMarketplaceId).ToList();
 
             if (!string.IsNullOrEmpty(searchText))
             {
@@ -475,10 +487,12 @@ namespace GitHubNode.Commands
             {
                 var grouped = filteredServers
                     .GroupBy(server => server.Asset?.MarketplaceId ?? "unknown")
-                    .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+                    .OrderBy(group => ResolveMarketplaceDisplayName(group.Key), StringComparer.OrdinalIgnoreCase);
 
                 foreach (var group in grouped)
                 {
+                    string groupDisplayName = ResolveMarketplaceDisplayName(group.Key);
+
                     var groupServers = group
                         .OrderBy(server => server.ServerName, StringComparer.OrdinalIgnoreCase)
                         .ThenBy(server => server.PluginName, StringComparer.OrdinalIgnoreCase)
@@ -489,7 +503,7 @@ namespace GitHubNode.Commands
                         {
                             IsGroupHeader = false,
                             GroupKey = group.Key,
-                            GroupDisplayName = group.Key,
+                            GroupDisplayName = groupDisplayName,
                             Server = server,
                             IsChecked = checkedServers.Contains(server)
                         })
@@ -499,7 +513,7 @@ namespace GitHubNode.Commands
                     {
                         IsGroupHeader = true,
                         GroupKey = group.Key,
-                        GroupDisplayName = group.Key,
+                        GroupDisplayName = groupDisplayName,
                         IsChecked = children.Count > 0 && children.All(item => item.IsChecked)
                     });
                     nextItems.AddRange(children);
@@ -511,11 +525,12 @@ namespace GitHubNode.Commands
                     .OrderBy(item => item.ServerName, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(item => item.PluginName, StringComparer.OrdinalIgnoreCase))
                 {
+                    string groupKey = server.Asset?.MarketplaceId ?? "unknown";
                     nextItems.Add(new McpServerListItem
                     {
                         IsGroupHeader = false,
-                        GroupKey = server.Asset?.MarketplaceId ?? "unknown",
-                        GroupDisplayName = server.Asset?.MarketplaceId,
+                        GroupKey = groupKey,
+                        GroupDisplayName = ResolveMarketplaceDisplayName(groupKey),
                         Server = server,
                         IsChecked = checkedServers.Contains(server)
                     });
@@ -839,6 +854,49 @@ namespace GitHubNode.Commands
         private sealed class MarketplaceInfo
         {
             public string Id { get; set; }
+
+            public string DisplayName { get; set; }
+
+            public override string ToString()
+            {
+                return string.IsNullOrWhiteSpace(DisplayName) ? Id : DisplayName;
+            }
+        }
+
+        private static Dictionary<string, string> BuildMarketplaceDisplayNames(IReadOnlyList<Services.Marketplace.MarketplaceInfo> allMarketplaces)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (allMarketplaces == null)
+            {
+                return map;
+            }
+
+            foreach (var marketplace in allMarketplaces)
+            {
+                if (marketplace == null || string.IsNullOrWhiteSpace(marketplace.Id))
+                {
+                    continue;
+                }
+
+                map[marketplace.Id] = string.IsNullOrWhiteSpace(marketplace.DisplayName) ? marketplace.Id : marketplace.DisplayName;
+            }
+
+            return map;
+        }
+
+        private string ResolveMarketplaceDisplayName(string marketplaceId)
+        {
+            if (string.IsNullOrWhiteSpace(marketplaceId))
+            {
+                return marketplaceId;
+            }
+
+            if (_marketplaceDisplayNames != null && _marketplaceDisplayNames.TryGetValue(marketplaceId, out string displayName) && !string.IsNullOrWhiteSpace(displayName))
+            {
+                return displayName;
+            }
+
+            return marketplaceId;
         }
 
         internal sealed class McpServerSelection
