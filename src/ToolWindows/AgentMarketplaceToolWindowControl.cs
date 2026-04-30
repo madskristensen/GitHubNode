@@ -442,15 +442,15 @@ namespace GitHubNode.ToolWindows
             style.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension(EnvironmentColors.ToolWindowTextBrushKey)));
 
             var activeSelectionTrigger = new MultiTrigger();
-            activeSelectionTrigger.Conditions.Add(new Condition(TreeViewItem.IsSelectedProperty, true));
-            activeSelectionTrigger.Conditions.Add(new Condition(System.Windows.Controls.Primitives.Selector.IsSelectionActiveProperty, true));
+            activeSelectionTrigger.Conditions.Add(new System.Windows.Condition(TreeViewItem.IsSelectedProperty, true));
+            activeSelectionTrigger.Conditions.Add(new System.Windows.Condition(System.Windows.Controls.Primitives.Selector.IsSelectionActiveProperty, true));
             activeSelectionTrigger.Setters.Add(new Setter(Control.BackgroundProperty, selectedBackgroundBrush));
             activeSelectionTrigger.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension(EnvironmentColors.ToolWindowTextBrushKey)));
             style.Triggers.Add(activeSelectionTrigger);
 
             var inactiveSelectionTrigger = new MultiTrigger();
-            inactiveSelectionTrigger.Conditions.Add(new Condition(TreeViewItem.IsSelectedProperty, true));
-            inactiveSelectionTrigger.Conditions.Add(new Condition(System.Windows.Controls.Primitives.Selector.IsSelectionActiveProperty, false));
+            inactiveSelectionTrigger.Conditions.Add(new System.Windows.Condition(TreeViewItem.IsSelectedProperty, true));
+            inactiveSelectionTrigger.Conditions.Add(new System.Windows.Condition(System.Windows.Controls.Primitives.Selector.IsSelectionActiveProperty, false));
             inactiveSelectionTrigger.Setters.Add(new Setter(Control.BackgroundProperty, selectedBackgroundBrush));
             inactiveSelectionTrigger.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension(EnvironmentColors.ToolWindowTextBrushKey)));
             style.Triggers.Add(inactiveSelectionTrigger);

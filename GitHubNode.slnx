@@ -7,8 +7,7 @@
   <Project Path="src/GitHubNode.csproj" Id="e08fd448-2a24-4e8b-883e-83e4a6ab1aa2">
     <Platform Solution="*|arm64" Project="arm64" />
     <Platform Solution="*|x86" Project="x86" />
+    <Deploy Solution="Debug|Any CPU" />
   </Project>
   <Project Path="test/GitHubNode.Test/GitHubNode.Test.csproj" Id="7b8f32af-696e-4f38-8d84-44d5f7a3f2f3" />
 </Solution>
-
-

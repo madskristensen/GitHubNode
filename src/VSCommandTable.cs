@@ -15,6 +15,9 @@ namespace GitHubNode
     {
         public const string GitHubNodeString = "058f0e26-d2fd-4c6e-8eed-7c6e49e81527";
         public static Guid GitHubNode = new Guid(GitHubNodeString);
+
+        public const string WorkspaceFilesString = "d428d0a0-b960-4617-a7fd-15743d49e72e";
+        public static Guid WorkspaceFiles = new Guid(WorkspaceFilesString);
     }
 
     /// <summary>
@@ -43,8 +46,8 @@ namespace GitHubNode
         public const int GitHubSubMenuGroup = 0x0051;
         public const int McpRootAddGroup = 0x0060;
         public const int McpRootActionsGroup = 0x0061;
-        public const int McpServerEditGroup = 0x0062;
         public const int McpRootToggleGroup = 0x0063;
+        public const int McpServerEditGroup = 0x0062;
         public const int ExtensionsMenuGroup = 0x0070;
         public const int WorkspaceFilesGroup = 0x0080;
         public const int AddCopilotInstructions = 0x0100;
@@ -77,5 +80,6 @@ namespace GitHubNode
         public const int DeleteMcpServer = 0x011B;
         public const int AgentMarketplace = 0x011C;
         public const int ToggleGitHubNode = 0x011D;
+        public const int RootContextMenu = 0x0001;
     }
 }
