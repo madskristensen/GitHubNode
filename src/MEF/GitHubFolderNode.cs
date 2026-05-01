@@ -99,10 +99,21 @@ namespace GitHubNode.SolutionExplorer
         /// </summary>
         public void UpdatePath(string newPath)
         {
+            if (string.IsNullOrEmpty(newPath) ||
+                string.Equals(FolderPath, newPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             FolderPath = newPath;
             _folderName = Path.GetFileName(newPath);
+            _hasFileSystemItems = null;
             RaisePropertyChanged(nameof(Text));
             RaisePropertyChanged(nameof(ToolTipText));
+
+            // Cascade the new path to children and re-bind the file system watcher
+            // so file invocations resolve against the current on-disk location.
+            _childrenManager?.UpdatePath(newPath);
         }
 
         // IAttachedCollectionSource

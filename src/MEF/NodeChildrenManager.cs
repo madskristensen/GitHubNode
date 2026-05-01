@@ -14,7 +14,7 @@ namespace GitHubNode.SolutionExplorer
     /// </summary>
     internal sealed class NodeChildrenManager : IDisposable
     {
-        private readonly string _folderPath;
+        private string _folderPath;
         private readonly object _parent;
         private readonly ObservableCollection<object> _children;
         private readonly Action _onPropertyChanged;
@@ -94,6 +94,76 @@ namespace GitHubNode.SolutionExplorer
             }
 
             _onPropertyChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Updates the watched folder path (used after the folder is renamed on disk).
+        /// Cascades the new path to all loaded child nodes so file invocations resolve
+        /// against the current location, and re-creates the file system watcher.
+        /// Must be called on the UI thread.
+        /// </summary>
+        public void UpdatePath(string newPath)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            if (_disposed || string.IsNullOrEmpty(newPath) ||
+                string.Equals(_folderPath, newPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (_parentWatcher != null)
+            {
+                _parentWatcher.EnableRaisingEvents = false;
+                _parentWatcher.Dispose();
+                _parentWatcher = null;
+            }
+
+            if (_watcher != null)
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Dispose();
+                _watcher = null;
+            }
+
+            var oldPath = _folderPath;
+            _folderPath = newPath;
+
+            foreach (var child in _children)
+            {
+                if (child is GitHubFileNode fileNode)
+                {
+                    fileNode.UpdatePath(BuildChildPath(newPath, fileNode.FilePath));
+                }
+                else if (child is GitHubFolderNode folderNode)
+                {
+                    folderNode.UpdatePath(BuildChildPath(newPath, folderNode.FolderPath));
+                }
+            }
+
+            if (!string.IsNullOrEmpty(oldPath))
+            {
+                GitStatusService.InvalidateCacheForDirectory(oldPath);
+            }
+            GitStatusService.InvalidateCacheForDirectory(newPath);
+
+            SetupFileWatcher();
+        }
+
+        /// <summary>
+        /// Builds the new full path for a direct child after its parent folder was renamed.
+        /// </summary>
+        internal static string BuildChildPath(string newParentPath, string existingChildPath)
+        {
+            if (string.IsNullOrEmpty(existingChildPath))
+            {
+                return existingChildPath;
+            }
+
+            var childName = Path.GetFileName(existingChildPath);
+            return string.IsNullOrEmpty(newParentPath)
+                ? childName
+                : Path.Combine(newParentPath, childName);
         }
 
         private void SetupFileWatcher()
