@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,6 +15,7 @@ namespace GitHubNode.Services.Marketplace
     {
         private const int _gitTimeoutSeconds = 120;
         private static readonly SemaphoreSlim _gitLock = new SemaphoreSlim(1, 1);
+        private static readonly Regex _commitShaRegex = new Regex("^[0-9a-fA-F]{40}$", RegexOptions.Compiled);
 
         /// <summary>
         /// Result of a git operation.
@@ -69,7 +71,10 @@ namespace GitHubNode.Services.Marketplace
         /// <param name="parentMarketplaceRepo">Repository name of the parent marketplace.</param>
         /// <param name="linkedOwner">Owner of the linked repository.</param>
         /// <param name="linkedRepo">Repository name of the linked repository.</param>
-        /// <param name="branch">Branch to clone. If null or empty, the default branch is detected automatically.</param>
+        /// <param name="ref">Branch or tag to checkout. If null or empty and sha is not provided, the default branch is detected automatically.</param>
+        /// <param name="sha">Commit sha to checkout. Takes precedence over ref when both are provided.</param>
+        /// <param name="linkedRepositoryUrl">Optional explicit linked repository URL.</param>
+        /// <param name="parentRepositoryUrl">Optional explicit parent repository URL.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Result of the git operation and the local path to the cloned repo.</returns>
         public static async Task<(GitResult Result, string LocalPath)> CloneLinkedRepositoryAsync(
@@ -77,7 +82,8 @@ namespace GitHubNode.Services.Marketplace
             string parentMarketplaceRepo,
             string linkedOwner,
             string linkedRepo,
-            string branch = null,
+            string @ref = null,
+            string sha = null,
             string linkedRepositoryUrl = null,
             string parentRepositoryUrl = null,
             CancellationToken cancellationToken = default)
@@ -86,10 +92,17 @@ namespace GitHubNode.Services.Marketplace
                 parentMarketplaceOwner, parentMarketplaceRepo, linkedOwner, linkedRepo, parentRepositoryUrl, linkedRepositoryUrl);
             var cloneUrl = MarketplaceRepositoryUrl.GetCloneUrl(linkedOwner, linkedRepo, linkedRepositoryUrl);
 
-            // If branch is not specified, detect it from the remote
-            if (string.IsNullOrEmpty(branch))
+            // Backward compatible behavior: marketplace sources may provide a commit hash via `ref`.
+            if (string.IsNullOrEmpty(sha) && LooksLikeCommitSha(@ref))
             {
-                branch = await GetDefaultBranchAsync(linkedOwner, linkedRepo, linkedRepositoryUrl, cancellationToken);
+                sha = @ref;
+                @ref = null;
+            }
+
+            // If neither sha nor ref is specified, detect the default branch from the remote.
+            if (string.IsNullOrEmpty(sha) && string.IsNullOrEmpty(@ref))
+            {
+                @ref = await GetDefaultBranchAsync(linkedOwner, linkedRepo, linkedRepositoryUrl, cancellationToken);
             }
 
             await _gitLock.WaitAsync(cancellationToken);
@@ -97,14 +110,14 @@ namespace GitHubNode.Services.Marketplace
             {
                 if (Directory.Exists(Path.Combine(localPath, ".git")))
                 {
-                    // Linked repo already cloned, do a pull
-                    var result = await PullAsync(localPath, branch, cancellationToken);
+                    // Linked repo already cloned - sync to the requested ref/sha.
+                    var result = await SyncLinkedRepositoryAsync(localPath, @ref, sha, cancellationToken);
                     return (result, localPath);
                 }
                 else
                 {
                     // Clone the linked repository
-                    var result = await CloneAsync(cloneUrl, localPath, branch, cancellationToken);
+                    var result = await CloneLinkedRepositoryAsync(cloneUrl, localPath, @ref, sha, cancellationToken);
                     return (result, localPath);
                 }
             }
@@ -280,6 +293,105 @@ namespace GitHubNode.Services.Marketplace
         }
 
         /// <summary>
+        /// Clones a linked repository, respecting either a ref (branch or tag) or a commit sha.
+        /// </summary>
+        private static async Task<GitResult> CloneLinkedRepositoryAsync(
+            string cloneUrl,
+            string localPath,
+            string @ref,
+            string sha,
+            CancellationToken cancellationToken)
+        {
+            if (!string.IsNullOrWhiteSpace(sha))
+            {
+                // Clone without checkout, then fetch and checkout the requested commit.
+                var cloneResult = await CloneWithoutCheckoutAsync(cloneUrl, localPath, cancellationToken);
+                if (!cloneResult.Success)
+                {
+                    return cloneResult;
+                }
+
+                return await SyncLinkedRepositoryAsync(localPath, @ref: null, sha, cancellationToken);
+            }
+
+            return await CloneAsync(cloneUrl, localPath, @ref, cancellationToken);
+        }
+
+        /// <summary>
+        /// Syncs an existing linked repository to a specific ref (branch/tag) or commit sha.
+        /// </summary>
+        private static async Task<GitResult> SyncLinkedRepositoryAsync(
+            string localPath,
+            string @ref,
+            string sha,
+            CancellationToken cancellationToken)
+        {
+            if (!string.IsNullOrWhiteSpace(sha))
+            {
+                var fetchShaResult = await RunGitAsync($"fetch --depth 1 origin \"{sha}\"", localPath, cancellationToken);
+                if (!fetchShaResult.Success)
+                {
+                    return fetchShaResult;
+                }
+
+                return await RunGitAsync($"checkout --detach \"{sha}\"", localPath, cancellationToken);
+            }
+
+            if (string.IsNullOrWhiteSpace(@ref))
+            {
+                return new GitResult
+                {
+                    Success = false,
+                    Error = "A branch/tag ref or commit sha is required to sync a linked repository.",
+                    ExitCode = -1
+                };
+            }
+
+            // Fetch the requested ref and detach to the fetched commit.
+            var fetchRefResult = await RunGitAsync($"fetch --depth 1 origin \"{@ref}\"", localPath, cancellationToken);
+            if (!fetchRefResult.Success)
+            {
+                return fetchRefResult;
+            }
+
+            return await RunGitAsync("checkout --detach FETCH_HEAD", localPath, cancellationToken);
+        }
+
+        /// <summary>
+        /// Clones a repository without checking out a working tree.
+        /// </summary>
+        private static async Task<GitResult> CloneWithoutCheckoutAsync(
+            string cloneUrl,
+            string localPath,
+            CancellationToken cancellationToken)
+        {
+            // Ensure parent directory exists and target doesn't
+            var parentDir = Path.GetDirectoryName(localPath);
+            if (!string.IsNullOrEmpty(parentDir))
+            {
+                Directory.CreateDirectory(parentDir);
+            }
+
+            if (Directory.Exists(localPath))
+            {
+                // Clean up partial clone
+                try
+                {
+                    MarketplaceStorageService.DeleteMarketplaceClone(
+                        Path.GetFileName(Path.GetDirectoryName(localPath)),
+                        Path.GetFileName(localPath));
+                }
+                catch
+                {
+                    // Best effort
+                }
+            }
+
+            var args = $"clone --no-checkout --depth 1 \"{cloneUrl}\" \"{localPath}\"";
+            return await RunGitAsync(args, workingDirectory: null, cancellationToken);
+        }
+
+        /// <summary>
         /// Runs a git command and returns the result.
         /// </summary>
         private static async Task<GitResult> RunGitAsync(
@@ -386,6 +498,11 @@ namespace GitHubNode.Services.Marketplace
             {
                 // Best effort
             }
+        }
+
+        private static bool LooksLikeCommitSha(string value)
+        {
+            return !string.IsNullOrWhiteSpace(value) && _commitShaRegex.IsMatch(value);
         }
     }
 }

@@ -70,6 +70,17 @@ namespace GitHubNode.Services.Marketplace
             /// The path within the external repository.
             /// </summary>
             public string path { get; set; }
+
+            /// <summary>
+            /// Optional branch or tag to checkout for the external repository.
+            /// </summary>
+            public string @ref { get; set; }
+
+            /// <summary>
+            /// Optional commit sha to checkout for the external repository.
+            /// When specified, this takes precedence over the ref value.
+            /// </summary>
+            public string sha { get; set; }
         }
 
         private sealed class RawPlugin
@@ -291,7 +302,15 @@ namespace GitHubNode.Services.Marketplace
                         try
                         {
                             var (result, clonedPath) = await MarketplaceGitService.CloneLinkedRepositoryAsync(
-                                parentOwner, parentRepo, linkedOwner, linkedRepo, linkedRepositoryUrl: linkedRepositoryUrl, parentRepositoryUrl: parentRepositoryUrl, cancellationToken: cancellationToken);
+                                parentOwner,
+                                parentRepo,
+                                linkedOwner,
+                                linkedRepo,
+                                @ref: linkedSource.@ref,
+                                sha: linkedSource.sha,
+                                linkedRepositoryUrl: linkedRepositoryUrl,
+                                parentRepositoryUrl: parentRepositoryUrl,
+                                cancellationToken: cancellationToken);
 
                             if (!result.Success)
                             {
