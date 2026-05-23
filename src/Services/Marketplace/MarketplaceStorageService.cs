@@ -40,7 +40,7 @@ namespace GitHubNode.Services.Marketplace
         /// </summary>
         public static IReadOnlyList<MarketplaceEntry> BuiltInMarketplaces { get; } = new List<MarketplaceEntry>
         {
-            new MarketplaceEntry { Owner = "github", Repo = "awesome-copilot", Branch = "main" },
+            new MarketplaceEntry { Owner = "github", Repo = "awesome-copilot", Branch = "marketplace" },
             new MarketplaceEntry { Owner = "github", Repo = "copilot-plugins", Branch = "main" },
             new MarketplaceEntry { Owner = "dotnet", Repo = "skills", Branch = "main" },
             new MarketplaceEntry { Owner = "anthropics", Repo = "skills", Branch = "main" }

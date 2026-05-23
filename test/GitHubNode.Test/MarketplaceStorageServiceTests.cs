@@ -16,6 +16,15 @@ public class MarketplaceStorageServiceTests
     }
 
     [TestMethod]
+    public void BuiltInMarketplaces_AwesomeCopilot_UsesMarketplaceBranch()
+    {
+        var marketplace = MarketplaceStorageService.BuiltInMarketplaces
+            .Single(m => m.Owner == "github" && m.Repo == "awesome-copilot");
+
+        Assert.AreEqual("marketplace", marketplace.Branch);
+    }
+
+    [TestMethod]
     public void GetMarketplaceId_ReturnsOwnerSlashRepo()
     {
         string id = MarketplaceStorageService.GetMarketplaceId("myowner", "myrepo");
